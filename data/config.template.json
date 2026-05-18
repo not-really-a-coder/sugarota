@@ -1,0 +1,25 @@
+{
+  "debug": true,
+  "units": "mg/dL",
+  "wifi": {
+    "primary_ssid": "YOUR_WIFI_SSID",
+    "primary_pass": "YOUR_WIFI_PASSWORD",
+    "secondary_ssid": "BACKUP_WIFI_SSID",
+    "secondary_pass": "BACKUP_WIFI_PASSWORD"
+  },
+  "nightscout": {
+    "url": "https://your-nightscout-site.com",
+    "secret": "YOUR_NIGHTSCOUT_API_SECRET"
+  },
+  "dexcom": {
+    "user": "YOUR_DEXCOM_SHARE_USER",
+    "pass": "YOUR_DEXCOM_SHARE_PASSWORD",
+    "server": "shareous1.dexcom.com"
+  },
+  "provider": "DEXCOM",
+  "timezone": {
+    "ntp": "pool.ntp.org",
+    "offset": 10800,
+    "daylight": 0
+  }
+}

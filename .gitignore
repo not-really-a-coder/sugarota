@@ -1,0 +1,25 @@
+# Compiled Binaries (we keep precompiled binaries inside build/ for out-of-the-box WebSerial flashing)
+# but we ignore giant temporary debug/log artifacts
+*.elf
+*.map
+*.o
+*.d
+*.options.json
+
+# Local Python Caches
+__pycache__/
+*.pyc
+
+# Local build and partition caches
+data.bin
+
+# User configuration credentials (DO NOT PUBLISH)
+data/config.json
+
+# Developer references, simulations, and sandboxes (DO NOT PUBLISH)
+other/
+
+# OS Files
+.DS_Store
+Thumbs.db
+Desktop.ini

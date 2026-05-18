@@ -1,0 +1,1708 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sugarota Master Web Center</title>
+    <!-- Premium Fonts & CSS Imports -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&family=Fira+Code:wght@400;500&display=swap"
+        rel="stylesheet">
+    <!-- esptool-js Bundle CDN (Exposed as standard window global via ES Modules) -->
+    <script type="module">
+        import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js/bundle.js';
+        window.esptool = { ESPLoader, Transport };
+    </script>
+    <style>
+        :root {
+            --bg-color: #050508;
+            --card-bg: rgba(13, 13, 21, 0.75);
+            --border-color: rgba(0, 255, 102, 0.15);
+            --border-glow: rgba(0, 255, 102, 0.25);
+            --accent-green: #00ff66;
+            --accent-green-glow: rgba(0, 255, 102, 0.35);
+            --accent-blue: #00f0ff;
+            --accent-blue-glow: rgba(0, 240, 255, 0.35);
+            --accent-yellow: #ffb700;
+            --accent-red: #ff3b30;
+            --accent-red-glow: rgba(255, 59, 48, 0.35);
+            --text-primary: #ffffff;
+            --text-secondary: #8e8e9f;
+            --terminal-green: #39ff14;
+            --terminal-glow: rgba(57, 255, 20, 0.4);
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image:
+                radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.08) 0%, rgba(5, 5, 8, 1) 75%),
+                linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+                linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02));
+            background-size: 100% 100%, 100% 4px, 6px 100%;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            min-height: 100vh;
+            padding: 24px;
+            box-sizing: border-box;
+        }
+
+        /* Container & Layout */
+        .wrapper {
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 32px;
+            position: relative;
+        }
+
+        .logo-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 3rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            margin: 0;
+            background: linear-gradient(135deg, #ffffff 30%, var(--accent-blue) 65%, var(--accent-green) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 4px 12px rgba(0, 240, 255, 0.2));
+            text-transform: uppercase;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.15rem;
+            margin-top: 8px;
+            font-weight: 500;
+            letter-spacing: 0.03em;
+        }
+
+        /* Global Connection Status Widget */
+        .status-banner {
+            display: none !important;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 16px;
+            background: rgba(13, 13, 21, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 16px 24px;
+            margin-bottom: 32px;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4), inset 0 0 10px rgba(0, 255, 102, 0.05);
+        }
+
+        .status-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: var(--accent-red);
+            box-shadow: 0 0 12px var(--accent-red);
+            transition: all 0.3s ease;
+        }
+
+        .status-dot.connected {
+            background-color: var(--accent-green);
+            box-shadow: 0 0 14px var(--accent-green);
+            animation: pulse-green 2s infinite;
+        }
+
+        .status-text {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 1.05rem;
+            letter-spacing: 0.03em;
+            color: var(--text-secondary);
+            transition: color 0.3s ease;
+        }
+
+        .status-text.connected {
+            color: var(--accent-green);
+        }
+
+        .status-metrics {
+            display: flex;
+            gap: 24px;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .metric-item span {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        /* Glassmorphism Panel Grid */
+        .grid-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 32px;
+        }
+
+        @media (max-width: 960px) {
+            .grid-container {
+                grid-template-columns: 1fr;
+            }
+
+            .form-row {
+                flex-direction: column;
+                gap: 0;
+            }
+        }
+
+        .panel {
+            background: var(--card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 24px;
+            padding: 32px;
+            box-sizing: border-box;
+            backdrop-filter: blur(25px);
+            box-shadow: 0 16px 40px 0 rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .panel:hover {
+            border-color: rgba(0, 240, 255, 0.15);
+            box-shadow: 0 20px 48px 0 rgba(0, 240, 255, 0.05);
+        }
+
+        .panel-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.6rem;
+            font-weight: 800;
+            margin-top: 0;
+            margin-bottom: 28px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            letter-spacing: -0.01em;
+            text-transform: uppercase;
+        }
+
+        .flasher-title {
+            color: var(--accent-blue);
+            text-shadow: 0 0 12px var(--accent-blue-glow);
+        }
+
+        .config-title {
+            color: var(--accent-green);
+            text-shadow: 0 0 12px var(--accent-green-glow);
+        }
+
+        /* Form Controls */
+        /* Form Controls */
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .password-wrapper {
+            position: relative;
+            width: 100%;
+        }
+
+        .password-wrapper input {
+            padding-right: 48px !important;
+        }
+
+        .password-toggle-btn {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px;
+            transition: color 0.2s ease;
+            z-index: 10;
+        }
+
+        .password-toggle-btn:hover {
+            color: var(--accent-blue);
+        }
+
+        label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        input[type="text"],
+        input[type="password"],
+        select {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 14px 18px;
+            font-size: 0.95rem;
+            color: var(--text-primary);
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus,
+        select:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 12px rgba(0, 240, 255, 0.2);
+            background: rgba(0, 0, 0, 0.6);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 24px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        input[type="checkbox"] {
+            width: 22px;
+            height: 22px;
+            accent-color: var(--accent-green);
+            cursor: pointer;
+        }
+
+        /* Buttons Container */
+        .btn-row {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .btn {
+            flex: 1;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 1rem;
+            padding: 15px 24px;
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn-green {
+            background: linear-gradient(135deg, #00c950 0%, var(--accent-green) 100%);
+            border: none;
+            color: #020b05;
+        }
+
+        .btn-green:hover {
+            box-shadow: 0 0 20px var(--accent-green-glow);
+            transform: translateY(-1.5px);
+        }
+
+        .btn-green:disabled {
+            background: rgba(0, 255, 102, 0.08);
+            color: rgba(255, 255, 255, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .btn-blue {
+            background: linear-gradient(135deg, #0076a3 0%, var(--accent-blue) 100%);
+            border: none;
+            color: #020b12;
+            text-shadow: none;
+        }
+
+        .btn-blue:hover {
+            box-shadow: 0 0 20px var(--accent-blue-glow);
+            transform: translateY(-1.5px);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+        }
+
+        .btn-outline:hover {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.25);
+            transform: translateY(-1.5px);
+        }
+
+        .btn-outline:disabled {
+            border-color: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.25);
+            cursor: not-allowed;
+            background: transparent;
+            transform: none;
+        }
+
+        /* Config form sections (always visible cards) */
+        .accordion-section {
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 16px;
+            margin-bottom: 16px;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .accordion-header {
+            padding: 18px 24px;
+            font-weight: 700;
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.05rem;
+            cursor: default;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .accordion-content {
+            padding: 24px;
+            display: block;
+        }
+
+        /* Terminal Console Shell & SCANLINES */
+        .terminal-container {
+            margin-top: 28px;
+            position: relative;
+        }
+
+        .terminal-wrapper {
+            position: relative;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: #040407;
+            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.9), 0 0 15px rgba(0, 240, 255, 0.05);
+        }
+
+        .terminal-wrapper::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.2) 50%);
+            background-size: 100% 4px;
+            z-index: 10;
+            pointer-events: none;
+            opacity: 0.4;
+        }
+
+        .terminal {
+            height: 240px;
+            padding: 20px;
+            overflow-y: auto;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            color: var(--terminal-green);
+            text-shadow: 0 0 6px var(--terminal-glow);
+            white-space: pre-wrap;
+            word-break: break-all;
+            box-sizing: border-box;
+        }
+
+
+
+        /* Micro Action Buttons under Console */
+        .terminal-quick-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn-micro {
+            background: rgba(0, 240, 255, 0.05);
+            border: 1px solid rgba(0, 240, 255, 0.15);
+            color: var(--accent-blue);
+            font-family: 'Fira Code', monospace;
+            font-size: 0.75rem;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-micro:hover {
+            background: rgba(0, 240, 255, 0.18);
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 8px var(--accent-blue-glow);
+        }
+
+        .btn-micro.danger {
+            background: rgba(255, 59, 48, 0.05);
+            border-color: rgba(255, 59, 48, 0.15);
+            color: var(--accent-red);
+        }
+
+        .btn-micro.danger:hover {
+            background: rgba(255, 59, 48, 0.18);
+            border-color: var(--accent-red);
+            box-shadow: 0 0 8px var(--accent-red-glow);
+        }
+
+        /* Premium Drag & Drop Area */
+        .dropzone {
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px dashed rgba(255, 255, 255, 0.12);
+            border-radius: 16px;
+            padding: 32px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .dropzone:hover,
+        .dropzone.dragover {
+            border-color: var(--accent-blue);
+            background: rgba(0, 240, 255, 0.03);
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.08);
+        }
+
+        .dropzone-icon {
+            color: var(--text-secondary);
+            transition: color 0.3s ease;
+        }
+
+        .dropzone:hover .dropzone-icon,
+        .dropzone.dragover .dropzone-icon {
+            color: var(--accent-blue);
+            filter: drop-shadow(0 0 5px var(--accent-blue-glow));
+        }
+
+        .dropzone-text {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        .dropzone-text .highlight {
+            color: var(--accent-blue);
+            font-weight: 600;
+            text-decoration: underline;
+        }
+
+        .dropzone-info {
+            background: rgba(0, 240, 255, 0.08);
+            border: 1px solid rgba(0, 240, 255, 0.2);
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 0.8rem;
+            color: var(--accent-blue);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 4px;
+        }
+
+        .dropzone-info .file-name {
+            font-weight: 600;
+            font-family: 'Fira Code', monospace;
+        }
+
+        .dropzone-info .remove-btn {
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            transition: color 0.2s ease;
+        }
+
+        .dropzone-info .remove-btn:hover {
+            color: var(--accent-red);
+        }
+
+        /* Progress Bar style */
+        .progress-container {
+            margin-top: 24px;
+            display: none;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .progress-bar-bg {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+            height: 18px;
+            width: 100%;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .progress-bar-fill {
+            background: linear-gradient(90deg, var(--accent-blue) 0%, var(--accent-green) 100%);
+            height: 100%;
+            width: 0%;
+            transition: width 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 10px rgba(0, 255, 102, 0.4);
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .progress-label #progress-percentage-text {
+            color: var(--accent-green);
+        }
+
+        @keyframes pulse-green {
+            0% {
+                box-shadow: 0 0 8px var(--accent-green);
+                opacity: 1;
+            }
+
+            50% {
+                box-shadow: 0 0 18px var(--accent-green);
+                opacity: 0.65;
+            }
+
+            100% {
+                box-shadow: 0 0 8px var(--accent-green);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="wrapper">
+        <header>
+            <h1 class="logo-title">SUGAROTA CONTROL CENTER</h1>
+            <div class="subtitle">Deploy Firmware & Sync Settings via Web Serial USB</div>
+        </header>
+
+        <!-- Global Connection Status Banner -->
+        <div class="status-banner">
+            <div class="status-left">
+                <div class="status-dot" id="global-status-dot"></div>
+                <span class="status-text" id="global-status-text">Device Disconnected</span>
+            </div>
+            <div class="status-metrics">
+                <div class="metric-item">Port: <span id="metric-port">-</span></div>
+                <div class="metric-item">Speed: <span id="metric-baud">-</span></div>
+                <div class="metric-item">Chip: <span id="metric-chip">-</span></div>
+            </div>
+        </div>
+
+        <div class="grid-container">
+            <!-- LEFT PANEL: FLASHING CONTROL PANEL -->
+            <div class="panel">
+                <h2 class="panel-title flasher-title">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                    </svg>
+                    Firmware Flasher
+                </h2>
+
+                <div class="form-group">
+                    <label>Connection Speed (Baud Rate)</label>
+                    <select id="baudrate-select">
+                        <option value="115200">115200 (Standard)</option>
+                        <option value="460800">460800 (Medium Speed)</option>
+                        <option value="921600" selected>921600 (High Speed - Recommended)</option>
+                    </select>
+                </div>
+
+                <div class="btn-row">
+                    <button class="btn btn-blue" id="btn-pair">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5">
+                            <path
+                                d="M18 10h-1.55c-.15 0-.29-.06-.39-.17l-3.32-3.32a.55.55 0 0 1 .39-.94h4.12c.3 0 .55.25.55.55v3.33c0 .3-.25.55-.55.55zM6 14h1.55c.15 0 .29.06.39.17l3.32 3.32a.55.55 0 0 1-.39.94H6.75c-.3 0-.55-.25-.55-.55v-3.33c0-.3.25-.55.55-.55z" />
+                            <path d="M4.5 16.5L16.5 4.5M7.5 19.5l12-12" />
+                        </svg>
+                        Connect USB Device
+                    </button>
+                    <button class="btn btn-outline" id="btn-disconnect" style="display: none;">Disconnect</button>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.05); margin: 28px 0;">
+
+                <!-- Logger Terminal -->
+                <div class="terminal-container" style="margin-top: 0; margin-bottom: 28px;">
+                    <label>System Command Console & Log Output</label>
+                    <div class="terminal-wrapper">
+                        <div class="terminal" id="terminal-log">Console system ready. Pair your USB device to sync
+                            settings or deploy new software...</div>
+                    </div>
+                    <!-- Micro Console Tools -->
+                    <div class="terminal-quick-actions">
+                        <button class="btn-micro danger" id="quick-btn-reboot" disabled
+                            title="Perform soft CPU reboot">⚡ Soft reboot</button>
+                        <button class="btn-micro" id="quick-btn-clear" style="margin-left: auto;">🗑️ Clear
+                            screen</button>
+                    </div>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.05); margin: 28px 0;">
+
+                <div class="form-group">
+                    <label>Firmware Image Selection</label>
+                    <select id="firmware-mode-select" onchange="toggleFirmwareMode()">
+                        <option value="bundled">Bundled Latest Firmware (sugarota.ino.bin)</option>
+                        <option value="custom">Upload Custom Binary File (.bin)</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="custom-file-group" style="display: none;">
+                    <label>Select Custom firmware.bin</label>
+                    <div class="dropzone" id="custom-file-dropzone">
+                        <svg class="dropzone-icon" width="40" height="40" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="1.5">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                        </svg>
+                        <div class="dropzone-text">Drag & drop your <span class="highlight">firmware.bin</span> file
+                            here, or click to browse</div>
+                        <div class="dropzone-info" id="dropzone-file-info" style="display: none;">
+                            <span class="file-name">-</span>
+                            <span class="file-size">-</span>
+                            <span class="remove-btn" id="btn-remove-file">✕</span>
+                        </div>
+                        <input type="file" id="custom-file-input" accept=".bin" style="display: none;">
+                    </div>
+                </div>
+
+                <button class="btn btn-green" id="btn-flash" style="width: 100%; margin-top: 12px;" disabled>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                    </svg>
+                    Start Flashing Firmware
+                </button>
+
+                <!-- Progress Bar -->
+                <div class="progress-container" id="flash-progress-container">
+                    <div class="progress-label">
+                        <span id="progress-state-text">Handshaking...</span>
+                        <span id="progress-percentage-text">0%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="flash-progress-fill"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT PANEL: DEVICE SETTINGS SYNC -->
+            <div class="panel">
+                <h2 class="panel-title config-title">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5">
+                        <circle cx="12" cy="12" r="3" />
+                        <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                    Device Configuration
+                </h2>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: -12px; margin-bottom: 20px; opacity: 0.85;">* - Required fields</p>
+
+                <div class="btn-row">
+                    <button class="btn btn-green" id="btn-read-config" disabled>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                        </svg>
+                        Retrieve Config
+                    </button>
+                    <button class="btn btn-outline" id="btn-write-config" disabled>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                            <polyline points="17 21 17 13 7 13 7 21" />
+                            <polyline points="7 3 7 8 15 8" />
+                        </svg>
+                        Save & Apply Config
+                    </button>
+                </div>
+
+                <!-- Form Accordions -->
+                <form id="config-form" onsubmit="return false;" autocomplete="off">
+                    <!-- Section 1: Wi-Fi -->
+                    <div class="accordion-section">
+                        <div class="accordion-header" id="acc-header-wifi">
+                            <span>📶 Primary & Secondary Wi-Fi</span>
+                        </div>
+                        <div class="accordion-content" id="wifi-content">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Primary Wi-Fi SSID*</label>
+                                    <input type="text" id="wifi-primary-ssid" required placeholder="My Home Network">
+                                </div>
+                                <div class="form-group">
+                                    <label>Primary Wi-Fi Password*</label>
+                                    <div class="password-wrapper">
+                                        <input type="password" id="wifi-primary-pass" required
+                                            placeholder="••••••••••••••••">
+                                        <button type="button" class="password-toggle-btn"
+                                            onclick="togglePasswordVisibility('wifi-primary-pass', this)"
+                                            title="Toggle password visibility">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                                stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                stroke-linejoin="round">
+                                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                                <circle cx="12" cy="12" r="3" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Secondary Wi-Fi SSID</label>
+                                    <input type="text" id="wifi-secondary-ssid" placeholder="Mobile Hotspot">
+                                </div>
+                                <div class="form-group">
+                                    <label>Secondary Wi-Fi Password</label>
+                                    <div class="password-wrapper">
+                                        <input type="password" id="wifi-secondary-pass" placeholder="••••••••••••••••">
+                                        <button type="button" class="password-toggle-btn"
+                                            onclick="togglePasswordVisibility('wifi-secondary-pass', this)"
+                                            title="Toggle password visibility">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                                stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                stroke-linejoin="round">
+                                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                                <circle cx="12" cy="12" r="3" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section 2: CGM Data source -->
+                    <div class="accordion-section">
+                        <div class="accordion-header" id="acc-header-cgm">
+                            <span>🩸 CGM Data Provider</span>
+                        </div>
+                        <div class="accordion-content" id="cgm-content">
+                            <div class="form-group">
+                                <label>Data Provider Selection</label>
+                                <select id="provider-select" onchange="toggleProviderFields()">
+                                    <option value="DEXCOM">Dexcom Share Server</option>
+                                    <option value="NIGHTSCOUT">Nightscout API Endpoint</option>
+                                </select>
+                            </div>
+
+                            <!-- Dexcom specific fields -->
+                            <div id="dexcom-fields">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Dexcom Share Username</label>
+                                        <input type="text" id="dexcom-user" placeholder="DexcomAccountName">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Dexcom Share Password</label>
+                                        <div class="password-wrapper">
+                                            <input type="password" id="dexcom-pass" placeholder="••••••••••••••••">
+                                            <button type="button" class="password-toggle-btn"
+                                                onclick="togglePasswordVisibility('dexcom-pass', this)"
+                                                title="Toggle password visibility">
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                    stroke-linejoin="round">
+                                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                                    <circle cx="12" cy="12" r="3" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Dexcom Server Region</label>
+                                    <select id="dexcom-server">
+                                        <option value="shareous1.dexcom.com">United States / Global (shareous1)</option>
+                                        <option value="share2.dexcom.com">US Alternate (share2)</option>
+                                        <option value="share1a.dexcom.com">International Region (share1a)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Nightscout specific fields -->
+                            <div id="nightscout-fields" style="display: none;">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Nightscout URL</label>
+                                        <input type="text" id="nightscout-url"
+                                            placeholder="https://my-cgm.herokuapp.com">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Nightscout API Secret</label>
+                                        <div class="password-wrapper">
+                                            <input type="password" id="nightscout-secret"
+                                                placeholder="API Secret or Token">
+                                            <button type="button" class="password-toggle-btn"
+                                                onclick="togglePasswordVisibility('nightscout-secret', this)"
+                                                title="Toggle password visibility">
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                    stroke-linejoin="round">
+                                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                                    <circle cx="12" cy="12" r="3" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section 3: Timezone & Unit options -->
+                    <div class="accordion-section">
+                        <div class="accordion-header" id="acc-header-system">
+                            <span>⚙️ General & Timezone Settings</span>
+                        </div>
+                        <div class="accordion-content" id="system-content">
+                            <div class="form-group">
+                                <label>Glucose Measurement Unit</label>
+                                <select id="units-select">
+                                    <option value="mg/dL">mg/dL (USA / Standard)</option>
+                                    <option value="mmol/L">mmol/L (International / UK / RU)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>NTP Server</label>
+                                <input type="text" id="ntp-server" value="pool.ntp.org">
+                            </div>
+                            <div class="form-group">
+                                <label>Timezone Offset (Seconds from GMT)</label>
+                                <select id="timezone-offset">
+                                    <option value="0">GMT +0:00 (London)</option>
+                                    <option value="3600">GMT +1:00 (Paris / Berlin)</option>
+                                    <option value="7200">GMT +2:00 (Kyiv / Athens)</option>
+                                    <option value="10800" selected>GMT +3:00 (Moscow / Istanbul)</option>
+                                    <option value="14400">GMT +4:00 (Dubai / Baku)</option>
+                                    <option value="18000">GMT +5:00 (Karachi)</option>
+                                    <option value="21600">GMT +6:00 (Dhaka)</option>
+                                    <option value="25200">GMT +7:00 (Bangkok / Jakarta)</option>
+                                    <option value="28800">GMT +8:00 (Singapore / Beijing)</option>
+                                    <option value="-18000">GMT -5:00 (New York / EST)</option>
+                                    <option value="-21600">GMT -6:00 (Chicago / CST)</option>
+                                    <option value="-28800">GMT -8:00 (Los Angeles / PST)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Daylight Saving Offset (Seconds)</label>
+                                <select id="daylight-offset">
+                                    <option value="0" selected>Disabled (0)</option>
+                                    <option value="3600">Enabled (+1 Hour / 3600s)</option>
+                                </select>
+                            </div>
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="debug-mode-checkbox" checked>
+                                <label style="margin-bottom: 0; cursor: pointer;">Enable System Debug Logging</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Save & Apply Button Duplicate -->
+                    <div class="btn-row" style="margin-top: 24px;">
+                        <button class="btn btn-outline" id="btn-write-config-bottom" disabled style="width: 100%;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5">
+                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                                <polyline points="17 21 17 13 7 13 7 21" />
+                                <polyline points="7 3 7 8 15 8" />
+                            </svg>
+                            Save & Apply Config
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Toggle Password Visibility Reveal Icon Logic
+        function togglePasswordVisibility(inputId, btn) {
+            SoundEffects.click();
+            const input = document.getElementById(inputId);
+            if (input.type === "password") {
+                input.type = "text";
+                btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+            } else {
+                input.type = "password";
+                btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+            }
+        }
+
+        // Premium Web Audio Synthesizer
+        const SoundEffects = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            },
+            playTone(freq, duration, type = 'sine', gainVal = 0.05) {
+                this.init();
+                if (!this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(0, this.ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(gainVal, this.ctx.currentTime + 0.01);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch (e) { }
+            },
+            click() { this.playTone(1000, 0.05, 'triangle', 0.03); },
+            connect() {
+                this.init();
+                const now = this.ctx ? this.ctx.currentTime : 0;
+                this.playTone(587.33, 0.1, 'sine', 0.04);
+                setTimeout(() => this.playTone(880.00, 0.22, 'sine', 0.04), 70);
+            },
+            success() {
+                this.init();
+                const now = this.ctx ? this.ctx.currentTime : 0;
+                this.playTone(523.25, 0.1, 'sine', 0.04);
+                setTimeout(() => this.playTone(659.25, 0.1, 'sine', 0.04), 90);
+                setTimeout(() => this.playTone(783.99, 0.28, 'sine', 0.04), 180);
+            },
+            warning() {
+                this.init();
+                const now = this.ctx ? this.ctx.currentTime : 0;
+                this.playTone(240.00, 0.12, 'sawtooth', 0.025);
+                setTimeout(() => this.playTone(200.00, 0.25, 'sawtooth', 0.025), 100);
+            },
+            beep() { this.playTone(950, 0.06, 'sine', 0.02); }
+        };
+
+        // State Variables
+        let port = null;
+        let transport = null;
+        let esploader = null;
+        let reader = null;
+        let isConnected = false;
+        let keepReading = false;
+        let readBuffer = "";
+
+        // DOM Elements
+        const terminalEl = document.getElementById("terminal-log");
+        const pairBtn = document.getElementById("btn-pair");
+        const disconnectBtn = document.getElementById("btn-disconnect");
+        const flashBtn = document.getElementById("btn-flash");
+        const readConfigBtn = document.getElementById("btn-read-config");
+        const writeConfigBtn = document.getElementById("btn-write-config");
+        const writeConfigBtnBottom = document.getElementById("btn-write-config-bottom");
+        const statusDot = document.getElementById("global-status-dot");
+        const statusText = document.getElementById("global-status-text");
+        const customFileGroup = document.getElementById("custom-file-group");
+        const progressContainer = document.getElementById("flash-progress-container");
+        const progressBarFill = document.getElementById("flash-progress-fill");
+        const progressPercentage = document.getElementById("progress-percentage-text");
+        const progressState = document.getElementById("progress-state-text");
+
+        // Interactive Command elements
+        const quickRebootBtn = document.getElementById("quick-btn-reboot");
+        const quickClearBtn = document.getElementById("quick-btn-clear");
+
+        // Metrics elements
+        const metricPort = document.getElementById("metric-port");
+        const metricBaud = document.getElementById("metric-baud");
+        const metricChip = document.getElementById("metric-chip");
+
+        // Print logs to styled terminal container
+        function log(message, color = null) {
+            const time = new Date().toLocaleTimeString();
+            let displayMessage = message;
+            if (color) {
+                displayMessage = `<span style="color: ${color};">${message}</span>`;
+            }
+            terminalEl.innerHTML += `[${time}] ${displayMessage}\n`;
+            terminalEl.scrollTop = terminalEl.scrollHeight;
+        }
+
+        function clearLog() {
+            terminalEl.innerHTML = "";
+        }
+
+
+
+        function toggleProviderFields() {
+            SoundEffects.click();
+            const provider = document.getElementById("provider-select").value;
+            const dexcomFields = document.getElementById("dexcom-fields");
+            const nightscoutFields = document.getElementById("nightscout-fields");
+            if (provider === "DEXCOM") {
+                dexcomFields.style.display = "block";
+                nightscoutFields.style.display = "none";
+            } else {
+                dexcomFields.style.display = "none";
+                nightscoutFields.style.display = "block";
+            }
+        }
+
+        function toggleFirmwareMode() {
+            SoundEffects.click();
+            const mode = document.getElementById("firmware-mode-select").value;
+            if (mode === "custom") {
+                customFileGroup.style.display = "block";
+            } else {
+                customFileGroup.style.display = "none";
+            }
+        }
+
+        // Connect USB via Web Serial API
+        pairBtn.addEventListener("click", async () => {
+            SoundEffects.click();
+            if (!navigator.serial) {
+                SoundEffects.warning();
+                alert("Your browser does not support Web Serial API. Please use Google Chrome, Edge, or Opera.");
+                return;
+            }
+
+            try {
+                clearLog();
+                log("Prompting user to select USB Serial Port...", "var(--accent-blue)");
+                port = await navigator.serial.requestPort();
+                log("Port selected! Opening serial link...");
+
+                // Open standard serial line at 115200 for regular config updates
+                await port.open({ baudRate: 115200 });
+
+                // Assert DTR/RTS signals to support ESP32-S3 native USB CDC
+                try {
+                    await port.setSignals({ dataTerminalReady: true, requestToSend: true });
+                } catch (sigErr) {
+                    console.warn("Could not set DTR/RTS signals:", sigErr);
+                }
+
+                log("Serial connection opened successfully at 115200 baud!", "var(--accent-green)");
+                SoundEffects.connect();
+
+                setConnectedState(true);
+
+                // Get USB Port Details
+                const info = port.getInfo();
+                metricPort.innerText = info.usbVendorId ? `USB:${info.usbVendorId.toString(16).toUpperCase()}` : "Active";
+                metricBaud.innerText = "115200 bps";
+
+                startSerialReadLoop();
+
+                // Try to auto-retrieve config upon connecting to save a click
+                setTimeout(() => {
+                    retrieveConfig();
+                }, 800);
+
+            } catch (err) {
+                SoundEffects.warning();
+                log(`Connection failed: ${err.message}`, "var(--accent-red)");
+                console.error(err);
+            }
+        });
+
+        // Close Serial port cleanly
+        disconnectBtn.addEventListener("click", async () => {
+            SoundEffects.click();
+            await disconnectSerial();
+        });
+
+        async function disconnectSerial() {
+            log("Closing serial port link...", "var(--text-secondary)");
+            keepReading = false;
+            if (reader) {
+                try {
+                    await reader.cancel();
+                } catch (e) { }
+            }
+            if (port) {
+                try {
+                    await port.close();
+                } catch (e) { }
+                port = null;
+            }
+            setConnectedState(false);
+            log("Serial port successfully closed.", "var(--text-secondary)");
+        }
+
+        function setConnectedState(connected) {
+            isConnected = connected;
+            if (connected) {
+                pairBtn.style.display = "none";
+                disconnectBtn.style.display = "block";
+                flashBtn.disabled = false;
+                readConfigBtn.disabled = false;
+                writeConfigBtn.disabled = false;
+                writeConfigBtnBottom.disabled = false;
+
+                // Interactive CLI / console buttons
+                quickRebootBtn.disabled = false;
+
+                statusDot.classList.add("connected");
+                statusText.innerText = "DEVICE SYNC ACTIVE";
+                statusText.classList.add("connected");
+            } else {
+                pairBtn.style.display = "block";
+                disconnectBtn.style.display = "none";
+                flashBtn.disabled = true;
+                readConfigBtn.disabled = true;
+                writeConfigBtn.disabled = true;
+                writeConfigBtnBottom.disabled = true;
+
+                // Interactive CLI / console buttons
+                quickRebootBtn.disabled = true;
+
+                statusDot.classList.remove("connected");
+                statusText.innerText = "DEVICE DISCONNECTED";
+                statusText.classList.remove("connected");
+
+                metricPort.innerText = "-";
+                metricBaud.innerText = "-";
+                metricChip.innerText = "-";
+            }
+        }
+
+        // Continuous non-blocking read loop for normal serial console output and real-time debug monitor
+        async function startSerialReadLoop() {
+            keepReading = true;
+            const decoder = new TextDecoder();
+            let lineAccumulator = "";
+
+            while (port && port.readable && keepReading) {
+                try {
+                    reader = port.readable.getReader();
+                    while (keepReading) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+                        const text = decoder.decode(value);
+                        readBuffer += text;
+                        lineAccumulator += text;
+
+                        // Process accumulated lines
+                        let newlineIndex;
+                        while ((newlineIndex = lineAccumulator.indexOf("\n")) !== -1) {
+                            const line = lineAccumulator.substring(0, newlineIndex + 1);
+                            lineAccumulator = lineAccumulator.substring(newlineIndex + 1);
+
+                            const trimmedLine = line.trim();
+                            // Do NOT print configuration JSON, EOF markers, or command queries to the visible log
+                            if (
+                                (trimmedLine.startsWith("{") && trimmedLine.endsWith("}")) ||
+                                trimmedLine === "[EOF]" ||
+                                trimmedLine === "GET_CONFIG" ||
+                                trimmedLine === "CONF_OK" ||
+                                trimmedLine === "CONF_ERR" ||
+                                trimmedLine.startsWith("SET_CONFIG")
+                            ) {
+                                // Silent - do not print to visible log to protect sensitive credentials
+                                continue;
+                            }
+
+                            // Print standard debug lines cleanly
+                            terminalEl.innerHTML += line.replace(/\r/g, "");
+                            terminalEl.scrollTop = terminalEl.scrollHeight;
+                        }
+
+                        // Look for JSON EOF marker in the full buffer to trigger config parsing
+                        if (readBuffer.includes("[EOF]")) {
+                            const markerIndex = readBuffer.indexOf("[EOF]");
+                            const rawJson = readBuffer.substring(0, markerIndex).trim();
+
+                            readBuffer = readBuffer.substring(markerIndex + 5); // Shift buffer
+                            parseRetrievedConfig(rawJson);
+                        }
+                    }
+                } catch (err) {
+                    console.warn("Serial loop error or manual reset:", err);
+                    break;
+                } finally {
+                    if (reader) {
+                        reader.releaseLock();
+                    }
+                }
+            }
+        }
+
+        // Retrieve live configuration over serial
+        readConfigBtn.addEventListener("click", () => {
+            SoundEffects.click();
+            retrieveConfig();
+        });
+
+
+
+        async function retrieveConfig() {
+            if (!port || !port.writable) {
+                SoundEffects.warning();
+                log("Error: Serial write interface is not ready!", "var(--accent-red)");
+                return;
+            }
+            log("Requesting current device configuration [GET_CONFIG]...", "var(--accent-blue)");
+            readBuffer = ""; // Reset receive buffer
+            const encoder = new TextEncoder();
+            const writer = port.writable.getWriter();
+            await writer.write(encoder.encode("GET_CONFIG\n"));
+            writer.releaseLock();
+        }
+
+        function parseRetrievedConfig(rawJson) {
+            log("Successfully received raw configuration payload!", "var(--accent-green)");
+            SoundEffects.success();
+            try {
+                let jsonPayload = rawJson.trim();
+                const firstBrace = jsonPayload.indexOf("{");
+                const lastBrace = jsonPayload.lastIndexOf("}");
+                if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                    jsonPayload = jsonPayload.substring(firstBrace, lastBrace + 1);
+                }
+                const config = JSON.parse(jsonPayload);
+
+                // Populating form fields from JSON
+                if (config.wifi) {
+                    document.getElementById("wifi-primary-ssid").value = config.wifi.primary_ssid || "";
+                    document.getElementById("wifi-primary-pass").value = config.wifi.primary_pass || "";
+                    document.getElementById("wifi-secondary-ssid").value = config.wifi.secondary_ssid || "";
+                    document.getElementById("wifi-secondary-pass").value = config.wifi.secondary_pass || "";
+                }
+
+                if (config.provider) {
+                    document.getElementById("provider-select").value = config.provider;
+                    toggleProviderFields();
+                }
+
+                if (config.dexcom) {
+                    document.getElementById("dexcom-user").value = config.dexcom.user || "";
+                    document.getElementById("dexcom-pass").value = config.dexcom.pass || "";
+                    document.getElementById("dexcom-server").value = config.dexcom.server || "shareous1.dexcom.com";
+                }
+
+                if (config.nightscout) {
+                    document.getElementById("nightscout-url").value = config.nightscout.url || "";
+                    document.getElementById("nightscout-secret").value = config.nightscout.secret || "";
+                }
+
+                if (config.units) {
+                    document.getElementById("units-select").value = config.units || "mg/dL";
+                }
+
+                if (config.timezone) {
+                    document.getElementById("ntp-server").value = config.timezone.ntp || "pool.ntp.org";
+                    document.getElementById("timezone-offset").value = config.timezone.offset !== undefined ? config.timezone.offset : 10800;
+                    document.getElementById("daylight-offset").value = config.timezone.daylight !== undefined ? config.timezone.daylight : 0;
+                }
+
+                document.getElementById("debug-mode-checkbox").checked = config.debug !== false;
+
+                log("Configuration loaded successfully into all form fields!", "var(--accent-green)");
+            } catch (err) {
+                SoundEffects.warning();
+                log(`JSON Parsing failed: ${err.message}`, "var(--accent-red)");
+            }
+        }
+
+        // Save & Write Config over serial
+        writeConfigBtn.addEventListener("click", async () => {
+            SoundEffects.click();
+            if (!port || !port.writable) {
+                SoundEffects.warning();
+                log("Error: Serial write interface is not active!", "var(--accent-red)");
+                return;
+            }
+
+            const primarySsid = document.getElementById("wifi-primary-ssid").value.trim();
+            const primaryPass = document.getElementById("wifi-primary-pass").value.trim();
+
+            if (!primarySsid || !primaryPass) {
+                SoundEffects.warning();
+                alert("Primary Wi-Fi SSID and Password are required to run the device!");
+                return;
+            }
+
+            log("Generating new JSON configuration payload...");
+
+            // Construct final JSON mapping config structure exactly
+            const config = {
+                debug: document.getElementById("debug-mode-checkbox").checked,
+                units: document.getElementById("units-select").value,
+                wifi: {
+                    primary_ssid: primarySsid,
+                    primary_pass: primaryPass,
+                    secondary_ssid: document.getElementById("wifi-secondary-ssid").value.trim(),
+                    secondary_pass: document.getElementById("wifi-secondary-pass").value.trim()
+                },
+                nightscout: {
+                    url: document.getElementById("nightscout-url").value.trim(),
+                    secret: document.getElementById("nightscout-secret").value.trim()
+                },
+                dexcom: {
+                    user: document.getElementById("dexcom-user").value.trim(),
+                    pass: document.getElementById("dexcom-pass").value.trim(),
+                    server: document.getElementById("dexcom-server").value
+                },
+                provider: document.getElementById("provider-select").value,
+                timezone: {
+                    ntp: document.getElementById("ntp-server").value.trim(),
+                    offset: parseInt(document.getElementById("timezone-offset").value),
+                    daylight: parseInt(document.getElementById("daylight-offset").value)
+                }
+            };
+
+            const jsonString = JSON.stringify(config);
+            log("Uploading new settings to device...");
+
+            const encoder = new TextEncoder();
+            const writer = port.writable.getWriter();
+            await writer.write(encoder.encode(`SET_CONFIG ${jsonString}\n`));
+            writer.releaseLock();
+
+            log("Settings successfully uploaded! The Sugarota screen is rebooting now to apply...", "var(--accent-green)");
+            SoundEffects.success();
+
+            // Also save a copy back to the local computer's data/config.json
+            try {
+                const saveResponse = await fetch("/api/save-config", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: jsonString
+                });
+                if (saveResponse.ok) {
+                    log("A secured copy of this configuration was saved locally on your computer (data/config.json).", "var(--accent-green)");
+                }
+            } catch (saveErr) {
+                console.warn("Headless/Offline server: local copy not saved over HTTP.", saveErr);
+            }
+        });
+
+        writeConfigBtnBottom.addEventListener("click", () => {
+            SoundEffects.click();
+            writeConfigBtn.click();
+        });
+
+        // Custom Drag-and-Drop Event Listeners
+        const dropzone = document.getElementById("custom-file-dropzone");
+        const customFileInput = document.getElementById("custom-file-input");
+        const fileInfoBadge = document.getElementById("dropzone-file-info");
+        const removeFileBtn = document.getElementById("btn-remove-file");
+        let customFirmwareData = null;
+
+        dropzone.addEventListener("click", () => {
+            SoundEffects.click();
+            customFileInput.click();
+        });
+
+        dropzone.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropzone.classList.add("dragover");
+        });
+
+        dropzone.addEventListener("dragleave", () => {
+            dropzone.classList.remove("dragover");
+        });
+
+        dropzone.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropzone.classList.remove("dragover");
+            if (e.dataTransfer.files.length > 0) {
+                handleCustomFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        customFileInput.addEventListener("change", () => {
+            if (customFileInput.files.length > 0) {
+                handleCustomFile(customFileInput.files[0]);
+            }
+        });
+
+        function handleCustomFile(file) {
+            if (!file.name.endsWith(".bin")) {
+                SoundEffects.warning();
+                alert("Error: Only compiled hardware binaries (.bin) are accepted!");
+                return;
+            }
+
+            SoundEffects.beep();
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                customFirmwareData = new Uint8Array(e.target.result);
+
+                // Show details
+                fileInfoBadge.querySelector(".file-name").innerText = file.name;
+                fileInfoBadge.querySelector(".file-size").innerText = `(${(file.size / 1024).toFixed(1)} KB)`;
+                fileInfoBadge.style.display = "flex";
+
+                log(`Loaded custom binary file: ${file.name} successfully! Size: ${file.size} bytes.`, "var(--accent-blue)");
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        removeFileBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            SoundEffects.click();
+            customFirmwareData = null;
+            customFileInput.value = "";
+            fileInfoBadge.style.display = "none";
+            log("Custom firmware file removed.");
+        });
+
+
+
+        quickRebootBtn.addEventListener("click", async () => {
+            SoundEffects.click();
+            if (confirm("Are you sure you want to perform a remote hardware soft reboot on the Sugarota device?")) {
+                sendConsoleCommand("REBOOT");
+                setTimeout(() => {
+                    disconnectSerial();
+                }, 500);
+            }
+        });
+
+        async function sendConsoleCommand(cmdString) {
+            if (!isConnected || !port || !port.writable) return;
+            log(`> ${cmdString}`, "#00f0ff");
+            const encoder = new TextEncoder();
+            const writer = port.writable.getWriter();
+            await writer.write(encoder.encode(cmdString + "\n"));
+            writer.releaseLock();
+        }
+
+        quickClearBtn.addEventListener("click", () => {
+            SoundEffects.click();
+            clearLog();
+        });
+
+        // Dynamic Firmware Flashing Powered by esptool-js
+        flashBtn.addEventListener("click", async () => {
+            SoundEffects.click();
+            if (!port) {
+                alert("Please pair your USB port first!");
+                return;
+            }
+
+            const mode = document.getElementById("firmware-mode-select").value;
+            let firmwareBinData = null;
+            let firmwareFileName = "sugarota.ino.bin";
+
+            if (mode === "bundled") {
+                log("Fetching bundled latest firmware binary file (sugarota.ino.bin)...", "var(--accent-blue)");
+                try {
+                    let response;
+                    try {
+                        response = await fetch("/build/esp32.esp32.esp32s3/sugarota.ino.bin");
+                        if (!response.ok) throw new Error("Direct path not found");
+                    } catch (e) {
+                        response = await fetch("/build/esp32.esp32.esp32s3/Sugarota/sugarota.ino.bin");
+                    }
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const arrayBuffer = await response.arrayBuffer();
+                    firmwareBinData = new Uint8Array(arrayBuffer);
+                    firmwareFileName = "sugarota.ino.bin";
+                    log("Bundled latest firmware downloaded successfully! Size: " + firmwareBinData.length + " bytes.", "var(--accent-green)");
+                } catch (err) {
+                    SoundEffects.warning();
+                    log(`Failed to fetch latest firmware file: ${err.message}. If running locally, make sure you are running a Python/http server inside the workspace folder!`, "var(--accent-red)");
+                    alert("Could not load bundled sugarota.ino.bin. Check terminal logs.");
+                    return;
+                }
+            } else {
+                if (!customFirmwareData) {
+                    SoundEffects.warning();
+                    alert("Please upload a custom firmware.bin file to upload!");
+                    return;
+                }
+                firmwareBinData = customFirmwareData;
+                firmwareFileName = customFileInput.files[0] ? customFileInput.files[0].name : "custom_firmware.bin";
+            }
+
+            try {
+                // We MUST close standard serial loop first so esptool-js can take absolute raw bootloader control of the port!
+                log("Closing active configuration port sync loop to free USB channel...");
+                keepReading = false;
+                if (reader) {
+                    try {
+                        await reader.cancel();
+                    } catch (e) { }
+                }
+                if (port) {
+                    try {
+                        await port.close();
+                    } catch (e) { }
+                }
+                log("Port freed! Transferring direct ROM bootloader control to esptool-js...", "var(--accent-blue)");
+
+                // Setup custom styled esptool logging terminal
+                const customTerminal = {
+                    clean: () => {
+                        clearLog();
+                    },
+                    writeLine: (data) => {
+                        log(data);
+                    },
+                    write: (data) => {
+                        log(data);
+                    }
+                };
+
+                // Explicit library sanity check
+                if (!window.esptool) {
+                    throw new Error("esptool-js library is not loaded! Please check your internet connection or ensure 'unpkg.com/esptool-js' is accessible.");
+                }
+
+                const { ESPLoader, Transport } = window.esptool;
+                transport = new Transport(port);
+
+                const flashBaud = parseInt(document.getElementById("baudrate-select").value);
+                log(`Instantiating ROM loader tool at ${flashBaud} baud rate...`);
+
+                esploader = new ESPLoader({
+                    transport: transport,
+                    baudrate: flashBaud,
+                    terminal: customTerminal
+                });
+
+                progressContainer.style.display = "block";
+                progressBarFill.style.width = "0%";
+                progressPercentage.innerText = "0%";
+                progressState.innerText = "Initializing bootloader handshake...";
+
+                log("Connecting to ROM bootloader... Press BOOT button if handshake stalls...", "var(--accent-yellow)");
+                // Use main() instead of connect() to fully initialize connection, detect chip, and load standard RAM flashing stub
+                await esploader.main();
+                log(`Successfully connected! Chip detected: ${esploader.chipName}`, "var(--accent-green)");
+                metricChip.innerText = esploader.chipName;
+
+                // Prepare files array
+                const files = [
+                    { data: firmwareBinData, address: 0x10000 } // Flash main app partition at 0x10000
+                ];
+
+                log("Starting direct image flashing partition block write...", "var(--accent-blue)");
+                const flashOptions = {
+                    fileArray: files,
+                    flashMode: "dio",
+                    flashSize: "16MB",
+                    flashFreq: "80m",
+                    eraseAll: false,
+                    compress: true,
+                    reportProgress: (fileIndex, written, total) => {
+                        const pct = Math.floor((written / total) * 100);
+                        progressBarFill.style.width = `${pct}%`;
+                        progressPercentage.innerText = `${pct}%`;
+                        progressState.innerText = `Writing ${firmwareFileName}: ${written} / ${total} bytes`;
+                    }
+                };
+
+                await esploader.writeFlash(flashOptions);
+                log("Flashing completed successfully!", "var(--accent-green)");
+                log("👉 NOTICE: Because your ESP32-S3 uses direct Native USB hardware, please press the physical RESET button on the side of your Sugarota screen to boot into the new firmware!", "var(--accent-yellow)");
+                SoundEffects.success();
+                progressState.innerText = "Flashing complete! Please press the physical RESET button.";
+                progressBarFill.style.width = "100%";
+                progressPercentage.innerText = "100%";
+
+                // Custom RTS-only reset sequence to reboot straight into the app!
+                log("Sending RTS auto-reset pulse to reboot device...", "var(--accent-blue)");
+                try {
+                    // Pull EN low (RTS true) while keeping DTR false (so GPIO0 is not pulled low, ensuring it boots to app mode)
+                    await port.setSignals({ requestToSend: true, dataTerminalReady: false });
+                    await new Promise(r => setTimeout(r, 150));
+                    // Release EN (RTS false) - this triggers the CPU start!
+                    await port.setSignals({ requestToSend: false, dataTerminalReady: false });
+                    log("RTS reset pulse successfully sent! Device is booting...", "var(--accent-green)");
+                    progressState.innerText = "Flashing complete! Device is rebooting...";
+                } catch (resetErr) {
+                    console.warn("RTS reset signal failed, falling back to standard reset:", resetErr);
+                    try {
+                        await esploader.after("hard_reset");
+                        log("Hardware hard reset successfully sent!", "var(--accent-green)");
+                    } catch (fallbackErr) {
+                        console.warn("Auto-reboot fallback failed:", fallbackErr);
+                    }
+                }
+
+            } catch (err) {
+                SoundEffects.warning();
+                log(`Flashing operation failed: ${err.message}`, "var(--accent-red)");
+                console.error(err);
+                progressState.innerText = "Flashing failed! See logs.";
+            } finally {
+                // Free the bootloader transport layer cleanly
+                if (transport) {
+                    try {
+                        await transport.disconnect();
+                    } catch (e) { }
+                }
+                setConnectedState(false);
+                log("Flasher bootloader session finished. Re-pair your device to sync new settings!", "var(--accent-blue)");
+            }
+        });
+    </script>
+</body>
+
+</html>

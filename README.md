@@ -2,6 +2,8 @@
 
 Sugarota is a state-of-the-art wireless blood glucose display and telemetry terminal powered by the ESP32-S3 chipset. It syncs real-time CGM data from Dexcom Share or Nightscout APIs, plots high-DPI historical trend graphs on the screen, and features a gorgeous browser-based WebSerial interface to flash firmware and manage device settings.
 
+![Don't judge me for hypoglycemia](pix/photo-1.jpg)
+
 Initially built for Waveshare ESP32-S3-Touch-LCD-3.49 Development platform. 
 
 See [CHANGELOG](CHANGELOG.md) for latest build updates.
@@ -12,8 +14,8 @@ See [CHANGELOG](CHANGELOG.md) for latest build updates.
 
 ### Installation via GitHub Pages (EASIEST)
 
-1. Buy the Waveshare ESP32-S3-Touch-LCD-3.49 on manufacturer's website or AliExpress
-2. Go to installation page: https://not-really-a-coder.github.io/sugarota/installer.html
+1. Buy the Waveshare ESP32-S3-Touch-LCD-3.49 on manufacturer's website or AliExpress.
+2. Go to the installation page: https://not-really-a-coder.github.io/sugarota/installer.html
 3. Connect the device to your computer using USB-C cable, click "Connect USB device", and select the port.
 4. Enter Wi-Fi credentials and CGM Data Provider details.
 5. Click "Start Flashing Firmware". The device will automatically restart once the firmware is flashed.

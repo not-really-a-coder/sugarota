@@ -1,4 +1,4 @@
-# 🍭 Sugarota: ESP32-S3 Glucose Monitor & Setup Center
+# 🍭 Sugarota: ESP32-S3 Glucose Monitor Firmware
 
 Sugarota is a state-of-the-art wireless blood glucose display and telemetry terminal powered by the ESP32-S3 chipset. It syncs real-time CGM data from Dexcom Share or Nightscout APIs, plots high-DPI historical trend graphs on the screen, and features a gorgeous browser-based WebSerial interface to flash firmware and manage device settings.
 

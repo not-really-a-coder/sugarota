@@ -25,6 +25,7 @@ This is the initial release of the Sugarota ESP32-S3 Glucose Monitor and setup e
 
 ### Interface
 
+- mg/dL and mmol/L unit support (long tap on delta to change)
 - Touchscreen interface for layout navigation and setup
 - Shake-to-refresh-data gesture via IMU sensor
 - Screen brightness control with 5 levels (single press on PWR button)

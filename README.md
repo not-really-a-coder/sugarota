@@ -1,19 +1,21 @@
 # 🍭 Sugarota: ESP32-S3 Glucose Monitor & Setup Center
 
-Sugarota is a state-of-the-art wireless blood glucose display and telemetry terminal powered by the ESP32-S3 chipset. It syncs real-time CGM data from Dexcom Share or Nightscout APIs, plots high-DPI historical trend graphs on the screen, and features a gorgeous browser-based WebSerial interface to flash firmware and manage device settings wirelessly.
+Sugarota is a state-of-the-art wireless blood glucose display and telemetry terminal powered by the ESP32-S3 chipset. It syncs real-time CGM data from Dexcom Share or Nightscout APIs, plots high-DPI historical trend graphs on the screen, and features a gorgeous browser-based WebSerial interface to flash firmware and manage device settings.
 
 Initially built for Waveshare ESP32-S3-Touch-LCD-3.49 Development platform. 
 
-See [CHANGELOG.md](CHANGELOG.md) for latest build updates.
+See [CHANGELOG](CHANGELOG.md) for latest build updates.
 
 ---
 
 ## ⚡ Quickstart
 
+### Installation via GitHub Pages (EASIEST)
+
 1. Buy the Waveshare ESP32-S3-Touch-LCD-3.49 on manufacturer's website or AliExpress
-2. Go to installation page: [https://not-really-a-coder.github.io/sugarota/installer.html]
+2. Go to installation page: https://not-really-a-coder.github.io/sugarota/installer.html
 3. Connect the device to your computer using USB-C cable, click "Connect USB device", and select the port.
-4. Enter Wi-Fi credentials and CGM Data Provider details
+4. Enter Wi-Fi credentials and CGM Data Provider details.
 5. Click "Start Flashing Firmware". The device will automatically restart once the firmware is flashed.
 
 All entered credentials and settings are saved ONLY on the device during flashing. Nothing is being saved or stored on the local or remote host by the author of this software.
@@ -82,7 +84,7 @@ Install these libraries via the Arduino IDE Library Manager:
 ### 3. Bundled Hardware Libraries
 All internal board support files (codec configurations, TCA9554 IO expanders) are pre-packaged inside the [src/](src/) directory of this repository and require **no** manual installation.
 
-Refer to the [Manufacturer's GitHub Repository](https://github.com/waveshareteam/ESP32-S3-Touch-LCD-3.49/) and [Waveshare Documentation](https://docs.waveshare.com/ESP32-S3-Touch-LCD-3.49?variant=ESP32-S3-Touch-LCD-3.49-EN) for more details.
+Refer to the [Manufacturer's GitHub Repository](https://github.com/waveshareteam/ESP32-S3-Touch-LCD-3.49/) and [device technical documentation](https://docs.waveshare.com/ESP32-S3-Touch-LCD-3.49?variant=ESP32-S3-Touch-LCD-3.49-EN) for more details.
 
 ---
 

@@ -8,7 +8,17 @@ See [CHANGELOG.md](CHANGELOG.md) for latest build updates.
 
 ---
 
-## ⚡ Quickstart: Local Setup Center
+## ⚡ Quickstart
+
+1. Buy the Waveshare ESP32-S3-Touch-LCD-3.49 on manufacturer's website or AliExpress
+2. Go to installation page: [https://not-really-a-coder.github.io/sugarota/installer.html]
+3. Connect the device to your computer using USB-C cable, click "Connect USB device", and select the port.
+4. Enter Wi-Fi credentials and CGM Data Provider details
+5. Click "Start Flashing Firmware". The device will automatically restart once the firmware is flashed.
+
+All entered credentials and settings are saved ONLY on the device during flashing. Nothing is being saved or stored on the local or remote host by the author of this software.
+
+### Local installation
 
 The local setup center requires **zero external python packages**—it runs fully using standard library modules included with Python.
 

@@ -2,7 +2,9 @@
 
 Sugarota is a state-of-the-art wireless blood glucose display and telemetry terminal powered by the ESP32-S3 chipset. It syncs real-time CGM data from Dexcom Share or Nightscout APIs, plots high-DPI historical trend graphs on the screen, and features a gorgeous browser-based WebSerial interface to flash firmware and manage device settings wirelessly.
 
-Initially built for Waveshare ESP32-S3-Touch-LCD-3.49 Development platform.
+Initially built for Waveshare ESP32-S3-Touch-LCD-3.49 Development platform. 
+
+See [CHANGELOG.md](CHANGELOG.md) for latest build updates.
 
 ---
 
@@ -79,12 +81,3 @@ Refer to the [Manufacturer's GitHub Repository](https://github.com/waveshareteam
 Your local configuration containing passwords and API keys is protected by design:
 *   **`data/config.template.json`**: Standard configuration template containing generic placeholders for Wi-Fi and API servers.
 *   **`data/config.json`**: Your active credentials file that will be created after your first run. When you start `run_installer.py`, the server automatically creates this file from the template if it is missing. Make sure that file creation permissions are enabled in the **`data/`** folder. 
-
----
-
-## 📈 Auto-Version Control (CalVer)
-
-Sugarota integrates an automated **Calendar Versioning (CalVer)** system to track development builds:
-*   **Version Format**: `v{YearOffset}.{Month:02d}.{Day:02d}.{Build}` (e.g., `v0.05.18.1` for Year 2026, May 18, 2nd build of the day).
-*   **Zero Ambiguity & Early Stage**: The `YearOffset` is relative to the start of the project (2026 is year `0`, 2027 is year `1`), clearly emphasizing that the product is in its early, active pre-1.0 development phase.
-*   **Automatic Increments**: When you launch `run_installer.py`, a background thread automatically monitors `sugarota.ino`. Every time you modify and save the sketch in your editor (Arduino IDE, VS Code, etc.), the watcher increments the daily build revision index and rewrites the macro inside the C++ sketch instantly before the compiler builds the binary. 

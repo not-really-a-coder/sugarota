@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.05.18.1"
+#define SUGAROTA_VERSION "v0.05.19.20"
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -80,6 +80,8 @@ int daylightOffset_sec = 0;
 // --- State Variables ---
 bool deviceOn = true;
 int wifiRetryLoop = 0;
+bool useSecondaryFirst = false;
+bool screenManuallyOff = false;
 
 // UI State
 bool isDarkTheme = true;
@@ -109,6 +111,11 @@ unsigned long lastBatRead = 0;
 int currentBatteryPct = -1;
 unsigned long lastBatteryPctUpdate = 0;
 float currentBatteryVoltage = 0.0;
+bool wasUSBPlugged = false;
+float chargingOffset = 0.0;
+float preSpikeVoltage = 0.0;
+unsigned long usbLowStartTime = 0;
+unsigned long usbHighStartTime = 0;
 String bgUnits = "mg/dL";
 bool isShowingUnitDialog = false;
 unsigned long lastTouchStartTime = 0;
@@ -193,6 +200,10 @@ SensorQMI8658 qmi;
 bool imuReady = false;
 
 void setup() {
+  // Release pad hold on PIN_BL and disable deep sleep pad holds so backlight can turn on
+  gpio_hold_dis((gpio_num_t)PIN_BL);
+  gpio_deep_sleep_hold_dis();
+
   Serial.setRxBufferSize(2048);
   Serial.begin(115200);
   delay(100); // Small delay to let serial init
@@ -271,7 +282,8 @@ void setup() {
 
   // Init battery history
   for(int i=0; i<60; i++) voltageHistory[i] = 0;
-  updateBattery();
+  pinMode(PIN_PWR_BTN, INPUT_PULLUP);
+  updateBattery(digitalRead(PIN_PWR_BTN) == LOW);
 
   // 4. Initial Hardware Checks
   logBoot("Initializing FS...");
@@ -303,6 +315,18 @@ void setup() {
     delay(2000);
   }
 
+  // Mark buttons as handled if they are already held down at boot/wakeup
+  if (digitalRead(PIN_PWR_BTN) == LOW) {
+    pwrBtn.pressed = true;
+    pwrBtn.handled = true;
+    pwrBtn.pressTime = millis();
+  }
+  if (digitalRead(PIN_BOOT_BTN) == LOW) {
+    bootBtn.pressed = true;
+    bootBtn.handled = true;
+    bootBtn.pressTime = millis();
+  }
+
   isBooting = false;
   updateUI();
 }
@@ -318,7 +342,12 @@ void loop() {
   }
 
   checkButtons();
-  checkTouch();
+  if (brightnessLevel > 0) {
+    checkTouch();
+  } else {
+    isTouching = false;
+    touchConfidence = 0;
+  }
 
   // Handle Harvey Ball Info Timeout
   if (showHarveyBallInfo && (millis() - lastHarveyBallTapTime > 3000)) {
@@ -335,7 +364,7 @@ void loop() {
   // Check Face Down, Rotated Horizontal Timer & Shake (Dynamic interval to save power vs ensure smooth counting)
   static unsigned long lastImuPoll = 0;
   int imuPollInterval = (isTimerMode && !isTimerStopped) ? 50 : 100;
-  if (imuReady && !isBooting && deviceOn && (millis() - lastImuPoll > imuPollInterval)) {
+  if (imuReady && !isBooting && deviceOn && !screenManuallyOff && (millis() - lastImuPoll > imuPollInterval)) {
     lastImuPoll = millis();
     float x, y, z;
     if (qmi.getAccelerometer(x, y, z)) {
@@ -466,10 +495,51 @@ void loop() {
     }
   }
 
-  // 4. Battery Monitoring (Every 10 seconds is plenty)
-  if (millis() - lastBatRead >= 10000) {
+  // 4. Battery Monitoring (Every 10 seconds or instantly on USB plugin/unplug with instant spike detection and debounces)
+  pinMode(PIN_PWR_BTN, INPUT_PULLUP);
+  bool pinLow = (digitalRead(PIN_PWR_BTN) == LOW);
+  bool currentUSB = wasUSBPlugged; // Default to last known state
+  float instantV = analogReadMilliVolts(PIN_BAT_ADC) * 3.0 / 1000.0;
+  
+  if (pinLow) {
+    usbHighStartTime = 0; // Reset unplug debounce timer
+    if (!wasUSBPlugged) {
+      if (usbLowStartTime == 0) {
+        usbLowStartTime = millis();
+        preSpikeVoltage = currentBatteryVoltage; // Store the stable voltage before spike!
+      }
+      // Instant spike detection: if voltage rises by >= 0.03V, it's USB!
+      if (preSpikeVoltage > 2.0 && (instantV - preSpikeVoltage >= 0.03)) {
+        currentUSB = true;
+        usbLowStartTime = 0;
+      }
+      // Fallback debounce for plug-in (3 seconds)
+      else if (millis() - usbLowStartTime >= 3000) {
+        currentUSB = true;
+      }
+    } else {
+      usbLowStartTime = 0;
+      currentUSB = true;
+    }
+  } else {
+    usbLowStartTime = 0; // Reset plug-in debounce timer
+    if (wasUSBPlugged) {
+      if (usbHighStartTime == 0) {
+        usbHighStartTime = millis();
+      }
+      // Confirm unplugged only after staying HIGH for 1.0 second (1000 ms)
+      if (millis() - usbHighStartTime >= 1000) {
+        currentUSB = false;
+      }
+    } else {
+      usbHighStartTime = 0;
+      currentUSB = false;
+    }
+  }
+
+  if (currentUSB != wasUSBPlugged || (millis() - lastBatRead >= 10000)) {
     lastBatRead = millis();
-    updateBattery();
+    updateBattery(currentUSB);
   }
 
   // Periodic data fetch every minute
@@ -602,27 +672,41 @@ void connectWiFi() {
     String loopMsg = "WiFi Loop " + String(wifiRetryLoop + 1) + "/5";
     logBoot(loopMsg);
     
-    // Try Primary
-    logBoot("Primary: " + primarySSID);
-    WiFi.begin(primarySSID.c_str(), primaryPass.c_str());
+    // Choose primary and secondary based on useSecondaryFirst
+    String firstSSID = useSecondaryFirst ? secondarySSID : primarySSID;
+    String firstPass = useSecondaryFirst ? secondaryPass : primaryPass;
+    String secondSSID = useSecondaryFirst ? primarySSID : secondarySSID;
+    String secondPass = useSecondaryFirst ? primaryPass : secondaryPass;
+    
+    // Try first SSID
+    logBoot("WiFi 1: " + firstSSID);
+    WiFi.begin(firstSSID.c_str(), firstPass.c_str());
     unsigned long startAttemptTime = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
       spinnerDelay(500);
     }
     
-    if (WiFi.status() == WL_CONNECTED) return;
+    if (WiFi.status() == WL_CONNECTED) {
+      // Succeeded with the preferred SSID - keep current preference
+      return;
+    }
     WiFi.disconnect();
     spinnerDelay(500);
     
-    // Try Secondary
-    logBoot("Secondary: " + secondarySSID);
-    WiFi.begin(secondarySSID.c_str(), secondaryPass.c_str());
+    // Try second SSID
+    logBoot("WiFi 2: " + secondSSID);
+    WiFi.begin(secondSSID.c_str(), secondPass.c_str());
     startAttemptTime = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
       spinnerDelay(500);
     }
     
-    if (WiFi.status() == WL_CONNECTED) return;
+    if (WiFi.status() == WL_CONNECTED) {
+      // Succeeded with the fallback SSID - toggle preference!
+      useSecondaryFirst = !useSecondaryFirst;
+      saveConfig();
+      return;
+    }
     WiFi.disconnect();
     
     wifiRetryLoop++;
@@ -637,43 +721,62 @@ void checkButton(ButtonState &btn, const char* name) {
     btn.pressed = true;
     btn.pressTime = millis();
     btn.handled = false;
+    
+    // Instantly wake screen on press if manually off to prevent false long-press shutdowns
+    if (btn.pin == PIN_PWR_BTN && screenManuallyOff) {
+      Serial.printf("%s Button: WAKE Press detected\n", name);
+      screenManuallyOff = false;
+      brightnessLevel = 76;
+      setBrightness(brightnessLevel);
+      updateUI();
+      btn.handled = true;
+    }
+  } else if (isPressed && btn.pressed) {
+    if (!btn.handled) {
+      unsigned long duration = millis() - btn.pressTime;
+      if (btn.pin == PIN_PWR_BTN) {
+        if (duration >= 2000 && !wasUSBPlugged) {
+          Serial.printf("%s Button: LONG Press detected (Hold >= 2s)\n", name);
+          btn.handled = true;
+          deviceOn = false; // Trigger power off
+        }
+      } else if (btn.pin == PIN_BOOT_BTN) {
+        if (duration >= 1500) {
+          Serial.printf("%s Button: LONG Press detected (Hold >= 1.5s)\n", name);
+          btn.handled = true;
+          DBG_PRINTLN("ACTION: Force Data Refresh");
+          fetchData();
+        }
+      }
+    }
   } else if (!isPressed && btn.pressed) {
     btn.pressed = false;
     unsigned long duration = millis() - btn.pressTime;
     
     if (!btn.handled) {
-      if (duration > 2000) {
-        Serial.printf("%s Button: LONG Press detected\n", name);
-        if (btn.pin == PIN_PWR_BTN) {
-          deviceOn = false; // Trigger power off
-        } 
-      } else if (duration > 50) {
-        Serial.printf("%s Button: SHORT Press detected\n", name);
-        if (btn.pin == PIN_BOOT_BTN) {
-          toggleTheme();
-        } else {
+      if (btn.pin == PIN_PWR_BTN) {
+        if (duration > 50 && duration < 2000) {
+          Serial.printf("%s Button: SHORT Press detected (Release)\n", name);
+          
           // Cycle brightness: 0 (0%) -> 76 (30%) -> 153 (60%) -> 204 (80%) -> 255 (100%)
           if (brightnessLevel == 0) brightnessLevel = 76;
           else if (brightnessLevel < 76) brightnessLevel = 76;
           else if (brightnessLevel < 153) brightnessLevel = 153;
           else if (brightnessLevel < 204) brightnessLevel = 204;
           else if (brightnessLevel < 255) brightnessLevel = 255;
-          else brightnessLevel = 0;
+          else {
+            brightnessLevel = 0;
+            screenManuallyOff = true;
+          }
           
           setBrightness(brightnessLevel);
-          Serial.printf("Brightness: %d\n", brightnessLevel);
+          Serial.printf("Brightness: %d, ManualOff: %d\n", brightnessLevel, screenManuallyOff);
         }
-      }
-    }
-  } else if (isPressed && btn.pressed && !btn.handled) {
-    // Detect long press while holding
-    if (millis() - btn.pressTime > 2000) {
-      Serial.printf("%s Button: LONG Press hold triggered\n", name);
-      btn.handled = true; // prevent short press trigger on release
-      if (btn.pin == PIN_PWR_BTN) {
-        deviceOn = false; // Trigger power off
       } else if (btn.pin == PIN_BOOT_BTN) {
-        DBG_PRINTLN("ACTION: Force Data Refresh (to be implemented)");
+        if (duration > 50 && duration < 1500) {
+          Serial.printf("%s Button: SHORT Press detected (Release)\n", name);
+          toggleTheme();
+        }
       }
     }
   }
@@ -684,14 +787,60 @@ void checkButtons() {
   checkButton(bootBtn, "BOOT");
 }
 
-void updateBattery() {
-  pinMode(16, INPUT); 
-  bool isUSBPlugged = (digitalRead(16) == LOW); // Waveshare ESP32-S3 VBUS detection
+void fillVoltageHistory(float voltage) {
+  for (int i = 0; i < 60; i++) {
+    voltageHistory[i] = voltage;
+  }
+  voltageIndex = 0;
+  historyFilled = true;
+}
+
+void updateBattery(bool isUSBPlugged) {
 
   // Use analogReadMilliVolts for accurate factory-calibrated ADC measurement.
   // Multiply by 3 for the voltage divider.
   float currentV = analogReadMilliVolts(PIN_BAT_ADC) * 3.0 / 1000.0; 
-  
+
+  // Detect USB state transitions
+  if (isUSBPlugged && !wasUSBPlugged) {
+    // Transition: Unplugged -> Plugged
+    wasUSBPlugged = true;
+    
+    // Save last unplugged voltage
+    float lastUnpluggedV = (preSpikeVoltage > 0) ? preSpikeVoltage : ((currentBatteryVoltage > 0) ? currentBatteryVoltage : currentV);
+    
+    // Estimate the voltage spike/offset due to charging
+    chargingOffset = currentV - lastUnpluggedV;
+    if (chargingOffset < 0.05 || chargingOffset > 0.35) {
+      chargingOffset = 0.15; // default reasonable offset fallback
+    }
+    
+    // Flush history buffer with the new plugged-in voltage
+    fillVoltageHistory(currentV);
+    
+    DBG_PRINTF("USB Plugged In. Last Unplugged: %.2fV, Current: %.2fV, Offset: %.2fV\n", 
+               lastUnpluggedV, currentV, chargingOffset);
+  } 
+  else if (!isUSBPlugged && wasUSBPlugged) {
+    // Transition: Plugged -> Unplugged
+    wasUSBPlugged = false;
+    chargingOffset = 0.0;
+    
+    // Flush history buffer with the new unplugged voltage
+    fillVoltageHistory(currentV);
+    
+    // Force immediate update to the real battery charge
+    float avgV = currentV;
+    currentBatteryVoltage = avgV;
+    int targetPct = getBatteryPercentage(avgV);
+    currentBatteryPct = targetPct;
+    lastBatteryPctUpdate = millis();
+    
+    updateUI(); // Force instant GUI refresh
+    DBG_PRINTF("USB Plugged Out. Real Battery: %.2fV, Pct: %d%%\n", currentV, currentBatteryPct);
+  }
+
+  // Update history with current reading
   voltageHistory[voltageIndex] = currentV;
   voltageIndex++;
   if (voltageIndex >= 60) {
@@ -708,28 +857,31 @@ void updateBattery() {
     sum += voltageHistory[i];
   }
   float avgV = sum / count;
-  currentBatteryVoltage = avgV;
+  
+  // Calculate estimated battery voltage (subtract offset if charging)
+  float estimatedV = avgV - chargingOffset;
+  currentBatteryVoltage = estimatedV;
 
-  int targetPct = getBatteryPercentage(avgV);
+  int targetPct = getBatteryPercentage(estimatedV);
   
   if (currentBatteryPct == -1) {
     currentBatteryPct = targetPct; // Initialize on first run
+    lastBatteryPctUpdate = millis();
   } else {
     // Only allow percentage to change once per minute (refresh rate requirement)
     if (millis() - lastBatteryPctUpdate >= 60000) {
-      if (isUSBPlugged) {
-        // While charging, only allow slow increase (prevents jumping UP instantly)
-        if (targetPct > currentBatteryPct) currentBatteryPct++;
-      } else {
-        // While discharging, only allow slow decrease (prevents jumping DOWN or increasing unexpectedly)
-        if (targetPct < currentBatteryPct) currentBatteryPct--;
+      if (targetPct > currentBatteryPct) {
+        currentBatteryPct++;
+      } else if (targetPct < currentBatteryPct) {
+        currentBatteryPct--;
       }
       lastBatteryPctUpdate = millis();
       updateUI(); // Force GUI refresh when percentage changes
     }
   }
   
-  DBG_PRINTF("Battery: %.2fV (Avg: %.2fV) Target: %d%% Disp: %d%%\n", currentV, avgV, targetPct, currentBatteryPct);
+  DBG_PRINTF("Battery: %.2fV (Avg: %.2fV, Est: %.2fV) Target: %d%% Disp: %d%%\n", 
+             currentV, avgV, estimatedV, targetPct, currentBatteryPct);
   if (isUSBPlugged) {
       DBG_PRINTLN("-> STATUS: USB Charging Detected (GPIO16 LOW)");
   }
@@ -970,6 +1122,9 @@ void loadConfig() {
     primaryPass = doc["wifi"]["primary_pass"].as<String>();
     secondarySSID = doc["wifi"]["secondary_ssid"].as<String>();
     secondaryPass = doc["wifi"]["secondary_pass"].as<String>();
+    if (doc["wifi"].containsKey("use_secondary_first")) {
+      useSecondaryFirst = doc["wifi"]["use_secondary_first"].as<bool>();
+    }
   }
   
   DBG_PRINTF("Config: Loaded. Primary SSID: [%s]\n", primarySSID.c_str());
@@ -1014,6 +1169,7 @@ void saveConfig() {
   doc["wifi"]["primary_pass"] = primaryPass;
   doc["wifi"]["secondary_ssid"] = secondarySSID;
   doc["wifi"]["secondary_pass"] = secondaryPass;
+  doc["wifi"]["use_secondary_first"] = useSecondaryFirst;
   
   doc["nightscout"]["url"] = nsUrl;
   doc["nightscout"]["secret"] = nsSecret;
@@ -1825,14 +1981,7 @@ void drawStatusBar() {
     gfx->setCursor(cursorX, 7);
     gfx->print(batStr);
     
-    // Draw charging indicator (with 3-sample software debounce)
-    static int lastChargeState = 0;
-    // Filter: Only count as charging if Pin 16 is LOW and NOT currently being pressed as a button
-    if (digitalRead(16) == LOW && !pwrBtn.pressed) lastChargeState++;
-    else lastChargeState = 0;
-    chargeDebounce = lastChargeState;
-
-    if (chargeDebounce >= 3) {
+    if (wasUSBPlugged && !pwrBtn.pressed) {
       gfx->setCursor(cursorX - 15, 7); 
       gfx->print("+");
     }
@@ -1912,6 +2061,11 @@ void powerOffDevice() {
     delay(10);
   }
   delay(100); // Small debounce
+
+  // Clear the display properly to prevent frozen message on next boot
+  gfx->fillScreen(BLACK);
+  gfx->flush();
+  delay(50); // Give SPI a moment to finish
 
   // 4. Hardware Shutdown
   Wire.beginTransmission(TCA9554_ADDR);

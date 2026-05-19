@@ -2,6 +2,28 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.05.19.20] — Stability and Power Improvements (2026-05-19)
+
+This release focuses on battery tracking accuracy, button interaction improvements, manual screen locking, and robust WiFi failover handling.
+
+### Connectivity
+
+- Smart WiFi SSID preference memory (automatically priority-tries the last successfully connected SSID)
+
+### Power Management
+
+- Step-by-step battery percentage dampener that adjusts smoothly both up and down to match actual charging/discharging
+- Instant charging voltage-spike detection on USB plug-in
+- Immediate hardware shutdown during PWR button hold (triggers after 2.0 seconds on battery)
+- Immediate forced data refresh during BOOT button hold (triggers after 1.5 seconds)
+- Screen clear to black on shutdown to prevent "Powering Off" message from freezing on screen during next boot
+
+### Interface
+
+- Pocket-mode: orientation polling and touch screen completely disabled when screen is at 0% brightness
+- Waking up the screen from manual-off instantly on PWR button press instead of release, bypassing shutdown checks
+- Deep sleep GPIO pad hold release on startup to fix black screen wake-up bug
+
 ---
 
 ## [v0.05.18.1] — Initial Stable Release (2026-05-18)
@@ -15,7 +37,7 @@ This is the initial release of the Sugarota ESP32-S3 Glucose Monitor and setup e
 - One minute data refresh rate
 - NTP timezone synchronization with local offsets and daylight savings
 
-### Battery
+### Power Management
 
 - Power Off (long press PWR button)
 - Face-down screen off gesture via IMU orientation detection

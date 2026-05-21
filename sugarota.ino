@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.05.19.20"
+#define SUGAROTA_VERSION "v0.05.20.31"
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -9,6 +9,7 @@
 #include <ArduinoJson.h>
 #include <Arduino_GFX_Library.h>
 #include <SensorQMI8658.hpp>
+#include <SensorPCF85063.hpp>
 #include <LittleFS.h>
 #include <esp_partition.h>
 #include "src/codec_board/codec_board.h"
@@ -27,7 +28,7 @@ esp_codec_dev_handle_t playback = NULL;
 #define GRAY    0x8410
 #define ORANGE  0xFD20
 
-// --- Configuration (Dynamic - Loaded from LittleFS) ---
+// --- Config vars declaration (values defined in data/config.json) ---
 String primarySSID     = "";
 String primaryPass     = "";
 String secondarySSID   = "";
@@ -82,6 +83,7 @@ bool deviceOn = true;
 int wifiRetryLoop = 0;
 bool useSecondaryFirst = false;
 bool screenManuallyOff = false;
+bool offlineMode = false;
 
 // UI State
 bool isDarkTheme = true;
@@ -116,6 +118,7 @@ float chargingOffset = 0.0;
 float preSpikeVoltage = 0.0;
 unsigned long usbLowStartTime = 0;
 unsigned long usbHighStartTime = 0;
+unsigned long lastUSBUnplugTime = 0;
 String bgUnits = "mg/dL";
 bool isShowingUnitDialog = false;
 unsigned long lastTouchStartTime = 0;
@@ -156,7 +159,7 @@ void playWav(const char *path);
 void checkButtons();
 void checkSerialConsole();
 void fetchData();
-void parseResponse(String payload);
+void parseResponse(const String& payload);
 bool loginDexcom();
 
 // UI Functions
@@ -165,7 +168,7 @@ void updateUI();
 void drawStatusBar();
 void drawGlucoseContainer();
 void drawHistoryChart();
-void drawTrendArrow(int x, int y, String direction, uint16_t color);
+void drawTrendArrow(int x, int y, const String& direction, uint16_t color);
 void drawHarveyBall(int x, int y, int radius, long long timestamp);
 uint16_t getBGColor(int sgv);
 void checkTouch();
@@ -198,6 +201,39 @@ bool readTouch(int &x, int &y);
 
 SensorQMI8658 qmi;
 bool imuReady = false;
+SensorPCF85063 rtc;
+
+void restoreTimeFromRTC() {
+  RTC_DateTime datetime = rtc.getDateTime();
+  struct tm tm_time;
+  tm_time.tm_year = datetime.getYear() - 1900;
+  tm_time.tm_mon = datetime.getMonth() - 1;
+  tm_time.tm_mday = datetime.getDay();
+  tm_time.tm_hour = datetime.getHour();
+  tm_time.tm_min = datetime.getMinute();
+  tm_time.tm_sec = datetime.getSecond();
+  tm_time.tm_isdst = 0; // UTC has no DST
+  
+  // Timezone-independent UTC tm to time_t conversion
+  int year = tm_time.tm_year + 1900;
+  int month = tm_time.tm_mon + 1;
+  int day = tm_time.tm_mday;
+  int hour = tm_time.tm_hour;
+  int minute = tm_time.tm_min;
+  int second = tm_time.tm_sec;
+  
+  int month_days[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+  long days = (year - 1970) * 365 + (year - 1969) / 4 - (year - 1901) / 100 + (year - 1601) / 400;
+  days += month_days[month - 1];
+  if (month > 2 && ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0)) {
+    days += 1;
+  }
+  days += day - 1;
+  time_t t = days * 86400 + hour * 3600 + minute * 60 + second;
+  
+  struct timeval tv = { .tv_sec = t, .tv_usec = 0 };
+  settimeofday(&tv, NULL);
+}
 
 void setup() {
   // Release pad hold on PIN_BL and disable deep sleep pad holds so backlight can turn on
@@ -233,6 +269,8 @@ void setup() {
 
   // 1. Initialize Power Management (TCA9554)
   Wire.begin(I2C_SDA, I2C_SCL);
+  rtc.begin(Wire, I2C_SDA, I2C_SCL);
+  restoreTimeFromRTC();
   Wire.beginTransmission(TCA9554_ADDR);
   Wire.write(0x03); 
   Wire.write(0x3F); 
@@ -282,23 +320,49 @@ void setup() {
 
   // Init battery history
   for(int i=0; i<60; i++) voltageHistory[i] = 0;
-  pinMode(PIN_PWR_BTN, INPUT_PULLUP);
   updateBattery(digitalRead(PIN_PWR_BTN) == LOW);
+  
+  char batMsg[40];
+  sprintf(batMsg, "Battery: %.2fV (%d%%)", currentBatteryVoltage, currentBatteryPct);
 
   // 4. Initial Hardware Checks
   logBoot("Initializing FS...");
   loadConfig();
+  // Configure system timezone offset so getLocalTime() works offline/immediately
+  configTime(gmtOffset_sec, daylightOffset_sec, "");
 
   logBoot("Loading Cache...");
   loadHistoryFromCache();
+
+  logBoot(batMsg);
 
   logBoot("Connecting WiFi...");
   connectWiFi();
   
   if (WiFi.status() == WL_CONNECTED) {
+    offlineMode = false;
     logBoot("WiFi Connected!");
     logBoot("Syncing NTP Time...");
+    
+    // Reset system time to epoch 1970 to force getLocalTime to wait for NTP sync
+    struct timeval tv_reset = { .tv_sec = 0, .tv_usec = 0 };
+    settimeofday(&tv_reset, NULL);
+    
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer.c_str());
+    
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo, 5000)) {
+      time_t rawtime;
+      time(&rawtime);
+      struct tm utc_timeinfo;
+      gmtime_r(&rawtime, &utc_timeinfo);
+      rtc.setDateTime(utc_timeinfo.tm_year + 1900, utc_timeinfo.tm_mon + 1, utc_timeinfo.tm_mday, 
+                      utc_timeinfo.tm_hour, utc_timeinfo.tm_min, utc_timeinfo.tm_sec);
+      logBoot("NTP Synced & RTC Updated!");
+    } else {
+      logBoot("NTP Sync Timeout");
+      restoreTimeFromRTC();
+    }
     
     logBoot("Fetching Initial Data...");
     fetchData();
@@ -311,7 +375,10 @@ void setup() {
       logBoot("Warning: Using Cache...");
     }
   } else {
-    logBoot("WiFi Failed. Using Cache...");
+    logBoot("WiFi Failed. Entering Offline Mode...");
+    offlineMode = true;
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
     delay(2000);
   }
 
@@ -332,8 +399,6 @@ void setup() {
 }
 
 void loop() {
-  if (isBooting) return; // Wait for setup to finish boot sequence
-  
   checkSerialConsole();
   
   if (!deviceOn) {
@@ -461,8 +526,12 @@ void loop() {
         lastHighAccTime = millis();
         
         if (millis() - shakeSequenceStart > 800) { // 800ms of overall shaking
-           DBG_PRINTLN("SHAKE DETECTED! Forcing Refresh...");
-           fetchData();
+           if (!offlineMode) {
+             DBG_PRINTLN("SHAKE DETECTED! Forcing Refresh...");
+             fetchData();
+           } else {
+             DBG_PRINTLN("SHAKE DETECTED! Refresh disabled in Offline Mode");
+           }
            shakeSequenceStart = 0; // Reset
            lastHighAccTime = 0;
            spinnerDelay(1000); // Debounce pause using spinnerDelay to keep timer counting seamlessly
@@ -486,6 +555,15 @@ void loop() {
     }
   }
 
+  // Low battery blinking refresh (5% or less, 500ms rate)
+  if (currentBatteryPct >= 0 && currentBatteryPct <= 5 && !isBooting && deviceOn && !screenManuallyOff) {
+    static unsigned long lastLowBatBlinkRefresh = 0;
+    if (millis() - lastLowBatBlinkRefresh >= 500) {
+      lastLowBatBlinkRefresh = millis();
+      updateUI();
+    }
+  }
+
   // Dynamic Spinner Animation while fetching
   if (isFetching) {
     static unsigned long lastSpinnerFrameTime = 0;
@@ -495,8 +573,7 @@ void loop() {
     }
   }
 
-  // 4. Battery Monitoring (Every 10 seconds or instantly on USB plugin/unplug with instant spike detection and debounces)
-  pinMode(PIN_PWR_BTN, INPUT_PULLUP);
+  // Battery Monitoring (Every 10 seconds or instantly on USB plugin/unplug with instant spike detection and debounces)
   bool pinLow = (digitalRead(PIN_PWR_BTN) == LOW);
   bool currentUSB = wasUSBPlugged; // Default to last known state
   float instantV = analogReadMilliVolts(PIN_BAT_ADC) * 3.0 / 1000.0;
@@ -543,8 +620,7 @@ void loop() {
   }
 
   // Periodic data fetch every minute
-
-  if (millis() - lastDataFetch >= FETCH_INTERVAL) {
+  if (!offlineMode && (millis() - lastDataFetch >= FETCH_INTERVAL)) {
     fetchData();
   }
 
@@ -584,15 +660,19 @@ void codecBeep(int durationMs) {
   // 50ms chunk size
   // 24000Hz * 0.05s = 1200 frames. 1200 * 4 bytes = 4800 bytes.
   const int chunkFrames = 1200;
-  int16_t buf[chunkFrames * 2]; // 2400 elements, 4800 bytes on stack
+  static int16_t buf[chunkFrames * 2]; // Keep off the stack to prevent stack overflow
+  static bool bufInitialized = false;
   
-  // Fill the chunk buffer with a 2000Hz square wave
-  // 24000 / 2000 = 12 frames per cycle (6 high, 6 low)
-  // Amplitude decreased by 25% (20000 -> 15000)
-  for (int i = 0; i < chunkFrames; i++) {
-    int16_t val = ((i / 6) % 2 == 0) ? 15000 : -15000;
-    buf[i * 2] = val;     // Left
-    buf[i * 2 + 1] = val; // Right
+  if (!bufInitialized) {
+    // Fill the chunk buffer with a 2000Hz square wave
+    // 24000 / 2000 = 12 frames per cycle (6 high, 6 low)
+    // Amplitude decreased by 25% (20000 -> 15000)
+    for (int i = 0; i < chunkFrames; i++) {
+      int16_t val = ((i / 6) % 2 == 0) ? 15000 : -15000;
+      buf[i * 2] = val;     // Left
+      buf[i * 2 + 1] = val; // Right
+    }
+    bufInitialized = true;
   }
   
   int elapsed = 0;
@@ -622,9 +702,9 @@ void playWav(const char *path) {
     return;
   }
   
-  // Read raw PCM data in 4KB chunks and write to I2S codec
+  // Read raw PCM data in 4KB chunks and write to I2S codec (using static buffer to save stack)
   const int bufSize = 4096;
-  uint8_t buf[bufSize];
+  static uint8_t buf[bufSize];
   while (f.available()) {
     int bytesRead = f.read(buf, bufSize);
     if (bytesRead <= 0) break;
@@ -672,42 +752,65 @@ void connectWiFi() {
     String loopMsg = "WiFi Loop " + String(wifiRetryLoop + 1) + "/5";
     logBoot(loopMsg);
     
-    // Choose primary and secondary based on useSecondaryFirst
-    String firstSSID = useSecondaryFirst ? secondarySSID : primarySSID;
-    String firstPass = useSecondaryFirst ? secondaryPass : primaryPass;
-    String secondSSID = useSecondaryFirst ? primarySSID : secondarySSID;
-    String secondPass = useSecondaryFirst ? primaryPass : secondaryPass;
+    bool hasPrimary = (primarySSID.length() > 0);
+    bool hasSecondary = (secondarySSID.length() > 0);
+    
+    if (!hasPrimary && !hasSecondary) {
+      logBoot("No WiFi SSIDs configured!");
+      return;
+    }
+    
+    String firstSSID = "";
+    String firstPass = "";
+    String secondSSID = "";
+    String secondPass = "";
+    
+    if (hasPrimary && hasSecondary) {
+      firstSSID = useSecondaryFirst ? secondarySSID : primarySSID;
+      firstPass = useSecondaryFirst ? secondaryPass : primaryPass;
+      secondSSID = useSecondaryFirst ? primarySSID : secondarySSID;
+      secondPass = useSecondaryFirst ? primaryPass : secondaryPass;
+    } else if (hasPrimary) {
+      firstSSID = primarySSID;
+      firstPass = primaryPass;
+    } else {
+      firstSSID = secondarySSID;
+      firstPass = secondaryPass;
+    }
     
     // Try first SSID
-    logBoot("WiFi 1: " + firstSSID);
-    WiFi.begin(firstSSID.c_str(), firstPass.c_str());
-    unsigned long startAttemptTime = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+    if (firstSSID.length() > 0) {
+      logBoot("Trying WiFi 1: " + firstSSID);
+      WiFi.begin(firstSSID.c_str(), firstPass.c_str());
+      unsigned long startAttemptTime = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+        spinnerDelay(500);
+      }
+      
+      if (WiFi.status() == WL_CONNECTED) {
+        return;
+      }
+      WiFi.disconnect();
       spinnerDelay(500);
     }
-    
-    if (WiFi.status() == WL_CONNECTED) {
-      // Succeeded with the preferred SSID - keep current preference
-      return;
-    }
-    WiFi.disconnect();
-    spinnerDelay(500);
     
     // Try second SSID
-    logBoot("WiFi 2: " + secondSSID);
-    WiFi.begin(secondSSID.c_str(), secondPass.c_str());
-    startAttemptTime = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
-      spinnerDelay(500);
+    if (secondSSID.length() > 0) {
+      logBoot("Trying WiFi 2: " + secondSSID);
+      WiFi.begin(secondSSID.c_str(), secondPass.c_str());
+      unsigned long startAttemptTime = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+        spinnerDelay(500);
+      }
+      
+      if (WiFi.status() == WL_CONNECTED) {
+        // Succeeded with the fallback SSID - toggle preference!
+        useSecondaryFirst = !useSecondaryFirst;
+        saveConfig();
+        return;
+      }
+      WiFi.disconnect();
     }
-    
-    if (WiFi.status() == WL_CONNECTED) {
-      // Succeeded with the fallback SSID - toggle preference!
-      useSecondaryFirst = !useSecondaryFirst;
-      saveConfig();
-      return;
-    }
-    WiFi.disconnect();
     
     wifiRetryLoop++;
     spinnerDelay(1000);
@@ -744,8 +847,12 @@ void checkButton(ButtonState &btn, const char* name) {
         if (duration >= 1500) {
           Serial.printf("%s Button: LONG Press detected (Hold >= 1.5s)\n", name);
           btn.handled = true;
-          DBG_PRINTLN("ACTION: Force Data Refresh");
-          fetchData();
+          if (!offlineMode) {
+            DBG_PRINTLN("ACTION: Force Data Refresh");
+            fetchData();
+          } else {
+            DBG_PRINTLN("ACTION: Force Data Refresh (Disabled in Offline Mode)");
+          }
         }
       }
     }
@@ -835,6 +942,7 @@ void updateBattery(bool isUSBPlugged) {
     int targetPct = getBatteryPercentage(avgV);
     currentBatteryPct = targetPct;
     lastBatteryPctUpdate = millis();
+    lastUSBUnplugTime = millis(); // Record the unplug event to trigger settling window
     
     updateUI(); // Force instant GUI refresh
     DBG_PRINTF("USB Plugged Out. Real Battery: %.2fV, Pct: %d%%\n", currentV, currentBatteryPct);
@@ -862,21 +970,42 @@ void updateBattery(bool isUSBPlugged) {
   float estimatedV = avgV - chargingOffset;
   currentBatteryVoltage = estimatedV;
 
+  static bool bootVoltageChecked = false;
+  static bool bootedLow = false;
+  if (!bootVoltageChecked) {
+    if (estimatedV < 3.00) {
+      bootedLow = true;
+      DBG_PRINTF("Boot voltage checked: %.2fV (Low, < 3.00V). Will monitor for 10s.\n", estimatedV);
+    } else {
+      DBG_PRINTF("Boot voltage checked: %.2fV (Normal, >= 3.00V).\n", estimatedV);
+    }
+    bootVoltageChecked = true;
+  }
+
   int targetPct = getBatteryPercentage(estimatedV);
   
   if (currentBatteryPct == -1) {
     currentBatteryPct = targetPct; // Initialize on first run
     lastBatteryPctUpdate = millis();
   } else {
-    // Only allow percentage to change once per minute (refresh rate requirement)
-    if (millis() - lastBatteryPctUpdate >= 60000) {
-      if (targetPct > currentBatteryPct) {
-        currentBatteryPct++;
-      } else if (targetPct < currentBatteryPct) {
-        currentBatteryPct--;
+    // If USB was unplugged in the last 30 seconds, allow instant snapping to real settled voltage
+    if (millis() - lastUSBUnplugTime < 30000) {
+      if (currentBatteryPct != targetPct) {
+        currentBatteryPct = targetPct;
+        lastBatteryPctUpdate = millis();
+        updateUI();
       }
-      lastBatteryPctUpdate = millis();
-      updateUI(); // Force GUI refresh when percentage changes
+    } else {
+      // Only allow percentage to change once per minute (refresh rate requirement)
+      if (millis() - lastBatteryPctUpdate >= 60000) {
+        if (targetPct > currentBatteryPct) {
+          currentBatteryPct++;
+        } else if (targetPct < currentBatteryPct) {
+          currentBatteryPct--;
+        }
+        lastBatteryPctUpdate = millis();
+        updateUI(); // Force GUI refresh when percentage changes
+      }
     }
   }
   
@@ -886,10 +1015,19 @@ void updateBattery(bool isUSBPlugged) {
       DBG_PRINTLN("-> STATUS: USB Charging Detected (GPIO16 LOW)");
   }
   
-  // Requirement: Auto shutdown at 2.95V
-  if (historyFilled && avgV < 2.95) {
-    DBG_PRINTLN(F("CRITICAL BATTERY: Shutting down..."));
-    powerOffDevice();
+  // Auto shutdown logic (only when not charging on USB)
+  if (!isUSBPlugged) {
+    // 1. Boot low voltage check: if booted low, shutdown after 15 seconds
+    if (bootedLow && millis() >= 15000) {
+      DBG_PRINTLN(F("CRITICAL BATTERY: Booted with low voltage, shutting down after 15s..."));
+      powerOffDevice();
+    }
+    // 2. Normal running check: shutdown if voltage is below 3.00V
+    // We check millis() >= 15000 to allow voltage to stabilize and avoid false startup shutdowns if it didn't boot low
+    if (millis() >= 15000 && estimatedV < 3.00) {
+      DBG_PRINTLN(F("CRITICAL BATTERY: Voltage below 3.00V, shutting down..."));
+      powerOffDevice();
+    }
   }
 }
 
@@ -912,11 +1050,19 @@ void fetchData() {
   logBoot("Starting Data Fetch...");
   
   String url;
+  url.reserve(256); // Prevent multiple heap reallocations
   if (currentProvider == PROVIDER_NIGHTSCOUT) {
-    url = String(nsUrl) + "/api/v1/entries.json?count=" + String(MAX_HISTORY);
+    url += nsUrl;
+    url += "/api/v1/entries.json?count=";
+    url += MAX_HISTORY;
   } else {
     if (dexSessionId == "" && !loginDexcom()) return;
-    url = "https://" + String(dexServer) + "/ShareWebServices/Services/Publisher/ReadPublisherLatestGlucoseValues?sessionId=" + dexSessionId + "&minutes=1440&maxCount=" + String(MAX_HISTORY);
+    url += "https://";
+    url += dexServer;
+    url += "/ShareWebServices/Services/Publisher/ReadPublisherLatestGlucoseValues?sessionId=";
+    url += dexSessionId;
+    url += "&minutes=1440&maxCount=";
+    url += MAX_HISTORY;
   }
 
   WiFiClientSecure client;
@@ -944,7 +1090,7 @@ void fetchData() {
   http.end();
 }
 
-void parseResponse(String payload) {
+void parseResponse(const String& payload) {
   DynamicJsonDocument doc(8192);
   DeserializationError error = deserializeJson(doc, payload);
   
@@ -1032,55 +1178,10 @@ void loadHistoryFromCache() {
   f.close();
   DBG_PRINTF("Cache: Loaded %d readings\n", historyCount);
 
-  // Initialize RTC time if it's currently unset (e.g. cold boot without WiFi)
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  if (tv.tv_sec < 1000000000 && historyCount > 0) {
-    // Set system time to the latest cached reading + 5 minutes
-    tv.tv_sec = bgHistory[0].timestamp + 300; 
-    settimeofday(&tv, NULL);
-    DBG_PRINTLN("Cache: Initialized RTC time from cached data");
-  }
+  // Built-in system clock is initialized from external hardware RTC or NTP
 }
 
-#if 0 // Debug filesystem tools
-void printPartitionTable() {
-  DBG_PRINTLN("\n--- Partition Table ---");
-  esp_partition_iterator_t it = esp_partition_find(ESP_PARTITION_TYPE_ANY, ESP_PARTITION_SUBTYPE_ANY, NULL);
-  while (it != NULL) {
-    const esp_partition_t *p = esp_partition_get(it);
-    DBG_PRINTF("  %s: Type: %d, Sub: %d, Addr: 0x%06X, Size: 0x%06X (%d KB)\n", 
-               p->label, p->type, p->subtype, p->address, p->size, p->size / 1024);
-    it = esp_partition_next(it);
-  }
-  esp_partition_iterator_release(it);
-  DBG_PRINTLN("-----------------------\n");
-}
-
-void listDir(const char * dirname, uint8_t levels) {
-  DBG_PRINTF("Listing directory: %s\n", dirname);
-  File root = LittleFS.open(dirname);
-  if (!root) {
-    DBG_PRINTLN(" - failed to open directory");
-    return;
-  }
-  if (!root.isDirectory()) {
-    DBG_PRINTLN(" - not a directory");
-    return;
-  }
-
-  File file = root.openNextFile();
-  while (file) {
-    if (file.isDirectory()) {
-      DBG_PRINTF("  DIR : %s\n", file.name());
-      if (levels) listDir(file.path(), levels - 1);
-    } else {
-      DBG_PRINTF("  FILE: %s  SIZE: %d\n", file.name(), file.size());
-    }
-    file = root.openNextFile();
-  }
-}
-#endif
+// Disabled filesystem tools removed (obsolete/unused)
 
 void loadConfig() {
   // printPartitionTable(); // Uncomment to debug FS
@@ -1116,6 +1217,7 @@ void loadConfig() {
   if (doc.containsKey("debug")) {
     debugMode = doc["debug"].as<bool>();
   }
+
 
   if (doc.containsKey("wifi")) {
     primarySSID = doc["wifi"]["primary_ssid"].as<String>();
@@ -1189,7 +1291,7 @@ void saveConfig() {
   f.close();
 }
 
-String mapTrendToString(int trend) {
+const char* mapTrendToString(int trend) {
   switch (trend) {
     case 1: return "DoubleUp";
     case 2: return "SingleUp";
@@ -1227,8 +1329,21 @@ bool loginDexcom() {
   const char* appId = "d89443d2-327c-4a6f-89e5-496bbb0317db";
   
   // Step 1: Authenticate to get AccountId
-  String authUrl = "https://" + String(dexServer) + "/ShareWebServices/Services/General/AuthenticatePublisherAccount";
-  String authPayload = "{\"accountName\":\"" + String(dexUser) + "\",\"password\":\"" + String(dexPass) + "\",\"applicationId\":\"" + String(appId) + "\"}";
+  String authUrl;
+  authUrl.reserve(128);
+  authUrl += "https://";
+  authUrl += dexServer;
+  authUrl += "/ShareWebServices/Services/General/AuthenticatePublisherAccount";
+
+  String authPayload;
+  authPayload.reserve(256);
+  authPayload += "{\"accountName\":\"";
+  authPayload += dexUser;
+  authPayload += "\",\"password\":\"";
+  authPayload += dexPass;
+  authPayload += "\",\"applicationId\":\"";
+  authPayload += appId;
+  authPayload += "\"}";
   
   logBoot("Dexcom: Authenticating...");
   http.begin(client, authUrl);
@@ -1249,8 +1364,21 @@ bool loginDexcom() {
   http.end();
   
   // Step 2: Login with AccountId to get SessionId
-  String loginUrl = "https://" + String(dexServer) + "/ShareWebServices/Services/General/LoginPublisherAccountById";
-  String loginPayload = "{\"accountId\":\"" + accountId + "\",\"password\":\"" + String(dexPass) + "\",\"applicationId\":\"" + String(appId) + "\"}";
+  String loginUrl;
+  loginUrl.reserve(128);
+  loginUrl += "https://";
+  loginUrl += dexServer;
+  loginUrl += "/ShareWebServices/Services/General/LoginPublisherAccountById";
+
+  String loginPayload;
+  loginPayload.reserve(256);
+  loginPayload += "{\"accountId\":\"";
+  loginPayload += accountId;
+  loginPayload += "\",\"password\":\"";
+  loginPayload += dexPass;
+  loginPayload += "\",\"applicationId\":\"";
+  loginPayload += appId;
+  loginPayload += "\"}";
   
   logBoot("Dexcom: Logging in...");
   http.begin(client, loginUrl);
@@ -1366,7 +1494,7 @@ uint16_t getBGColor(int sgv) {
   if (sgv <= 0) return GRAY;
   if (sgv < 55 || sgv > 240) return RED;
   if (sgv < 70 || sgv > 180) return ORANGE;
-  return GREEN;
+  return isDarkTheme ? GREEN : 0x03E0;
 }
 
 void drawGlucoseContainer() {
@@ -1384,7 +1512,7 @@ void drawGlucoseContainer() {
   // --- Harvey Ball ---
   drawHarveyBall(40, 85, 16, bgHistory[0].timestamp);
   
-  if (showHarveyBallInfo) {
+  if (showHarveyBallInfo || offlineMode) {
       long long now = time(NULL);
       int diffMin = (now - bgHistory[0].timestamp) / 60;
       char ageStr[16];
@@ -1456,7 +1584,7 @@ void drawGlucoseContainer() {
 void drawHarveyBall(int x, int y, int radius, long long timestamp) {
   long long now = time(NULL);
   int diffMin = (now - timestamp) / 60;
-  uint16_t color = GREEN;
+  uint16_t color = isDarkTheme ? GREEN : 0x03E0;
   
   if (diffMin >= 15) color = RED;
   else if (diffMin >= 6) color = ORANGE;
@@ -1477,62 +1605,7 @@ void drawHarveyBall(int x, int y, int radius, long long timestamp) {
   }
 }
 
-void drawTrendArrow(int x, int y, String direction, uint16_t color) {
-  int size = 52;
-  int thickness = 8;
-  int headSize = 20;
-  
-  auto drawSingle = [&](int tx, int ty, float angle) {
-    float rad = angle * PI / 180.0;
-    
-    // 1. Shaft & Head Alignment
-    int headOverlap = 8;
-    int shaftLen = size - 12;
-    
-    // Tip of the arrow
-    int tipX = tx + cos(rad) * (size / 2);
-    int tipY = ty - sin(rad) * (size / 2);
-    
-    // End of the shaft (where it meets the head)
-    int x1 = tipX - cos(rad) * headOverlap;
-    int y1 = tipY + sin(rad) * headOverlap;
-    
-    // Start of the shaft
-    int x0 = tx - cos(rad) * (size / 2);
-    int y0 = ty + sin(rad) * (size / 2);
-    
-    int h = thickness;
-    
-    if (angle == 0 || angle == 180 || angle == 90 || angle == 270) {
-      // Axial arrows
-      if (angle == 0) { // Flat (Right)
-        gfx->fillRect(x0, y0 - h/2, (x1 - x0), h, color);
-      } else if (angle == 180) { // Flat (Left) - Just in case
-        gfx->fillRect(x1, y0 - h/2, (x0 - x1), h, color);
-      } else if (angle == 90) { // Up
-        gfx->fillRect(x0 - h/2, y1, h, (y0 - y1), color);
-      } else if (angle == 270) { // Down
-        gfx->fillRect(x0 - h/2, y0, h, (y1 - y0), color);
-      }
-    } else {
-      // Diagonal arrows
-      for(int i = -h/4; i <= h/4; i++) {
-        gfx->drawLine(x0 + i, y0, x1 + i, y1, color);
-        gfx->drawLine(x0, y0 + i, x1, y1 + i, color);
-      }
-    }
-
-    // Bold Arrow Head (Sharp Triangle pointing at tipX, tipY)
-    float h1 = (angle + 145) * PI / 180.0;
-    float h2 = (angle - 145) * PI / 180.0;
-    int hx1 = tipX + cos(h1) * headSize;
-    int hy1 = tipY - sin(h1) * headSize;
-    int hx2 = tipX + cos(h2) * headSize;
-    int hy2 = tipY - sin(h2) * headSize;
-    
-    gfx->fillTriangle(tipX, tipY, hx1, hy1, hx2, hy2, color);
-  };
-
+void drawTrendArrow(int x, int y, const String& direction, uint16_t color) {
   if (direction == "SingleUp") {
     // 6 blocks shaft + 1 block peak = 7 blocks (56px)
     int pSize = 8;
@@ -1649,7 +1722,7 @@ void drawTrendArrow(int x, int y, String direction, uint16_t color) {
   }
 }
 
-// --- Phase 5: Historical Chart & Touch ---
+// --- Historical Chart & Touch ---
 bool readTouch(int &tx, int &ty) {
   uint8_t read_cmd[11] = {0xb5, 0xab, 0xa5, 0x5a, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x00, 0x00};
   Wire1.beginTransmission(TOUCH_ADDR);
@@ -1834,24 +1907,36 @@ void drawHistoryChart() {
   // Add +1 to width to ensure the rightmost pixel (latest data) is fully covered
   gfx->fillRect(oldestX, y180, (chartX + chartWidth) - oldestX + 1, y70 - y180, isDarkTheme ? 0x2104 : 0xEF7D);
 
-  // 3. Draw Chart Line
+  // 3. Draw Chart Line and Dots
   float barWidth = 325.0 / MAX_HISTORY;
+  
+  // First draw circles at all data points to keep them visible even if isolated
+  for (int i = 0; i < historyCount; i++) {
+    int x = chartRight - (int)(i * barWidth);
+    int y = getY(bgHistory[i].sgv);
+    uint16_t color = (bgHistory[i].sgv >= 70 && bgHistory[i].sgv <= 180) ? (isDarkTheme ? GREEN : 0x03E0) : ORANGE;
+    gfx->fillCircle(x, y, 2, color);
+  }
+
+  // Draw connecting lines only if readings are <= 6 minutes (360 seconds) apart
   for (int i = 0; i < historyCount - 1; i++) {
-    // Use pre-calculated floating point width
+    if (bgHistory[i].timestamp - bgHistory[i+1].timestamp > 360) {
+      continue;
+    }
     int x1 = chartRight - (int)(i * barWidth);
     int x2 = chartRight - (int)((i+1) * barWidth);
     int y1 = getY(bgHistory[i].sgv);
     int y2 = getY(bgHistory[i+1].sgv);
-    uint16_t color = (bgHistory[i].sgv >= 70 && bgHistory[i].sgv <= 180) ? GREEN : ORANGE;
+    uint16_t color = (bgHistory[i].sgv >= 70 && bgHistory[i].sgv <= 180) ? (isDarkTheme ? GREEN : 0x03E0) : ORANGE;
     
-    // Thicker line (5 pixels)
+    // Thicker line (3 pixels)
     gfx->drawLine(x1, y1, x2, y2, color);
     gfx->drawLine(x1, y1+1, x2, y2+1, color);
     gfx->drawLine(x1, y1-1, x2, y2-1, color);
-    gfx->drawLine(x1, y1+2, x2, y2+2, color);
+    // gfx->drawLine(x1, y1+2, x2, y2+2, color);
   }
 
-  // 4. Scrubber Popup (Phase 6 Polish: 3s Persistence)
+  // 4. Scrubber Popup (3s Persistence)
   bool showScrubber = isTouching && touchX >= chartX && touchX <= chartX + chartWidth;
   if (!showScrubber && (millis() - lastScrubberTouchTime < 3000) && lastScrubberX != -1) {
     showScrubber = true;
@@ -1901,7 +1986,7 @@ void drawHistoryChart() {
 }
 int getBatteryPercentage(float voltage) {
   // 4000mAh Li-Ion discharge curve map (utilizing max reasonable capacity)
-  // 0% is mapped to 3.00V, ensuring 0% occurs before the 2.95V critical shutdown
+  // 0% is mapped to 3.00V, triggering critical shutdown below 3.00V
   float vMap[] = {3.00, 3.25, 3.40, 3.50, 3.55, 3.60, 3.65, 3.75, 3.85, 3.95, 4.00, 4.05};
   int pMap[]   = {   0,    5,   10,   20,   30,   40,   50,   60,   70,   80,   90,  100};
   
@@ -1934,56 +2019,104 @@ void drawStatusBar() {
   gfx->print(timeStr);
   
   // 1.5 Draw Spinner Animation (DOS-style, next to time / between time and BG)
-  if (isFetching) {
+  // Available in online mode only, with no placeholder gap when inactive
+  bool showSpinner = isFetching && !offlineMode;
+  if (showSpinner) {
     gfx->setTextColor(YELLOW);
     const char spinnerFrames[] = {'|', '/', '-', '\\'};
     char spinnerChar = spinnerFrames[(millis() / 150) % 4];
-    
     int spinnerX = isTimerMode ? 85 : 90;
     gfx->setCursor(spinnerX, 7);
     gfx->print(spinnerChar);
     gfx->setTextColor(textColor);
   }
   
-  // In Timer Mode: Draw color-coded BG value and Delta shifted right to leave room for the spinner
-  if (isTimerMode && historyCount > 0) {
+  // 3. Last Saved BG / Minimized BG
+  bool showBG = false;
+  int bgX = 110; // Default position for timer screen
+  
+  if (isTimerMode) {
+    if (!offlineMode) {
+      showBG = true;
+      bgX = 110; // Fixed position to leave gap for spinner
+    }
+  } else {
+    // Main dashboard screen
+    if (offlineMode) {
+      gfx->setTextColor(RED);
+      gfx->setCursor(85, 7);
+      gfx->print("LAST SAVED BG");
+      gfx->setTextColor(textColor);
+      // showBG remains false to completely hide the minimized value
+    }
+  }
+  
+  if (showBG && historyCount > 0) {
     BGReading latest = bgHistory[0];
     String sgvStr = (bgUnits == "mmol/L") ? String(latest.sgv / 18.0182, 1) : String(latest.sgv);
     
-    // Draw BG value with its specific status color at X = 110
+    // Draw BG value with its specific status color
     gfx->setTextColor(getBGColor(latest.sgv));
-    gfx->setCursor(110, 7);
+    gfx->setCursor(bgX, 7);
     gfx->print(sgvStr);
     
     // Draw Delta in standard textColor
     gfx->setTextColor(textColor);
     String deltaStr = formatDelta(latest.delta);
     int bgWidth = sgvStr.length() * 12; // At size 2, each char is 12px wide
-    gfx->setCursor(110 + bgWidth + 10, 7);
+    gfx->setCursor(bgX + bgWidth + 10, 7);
     gfx->printf("(%s)", deltaStr.c_str());
   }
   
   // 2. Battery & Charging Indicator
   int cursorX = 625; // Default start if no battery info
-  int chargeDebounce = 0;
   
   if (currentBatteryPct >= 0) {
+    uint16_t batColor = textColor;
+    bool showBat = true;
+    
+    if (currentBatteryPct <= 5) {
+      batColor = RED;
+      if ((millis() / 500) % 2 != 0) {
+        showBat = false;
+      }
+    }
+    
     char batStr[32];
     if (debugMode) {
       sprintf(batStr, "%d%% (%.2fV)", currentBatteryPct, currentBatteryVoltage);
     } else {
       sprintf(batStr, "%d%%", currentBatteryPct);
     }
-    
     int strWidth = strlen(batStr) * 12;
     cursorX = 625 - strWidth;
     
-    gfx->setCursor(cursorX, 7);
-    gfx->print(batStr);
+    int batLeftX = (wasUSBPlugged && !pwrBtn.pressed) ? (cursorX - 15) : cursorX;
     
-    if (wasUSBPlugged && !pwrBtn.pressed) {
-      gfx->setCursor(cursorX - 15, 7); 
-      gfx->print("+");
+    if (offlineMode) {
+      gfx->setTextColor(RED);
+      gfx->setCursor(batLeftX - 95, 7);
+      gfx->print("OFFLINE");
+      gfx->setTextColor(textColor);
+    }
+
+    if (showBat) {
+      gfx->setTextColor(batColor);
+      gfx->setCursor(cursorX, 7);
+      gfx->print(batStr);
+      
+      if (wasUSBPlugged && !pwrBtn.pressed) {
+        gfx->setCursor(cursorX - 15, 7); 
+        gfx->print("+");
+      }
+      gfx->setTextColor(textColor); // Restore standard text color
+    }
+  } else {
+    if (offlineMode) {
+      gfx->setTextColor(RED);
+      gfx->setCursor(625 - 84, 7);
+      gfx->print("OFFLINE");
+      gfx->setTextColor(textColor);
     }
   }
   
@@ -2004,11 +2137,12 @@ void setBrightness(int level) {
   analogWrite(PIN_BL, val);
 }
 
-void logBoot(String msg) {
+void logBoot(const String& msg) {
   DBG_PRINTLN(msg);
   if (!isBooting) return;
 
-  bootLog += msg + "\n";
+  bootLog += msg;
+  bootLog += '\n';
   
   // Count lines and trim from start to keep only the LATEST lines that fit (5 lines at Size 2)
   int newlineCount = 0;
@@ -2034,7 +2168,13 @@ void logBoot(String msg) {
   for (int i = 0; i < bootLog.length(); i++) {
     if (bootLog[i] == '\n') {
       gfx->setCursor(20, logY);
-      gfx->print(bootLog.substring(startIdx, i));
+      String line = bootLog.substring(startIdx, i);
+      if (line.startsWith("Battery:") && (currentBatteryPct <= 5)) {
+        gfx->setTextColor(RED);
+      } else {
+        gfx->setTextColor(GREEN);
+      }
+      gfx->print(line);
       logY += 20;
       startIdx = i + 1;
     }

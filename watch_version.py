@@ -33,7 +33,7 @@ def save_state(state):
     except Exception as e:
         print(f"[VERSION WATCHER ERROR] Could not save state: {e}")
 
-def update_version():
+def update_version(is_startup=False):
     if not os.path.exists(INO_PATH):
         print(f"[VERSION WATCHER ERROR] {INO_PATH} not found!")
         return None
@@ -41,20 +41,40 @@ def update_version():
     year_offset, month_str, day_str, date_key = get_calver_segments()
     state = load_state()
 
-    # Determine daily build revision
-    if state["last_date"] == date_key:
-        build_revision = state["build_increment"] + 1
-    else:
-        build_revision = 0  # New day, reset revision index
-
-    new_version = f"v{year_offset}.{month_str}.{day_str}.{build_revision}"
-
     with open(INO_PATH, "r", encoding="utf-8") as f:
         content = f.read()
 
     # Look for '#define SUGAROTA_VERSION "..."'
     pattern = r'#define\s+SUGAROTA_VERSION\s+"([^"]+)"'
     match = re.search(pattern, content)
+
+    file_build = None
+    if match:
+        current_version_in_file = match.group(1)
+        ver_match = re.match(r'^v(\d+)\.(\d+)\.(\d+)\.(\d+)$', current_version_in_file)
+        if ver_match:
+            y, m, d, b = ver_match.groups()
+            if int(y) == year_offset and m == month_str and d == day_str:
+                file_build = int(b)
+
+    if is_startup:
+        # On startup, sync internal state with the file's current version if it matches today's date
+        if file_build is not None:
+            state["last_date"] = date_key
+            state["build_increment"] = file_build
+            save_state(state)
+            print(f"[VERSION WATCHER] Synced startup build version to: v{year_offset}.{month_str}.{day_str}.{file_build}")
+        return None
+
+    # Determine daily build revision
+    if file_build is not None:
+        build_revision = file_build + 1
+    elif state["last_date"] == date_key:
+        build_revision = state["build_increment"] + 1
+    else:
+        build_revision = 0  # New day, reset revision index
+
+    new_version = f"v{year_offset}.{month_str}.{day_str}.{build_revision}"
 
     if match:
         current_version_in_file = match.group(1)
@@ -86,8 +106,8 @@ def watch():
     print(f"Auto-Increment Format: v{{YearOffset}}.{{Month:02d}}.{{Day:02d}}.{{Build}}")
     print(f"Press Ctrl+C to terminate the watcher thread.\n")
 
-    # Initial check on startup
-    update_version()
+    # Initial check on startup (sync without incrementing)
+    update_version(is_startup=True)
     
     last_mtime = os.path.getmtime(INO_PATH) if os.path.exists(INO_PATH) else 0
 

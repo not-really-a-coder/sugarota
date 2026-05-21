@@ -2,6 +2,32 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.05.20.31] — Battery Indication and Offline Enhancements (2026-05-20)
+
+This release focuses on battery visibility, offline mode indicators, and build script optimizations.
+
+### Connectivity
+
+- Reworked Offline mode: RTS<>NTP sync, no data fetches and WiFi wakening until connected (requires reset)
+- If the Secondary SSID is not set, the system will not include it in the connection loop
+
+### Interface
+
+- Blinking red battery percentage when battery is at or below 5%
+- Added battery status to the boot log with color coding 
+- Offline mode: warnings, last saved bg timing, removed minimized BG
+
+### Power Management
+
+- Automatic power off (15 seconds after booting) if the battery voltage is below 3.00V
+- Critical hardware shutdown threshold increased from 2.95V to 3.00V
+
+### Installation & Configuration
+
+- Enabled manual override in versioning script
+
+---
+
 ## [v0.05.19.20] — Stability and Power Improvements (2026-05-19)
 
 This release focuses on battery tracking accuracy, button interaction improvements, manual screen locking, and robust WiFi failover handling.

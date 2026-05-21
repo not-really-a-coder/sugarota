@@ -2,6 +2,25 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.05.21.14] — Visual Improvements and Power Optimizations (2026-05-21)
+
+This release focuses on optimizing power consumption, resolving battery drain issues, and significantly improving the UI representation of missing data on the historical chart.
+
+### Interface
+
+- Redesigned historical chart gaps for missing data (fixed 3 data points wide and info text with gap duration)
+- Upgraded the scrubber snap logic to accurately jump over missing data gaps
+- Removed the shake-to-update feature (use long-press on BOOT physical button instead)
+
+### Power Management
+
+- Dynamic open/close of the audio amplifier on demand to eliminate massive idle battery drain and device heating
+- Deep hardware sleep for the display controller when brightness drops to 0 (face down)
+- Fixed a bug where ADC noise randomly triggered false USB plug-in states, preventing device shutdown
+- Added a 100ms debounce delay to the face-down orientation logic to prevent screen flickering
+
+---
+
 ## [v0.05.20.31] — Battery Indication and Offline Enhancements (2026-05-20)
 
 This release focuses on battery visibility, offline mode indicators, and build script optimizations.

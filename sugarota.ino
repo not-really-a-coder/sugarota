@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.05.20.31"
+#define SUGAROTA_VERSION "v0.05.21.14"
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -28,7 +28,7 @@ esp_codec_dev_handle_t playback = NULL;
 #define GRAY    0x8410
 #define ORANGE  0xFD20
 
-// --- Config vars declaration (values defined in data/config.json) ---
+// --- Config vars (values defined in data/config.json) ---
 String primarySSID     = "";
 String primaryPass     = "";
 String secondarySSID   = "";
@@ -291,12 +291,8 @@ void setup() {
   playback = get_playback_handle();
   if (playback) {
     esp_codec_dev_set_out_vol(playback, 75.0);
-    esp_codec_dev_sample_info_t fs;
-    memset(&fs, 0, sizeof(fs));
-    fs.sample_rate = 24000;
-    fs.channel = 2;
-    fs.bits_per_sample = 16;
-    esp_codec_dev_open(playback, &fs);
+    // The codec is initialized but kept closed to save power.
+    // It will be opened on-demand in playBeeps() and playWav().
   }
 
   // 1.5 Initialize IMU
@@ -434,16 +430,23 @@ void loop() {
     float x, y, z;
     if (qmi.getAccelerometer(x, y, z)) {
       // 1. Face Down Logic
-      bool isFaceDown = (z < -0.8); 
+      bool currentZState = (z < -0.8); 
       static bool wasFaceDown = false;
       static int lastBrightness = 150;
+      static unsigned long stateChangeTime = 0;
+      static bool lastZState = false;
       
-      if (isFaceDown && !wasFaceDown) {
+      if (currentZState != lastZState) {
+        stateChangeTime = millis();
+        lastZState = currentZState;
+      }
+      
+      if (currentZState && !wasFaceDown && (millis() - stateChangeTime >= 100)) {
         wasFaceDown = true;
         DBG_PRINTLN("FACE DOWN: Sleep");
         if (brightnessLevel > 0) lastBrightness = brightnessLevel;
         setBrightness(0);
-      } else if (!isFaceDown && wasFaceDown) {
+      } else if (!currentZState && wasFaceDown && (millis() - stateChangeTime >= 100)) {
         wasFaceDown = false;
         DBG_PRINTLN("PICKED UP: Wake");
         if (brightnessLevel == 0) {
@@ -458,7 +461,7 @@ void loop() {
       // 1.5. Rotated Landscape (Timer Mode) Logic
       // Regular Landscape has buttons on top (y < -0.4).
       // Rotated Landscape has buttons on bottom (y > 0.4).
-      bool isRotatedLandscape = (y > 0.4 && !isFaceDown);
+      bool isRotatedLandscape = (y > 0.4 && !currentZState);
       
       // Lock orientation transition when vigorously moving/shaking or actively fetching data to prevent ghost resets
       if (!isMoving && !isFetching) {
@@ -517,31 +520,7 @@ void loop() {
         }
       }
 
-      // 2. Shake Detection Logic
-      static unsigned long shakeSequenceStart = 0;
-      static unsigned long lastHighAccTime = 0;
-
-      if (abs(magnitude - 1.0) > 0.5) { // Threshold for vigorous shaking
-        if (shakeSequenceStart == 0) shakeSequenceStart = millis();
-        lastHighAccTime = millis();
-        
-        if (millis() - shakeSequenceStart > 800) { // 800ms of overall shaking
-           if (!offlineMode) {
-             DBG_PRINTLN("SHAKE DETECTED! Forcing Refresh...");
-             fetchData();
-           } else {
-             DBG_PRINTLN("SHAKE DETECTED! Refresh disabled in Offline Mode");
-           }
-           shakeSequenceStart = 0; // Reset
-           lastHighAccTime = 0;
-           spinnerDelay(1000); // Debounce pause using spinnerDelay to keep timer counting seamlessly
-        }
-      } else {
-        // If 250ms pass without high acceleration, reset the shake sequence
-        if (millis() - lastHighAccTime > 250) {
-          shakeSequenceStart = 0;
-        }
-      }
+      // Shake Detection Logic removed per user request
     }
   }
   
@@ -576,7 +555,13 @@ void loop() {
   // Battery Monitoring (Every 10 seconds or instantly on USB plugin/unplug with instant spike detection and debounces)
   bool pinLow = (digitalRead(PIN_PWR_BTN) == LOW);
   bool currentUSB = wasUSBPlugged; // Default to last known state
-  float instantV = analogReadMilliVolts(PIN_BAT_ADC) * 3.0 / 1000.0;
+  
+  // Average 4 ADC readings to smooth out ESP32 ADC noise and prevent false voltage spikes
+  float instantV_raw = 0;
+  for (int i=0; i<4; i++) {
+    instantV_raw += analogReadMilliVolts(PIN_BAT_ADC);
+  }
+  float instantV = (instantV_raw / 4.0) * 3.0 / 1000.0;
   
   if (pinLow) {
     usbHighStartTime = 0; // Reset unplug debounce timer
@@ -585,8 +570,9 @@ void loop() {
         usbLowStartTime = millis();
         preSpikeVoltage = currentBatteryVoltage; // Store the stable voltage before spike!
       }
-      // Instant spike detection: if voltage rises by >= 0.03V, it's USB!
-      if (preSpikeVoltage > 2.0 && (instantV - preSpikeVoltage >= 0.03)) {
+      // Instant spike detection: if voltage rises by >= 0.10V, it's USB!
+      // Threshold increased from 0.03V to 0.10V to avoid ADC noise triggering false USB states when holding PWR button
+      if (preSpikeVoltage > 2.0 && (instantV - preSpikeVoltage >= 0.10)) {
         currentUSB = true;
         usbLowStartTime = 0;
       }
@@ -675,6 +661,15 @@ void codecBeep(int durationMs) {
     bufInitialized = true;
   }
   
+  if (!playback) return;
+  
+  esp_codec_dev_sample_info_t fs;
+  memset(&fs, 0, sizeof(fs));
+  fs.sample_rate = 24000;
+  fs.channel = 2;
+  fs.bits_per_sample = 16;
+  esp_codec_dev_open(playback, &fs);
+  
   int elapsed = 0;
   while (elapsed < durationMs) {
     int playMs = min(50, durationMs - elapsed);
@@ -684,6 +679,8 @@ void codecBeep(int durationMs) {
     // Cooperatively yield while playing chunks
     spinnerDelay(playMs);
   }
+  
+  esp_codec_dev_close(playback);
 }
 
 void playWav(const char *path) {
@@ -705,6 +702,14 @@ void playWav(const char *path) {
   // Read raw PCM data in 4KB chunks and write to I2S codec (using static buffer to save stack)
   const int bufSize = 4096;
   static uint8_t buf[bufSize];
+  
+  esp_codec_dev_sample_info_t fs;
+  memset(&fs, 0, sizeof(fs));
+  fs.sample_rate = 24000;
+  fs.channel = 2;
+  fs.bits_per_sample = 16;
+  esp_codec_dev_open(playback, &fs);
+  
   while (f.available()) {
     int bytesRead = f.read(buf, bufSize);
     if (bytesRead <= 0) break;
@@ -715,6 +720,7 @@ void playWav(const char *path) {
     spinnerDelay(5);
   }
   
+  esp_codec_dev_close(playback);
   f.close();
 }
 
@@ -1900,19 +1906,80 @@ void drawHistoryChart() {
     return chartY + chartHeight - map(bg, minBG, maxBG, 0, chartHeight);
   };
 
+  // Pre-calculate visual indices
+  int visualIndex[MAX_HISTORY];
+  visualIndex[0] = 0;
+  for (int i = 1; i < historyCount; i++) {
+    if (bgHistory[i-1].timestamp - bgHistory[i].timestamp > 360) {
+      visualIndex[i] = visualIndex[i-1] + 3; // Gap of 3 data points width
+    } else {
+      visualIndex[i] = visualIndex[i-1] + 1;
+    }
+  }
+
   // 2. Draw Range Highlighter (Aligned to data width)
   int y180 = getY(180);
   int y70 = getY(70);
-  int oldestX = chartX + chartWidth - ((historyCount - 1) * chartWidth / MAX_HISTORY);
-  // Add +1 to width to ensure the rightmost pixel (latest data) is fully covered
-  gfx->fillRect(oldestX, y180, (chartX + chartWidth) - oldestX + 1, y70 - y180, isDarkTheme ? 0x2104 : 0xEF7D);
-
-  // 3. Draw Chart Line and Dots
   float barWidth = 325.0 / MAX_HISTORY;
   
+  int oldestX = chartRight - (int)(visualIndex[historyCount - 1] * barWidth);
+  if (oldestX < chartX) oldestX = chartX; // Clip to chart boundary
+  gfx->fillRect(oldestX, y180, (chartRight - oldestX) + 1, y70 - y180, isDarkTheme ? 0x2104 : 0xEF7D);
+
+  // 2.5 Draw Gaps Background and Vertical Text
+  for (int i = 0; i < historyCount - 1; i++) {
+    long timeDiff = bgHistory[i].timestamp - bgHistory[i+1].timestamp;
+    if (timeDiff > 360) {
+      int xRight = chartRight - (int)(visualIndex[i] * barWidth);
+      int xLeft = chartRight - (int)(visualIndex[i+1] * barWidth);
+      
+      if (xRight < chartX) continue;
+      if (xLeft < chartX) xLeft = chartX;
+      
+      int gapWidth = xRight - xLeft;
+      if (gapWidth > 0) {
+        // Highlight gap
+        uint16_t gapColor = isDarkTheme ? 0x4800 : 0xFDD0; // Dark red or light peach
+        gfx->fillRect(xLeft, chartY, gapWidth, chartHeight, gapColor);
+        
+        // Rotated vertically oriented message
+        int diffMin = timeDiff / 60;
+        String vMsg = "No data for " + String(diffMin) + "m";
+        
+        uint8_t curRot = gfx->getRotation();
+        uint8_t textRot = (curRot + 3) % 4; // 90 degrees CCW
+        
+        int center_x_land = xLeft + gapWidth / 2;
+        int center_y_land = chartY + chartHeight / 2;
+        
+        int textW = vMsg.length() * 6; // 6px width per char at size 1
+        int textH = 8;                 // 8px height at size 1
+        
+        int landscapeHeight = gfx->height();
+        
+        // Convert landscape center to portrait center
+        int center_px = landscapeHeight - center_y_land;
+        int center_py = center_x_land;
+        
+        // Calculate top-left starting cursor in portrait
+        int start_px = center_px - textW / 2;
+        int start_py = center_py - textH / 2;
+        
+        gfx->setRotation(textRot);
+        gfx->setTextColor(RED);
+        gfx->setTextSize(1);
+        gfx->setCursor(start_px, start_py);
+        gfx->print(vMsg);
+        gfx->setRotation(curRot); // Restore original rotation
+      }
+    }
+  }
+
+  // 3. Draw Chart Line and Dots
   // First draw circles at all data points to keep them visible even if isolated
   for (int i = 0; i < historyCount; i++) {
-    int x = chartRight - (int)(i * barWidth);
+    int x = chartRight - (int)(visualIndex[i] * barWidth);
+    if (x < chartX) continue;
     int y = getY(bgHistory[i].sgv);
     uint16_t color = (bgHistory[i].sgv >= 70 && bgHistory[i].sgv <= 180) ? (isDarkTheme ? GREEN : 0x03E0) : ORANGE;
     gfx->fillCircle(x, y, 2, color);
@@ -1920,20 +1987,30 @@ void drawHistoryChart() {
 
   // Draw connecting lines only if readings are <= 6 minutes (360 seconds) apart
   for (int i = 0; i < historyCount - 1; i++) {
-    if (bgHistory[i].timestamp - bgHistory[i+1].timestamp > 360) {
-      continue;
-    }
-    int x1 = chartRight - (int)(i * barWidth);
-    int x2 = chartRight - (int)((i+1) * barWidth);
+    if (bgHistory[i].timestamp - bgHistory[i+1].timestamp > 360) continue;
+    
+    int x1 = chartRight - (int)(visualIndex[i] * barWidth);
+    int x2 = chartRight - (int)(visualIndex[i+1] * barWidth);
+    
+    if (x1 < chartX && x2 < chartX) continue;
+    
     int y1 = getY(bgHistory[i].sgv);
     int y2 = getY(bgHistory[i+1].sgv);
+    
+    // Clip line to the left chart boundary
+    if (x2 < chartX) {
+      if (x1 != x2) { // Prevent division by zero
+        y2 = y1 + (y2 - y1) * (chartX - x1) / (x2 - x1);
+      }
+      x2 = chartX;
+    }
+    
     uint16_t color = (bgHistory[i].sgv >= 70 && bgHistory[i].sgv <= 180) ? (isDarkTheme ? GREEN : 0x03E0) : ORANGE;
     
     // Thicker line (3 pixels)
     gfx->drawLine(x1, y1, x2, y2, color);
     gfx->drawLine(x1, y1+1, x2, y2+1, color);
     gfx->drawLine(x1, y1-1, x2, y2-1, color);
-    // gfx->drawLine(x1, y1+2, x2, y2+2, color);
   }
 
   // 4. Scrubber Popup (3s Persistence)
@@ -1945,13 +2022,23 @@ void drawHistoryChart() {
   if (showScrubber) {
     int curX = isTouching ? touchX : lastScrubberX;
     
-    int oldestX = chartRight - (int)((historyCount - 1) * barWidth);
-    // Synchronize mapping with the actual width of the data curve
-    int dataIdx = map(curX, oldestX, chartRight, historyCount - 1, 0);
-    dataIdx = constrain(dataIdx, 0, historyCount - 1);
+    // Synchronize mapping with the visual index to snap accurately even across gaps
+    int closestIdx = 0;
+    int minDiff = 10000;
+    for (int i = 0; i < historyCount; i++) {
+      int pointX = chartRight - (int)(visualIndex[i] * barWidth);
+      if (pointX < chartX) continue;
+      int diff = abs(curX - pointX);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIdx = i;
+      }
+    }
+    
+    int dataIdx = closestIdx;
     
     // Magnetic Snap: Force the cursor X to exactly match the data point X
-    curX = chartRight - (int)(dataIdx * barWidth);
+    curX = chartRight - (int)(visualIndex[dataIdx] * barWidth);
     
     BGReading r = bgHistory[dataIdx];
     int curY = getY(r.sgv);
@@ -1965,6 +2052,7 @@ void drawHistoryChart() {
     int boxW = 90;
     int boxH = 40;
     int boxX = curX - boxW; 
+    if (boxX < chartX) boxX = chartX; // Prevent clipping left edge
     int boxY = chartY - 45;
     
     gfx->fillRoundRect(boxX, boxY, boxW, boxH, 4, GRAY);
@@ -1985,9 +2073,9 @@ void drawHistoryChart() {
   }
 }
 int getBatteryPercentage(float voltage) {
-  // 4000mAh Li-Ion discharge curve map (utilizing max reasonable capacity)
+  // Li-Ion discharge curve map (utilizing max reasonable capacity)
   // 0% is mapped to 3.00V, triggering critical shutdown below 3.00V
-  float vMap[] = {3.00, 3.25, 3.40, 3.50, 3.55, 3.60, 3.65, 3.75, 3.85, 3.95, 4.00, 4.05};
+  float vMap[] = {3.00, 3.20, 3.40, 3.50, 3.55, 3.60, 3.65, 3.75, 3.85, 3.90, 3.95, 4.05};
   int pMap[]   = {   0,    5,   10,   20,   30,   40,   50,   60,   70,   80,   90,  100};
   
   if (voltage <= vMap[0]) return 0;
@@ -2135,6 +2223,12 @@ void setBrightness(int level) {
   // AXS15231B backlight is inverted (0 = max, 255 = off)
   int val = 255 - level;
   analogWrite(PIN_BL, val);
+  
+  if (level == 0) {
+    gfx->displayOff(); // Put display controller to sleep
+  } else {
+    gfx->displayOn(); // Wake display controller
+  }
 }
 
 void logBoot(const String& msg) {

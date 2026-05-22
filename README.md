@@ -2,7 +2,7 @@
 
 Sugarota is a state-of-the-art wireless blood glucose display and telemetry terminal powered by the ESP32-S3 chipset. It syncs real-time CGM data from Dexcom Share or Nightscout APIs, plots high-DPI historical trend graphs on the screen, and features a gorgeous browser-based WebSerial interface to flash firmware and manage device settings.
 
-[![Short demo video](https://img.youtube.com/vi/fj86CE9E_Lw/0.jpg)](https://www.youtube.com/watch?v=fj86CE9E_Lw)
+<a href="https://www.youtube.com/watch?v=fj86CE9E_Lw" target="_blank"><img src="https://img.youtube.com/vi/fj86CE9E_Lw/0.jpg" alt="Short demo video"></a>
 
 Initially built for Waveshare ESP32-S3-Touch-LCD-3.49 Development platform. 
 

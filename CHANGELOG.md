@@ -2,6 +2,29 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.05.22.25] — Configuration Mode and Workspace Fixes (2026-05-22)
+
+This release focuses on introducing a wireless configuration mode, improving chart rendering, and resolving compilation issues.
+
+### Installation & Configuration
+
+- Shake-to-Config gesture to enable an on-device local WebServer for easy wireless configuration via browser
+- Added asterisk indicator to the status bar when Config Mode is active
+- Added web-server page for wireless configuration, accessible at http://sugarota.local
+- Device keeps WiFi connection alive while Config Mode is active
+- Ignored backup and agent files in the git workspace
+
+### Interface
+
+- Updated appearance of data gaps on the history chart to be shorter and cleaner
+- Resolved visual glitch with data gaps squeezing at the left edge of the chart
+
+### Connectivity
+
+- Prevented serial interface blocking when USB host is unexpectedly disconnected
+
+---
+
 ## [v0.05.21.14] — Visual Improvements and Power Optimizations (2026-05-21)
 
 This release focuses on optimizing power consumption, resolving battery drain issues, and significantly improving the UI representation of missing data on the historical chart.

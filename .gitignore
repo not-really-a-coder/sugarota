@@ -5,6 +5,7 @@
 *.o
 *.d
 *.options.json
+*.bak
 
 # Local Python Caches
 __pycache__/
@@ -18,6 +19,7 @@ data/config.json
 
 # Developer references, simulations, and sandboxes (DO NOT PUBLISH)
 other/
+.agents/
 
 # OS Files
 .DS_Store

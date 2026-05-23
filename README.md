@@ -24,7 +24,7 @@ All entered credentials and settings are saved ONLY on the device during flashin
 
 ### Local installation
 
-The local setup center requires **zero external python packages**—it runs fully using standard library modules included with Python.
+The local setup center requires **zero external python packages** (no `requirements.txt` needed!)—it runs fully using standard library modules included with Python.
 
 1.  **Launch the Setup Server**:
     Run the multi-threaded host script from the repository root:

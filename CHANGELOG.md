@@ -2,6 +2,23 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.05.24.8] — Battery Icon and UI Tweaks (2026-05-24)
+
+This release focuses on improving the battery level visibility with a new graphical icon, as well as minor UI adjustments to the status bar and config mode timeout.
+
+### Interface
+
+- Replaced percentage battery indicator with a graphical 5-section battery icon (debug mode retains text)
+- Low battery (<= 5%) now flashes the battery icon outline instead of turning red to preserve the B/W theme
+- Changed data-refresh spinner animation color from yellow to orange
+- Realigned status bar footer line slightly higher
+
+### Installation & Configuration
+
+- Config Mode 5 minutes auto-timeout
+
+---
+
 ## [v0.05.22.25] — Configuration Mode and Workspace Fixes (2026-05-22)
 
 This release focuses on introducing a wireless configuration mode, improving chart rendering, and resolving compilation issues.

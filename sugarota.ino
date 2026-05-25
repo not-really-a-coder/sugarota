@@ -1,4 +1,4 @@
-#define SUGAROTA_VERSION "v0.05.22.25"
+#define SUGAROTA_VERSION "v0.05.24.8"
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -19,6 +19,7 @@
 esp_codec_dev_handle_t playback = NULL;
 WebServer server(80);
 bool isConfigMode = false;
+unsigned long configModeStartTime = 0;
 
 // --- Colors ---
 #define BLACK   0x0000
@@ -584,6 +585,13 @@ void loop() {
     return;
   }
 
+  if (isConfigMode && (millis() - configModeStartTime > 300000)) {
+    isConfigMode = false;
+    DBG_PRINTLN("CONFIG MODE: AUTO OFF (5m Timeout)");
+    if (!isFetching) { WiFi.disconnect(true); WiFi.mode(WIFI_OFF); }
+    updateUI(); // Hides asterisk
+  }
+
   checkButtons();
   if (brightnessLevel > 0) {
     checkTouch();
@@ -712,6 +720,7 @@ void loop() {
            isConfigMode = !isConfigMode;
            DBG_PRINTLN(isConfigMode ? "CONFIG MODE: ON" : "CONFIG MODE: OFF");
            if (isConfigMode) {
+             configModeStartTime = millis();
              if (WiFi.status() != WL_CONNECTED) connectWiFi();
            } else {
              if (!isFetching) { WiFi.disconnect(true); WiFi.mode(WIFI_OFF); }
@@ -2319,7 +2328,7 @@ void drawStatusBar() {
   // Available in online mode only, with no placeholder gap when inactive
   bool showSpinner = isFetching && !offlineMode;
   if (showSpinner) {
-    gfx->setTextColor(YELLOW);
+    gfx->setTextColor(ORANGE);
     const char spinnerFrames[] = {'|', '/', '-', '\\'};
     char spinnerChar = spinnerFrames[(millis() / 150) % 4];
     int spinnerX = isTimerMode ? 85 : 90;
@@ -2373,20 +2382,30 @@ void drawStatusBar() {
     bool showBat = true;
     
     if (currentBatteryPct <= 5) {
-      batColor = RED;
+      if (!debugMode) {
+        batColor = textColor; // B/W only for icon
+      } else {
+        batColor = RED; // Keep red for text in debug mode
+      }
       if ((millis() / 500) % 2 != 0) {
         showBat = false;
       }
     }
     
-    char batStr[32];
+    int indicatorWidth = 0;
+    char batStr[32] = "";
+    
     if (debugMode) {
       sprintf(batStr, "%d%% (%.2fV)", currentBatteryPct, currentBatteryVoltage);
+      int16_t x1, y1;
+      uint16_t w, h;
+      gfx->getTextBounds(batStr, 0, 0, &x1, &y1, &w, &h);
+      indicatorWidth = w;
     } else {
-      sprintf(batStr, "%d%%", currentBatteryPct);
+      indicatorWidth = 31; // 28px body + 3px nub
     }
-    int strWidth = strlen(batStr) * 12;
-    cursorX = 625 - strWidth;
+    
+    cursorX = (640 - 15) - indicatorWidth;
     
     int batLeftX = (wasUSBPlugged && !pwrBtn.pressed) ? (cursorX - 15) : cursorX;
     if (isConfigMode) batLeftX -= 15;
@@ -2400,8 +2419,32 @@ void drawStatusBar() {
 
     if (showBat) {
       gfx->setTextColor(batColor);
-      gfx->setCursor(cursorX, 7);
-      gfx->print(batStr);
+      
+      if (debugMode) {
+        gfx->setCursor(cursorX, 7);
+        gfx->print(batStr);
+      } else {
+        // Draw Battery Icon
+        int batY = 7;
+        
+        // Body (28x16)
+        gfx->drawRect(cursorX, batY, 28, 16, batColor);
+        // Nub (3x8, solid attached to right)
+        gfx->fillRect(cursorX + 28, batY + 4, 3, 8, batColor);
+        
+        // Determine number of sections
+        int sections = 0;
+        if (currentBatteryPct >= 80) sections = 5;
+        else if (currentBatteryPct >= 60) sections = 4;
+        else if (currentBatteryPct >= 40) sections = 3;
+        else if (currentBatteryPct >= 20) sections = 2;
+        else if (currentBatteryPct >= 6) sections = 1;
+        
+        // Draw sections
+        for (int i = 0; i < sections; i++) {
+          gfx->fillRect(cursorX + 2 + i * 5, batY + 2, 4, 12, batColor);
+        }
+      }
       
       int currentLeftX = cursorX;
       if (wasUSBPlugged && !pwrBtn.pressed) {
@@ -2428,7 +2471,7 @@ void drawStatusBar() {
   }
   
   // Bottom line
-  gfx->drawFastHLine(0, 32, 640, GRAY);
+  gfx->drawFastHLine(0, 30, 640, GRAY);
 }
 
 void toggleTheme() {

@@ -1053,6 +1053,7 @@
         let isConnected = false;
         let keepReading = false;
         let readBuffer = "";
+        let isBrandNewDevice = false;
 
         // DOM Elements
         const terminalEl = document.getElementById("terminal-log");
@@ -1131,6 +1132,7 @@
 
             try {
                 clearLog();
+                isBrandNewDevice = false;
                 log("Prompting user to select USB Serial Port...", "var(--accent-blue)");
                 port = await navigator.serial.requestPort();
                 log("Port selected! Opening serial link...");
@@ -1159,7 +1161,11 @@
 
                 // Try to auto-retrieve config upon connecting to save a click
                 setTimeout(() => {
-                    retrieveConfig();
+                    if (!isBrandNewDevice) {
+                        retrieveConfig();
+                    } else {
+                        log("Skipping automatic config request for brand new device.", "var(--text-secondary)");
+                    }
                 }, 800);
 
             } catch (err) {
@@ -1253,6 +1259,15 @@
                             lineAccumulator = lineAccumulator.substring(newlineIndex + 1);
 
                             const trimmedLine = line.trim();
+                            
+                            if (trimmedLine.includes("invalid header") || trimmedLine.includes("flash read err") || trimmedLine.includes("No bootable app")) {
+                                if (!isBrandNewDevice) {
+                                    isBrandNewDevice = true;
+                                    log("Brand new device detected (partitions not set)! Defaulting to Full Firmware flash.", "var(--accent-yellow)");
+                                    document.getElementById("firmware-mode-select").value = "bundled-full";
+                                }
+                            }
+
                             // Do NOT print configuration JSON, EOF markers, or command queries to the visible log
                             if (
                                 (trimmedLine.startsWith("{") && trimmedLine.endsWith("}")) ||
@@ -1379,12 +1394,6 @@
 
             const primarySsid = document.getElementById("wifi-primary-ssid").value.trim();
             const primaryPass = document.getElementById("wifi-primary-pass").value.trim();
-
-            if (!primarySsid || !primaryPass) {
-                SoundEffects.warning();
-                alert("Primary Wi-Fi SSID and Password are required to run the device!");
-                return;
-            }
 
             log("Generating new JSON configuration payload...");
 

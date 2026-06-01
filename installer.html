@@ -1546,28 +1546,39 @@
             }
 
             const mode = document.getElementById("firmware-mode-select").value;
-            let firmwareBinData = null;
+            let filesToFlash = [];
             let firmwareFileName = "sugarota.ino.bin";
 
             if (mode === "bundled") {
-                log("Fetching bundled latest firmware binary file (sugarota.ino.bin)...", "var(--accent-blue)");
+                log("Fetching bundled firmware partitions for a full flash...", "var(--accent-blue)");
                 try {
-                    let response;
-                    try {
-                        response = await fetch("build/esp32.esp32.esp32s3/sugarota.ino.bin");
-                        if (!response.ok) throw new Error("Direct path not found");
-                    } catch (e) {
-                        response = await fetch("build/esp32.esp32.esp32s3/Sugarota/sugarota.ino.bin");
-                    }
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                    const arrayBuffer = await response.arrayBuffer();
-                    firmwareBinData = new Uint8Array(arrayBuffer);
-                    firmwareFileName = "sugarota.ino.bin";
-                    log("Bundled latest firmware downloaded successfully! Size: " + firmwareBinData.length + " bytes.", "var(--accent-green)");
+                    const fetchBin = async (name) => {
+                        let response = await fetch(`build/esp32.esp32.esp32s3/${name}`);
+                        if (!response.ok) {
+                            response = await fetch(`build/esp32.esp32.esp32s3/Sugarota/${name}`);
+                        }
+                        if (!response.ok) throw new Error(`HTTP ${response.status} for ${name}`);
+                        return new Uint8Array(await response.arrayBuffer());
+                    };
+
+                    const bootloaderData = await fetchBin("sugarota.ino.bootloader.bin");
+                    const partitionsData = await fetchBin("sugarota.ino.partitions.bin");
+                    const bootApp0Data = await fetchBin("boot_app0.bin");
+                    const appData = await fetchBin("sugarota.ino.bin");
+                    
+                    filesToFlash = [
+                        { data: bootloaderData, address: 0x0 },
+                        { data: partitionsData, address: 0x8000 },
+                        { data: bootApp0Data, address: 0xe000 },
+                        { data: appData, address: 0x10000 }
+                    ];
+                    
+                    firmwareFileName = "Full Sugarota Firmware (4 Partitions)";
+                    log("All bundled firmware partitions downloaded successfully!", "var(--accent-green)");
                 } catch (err) {
                     SoundEffects.warning();
-                    log(`Failed to fetch latest firmware file: ${err.message}. If running locally, make sure you are running a Python/http server inside the workspace folder!`, "var(--accent-red)");
-                    alert("Could not load bundled sugarota.ino.bin. Check terminal logs.");
+                    log(`Failed to fetch firmware partitions: ${err.message}.`, "var(--accent-red)");
+                    alert("Could not load bundled firmware. Check terminal logs.");
                     return;
                 }
             } else {
@@ -1576,7 +1587,9 @@
                     alert("Please upload a custom firmware.bin file to upload!");
                     return;
                 }
-                firmwareBinData = customFirmwareData;
+                filesToFlash = [
+                    { data: customFirmwareData, address: 0x10000 }
+                ];
                 firmwareFileName = customFileInput.files[0] ? customFileInput.files[0].name : "custom_firmware.bin";
             }
 
@@ -1638,9 +1651,7 @@
                 metricChip.innerText = esploader.chipName;
 
                 // Prepare files array
-                const files = [
-                    { data: firmwareBinData, address: 0x10000 } // Flash main app partition at 0x10000
-                ];
+                const files = filesToFlash;
 
                 log("Starting direct image flashing partition block write...", "var(--accent-blue)");
                 const flashOptions = {

@@ -1554,10 +1554,10 @@
                 try {
                     let response;
                     try {
-                        response = await fetch("/build/esp32.esp32.esp32s3/sugarota.ino.bin");
+                        response = await fetch("build/esp32.esp32.esp32s3/sugarota.ino.bin");
                         if (!response.ok) throw new Error("Direct path not found");
                     } catch (e) {
-                        response = await fetch("/build/esp32.esp32.esp32s3/Sugarota/sugarota.ino.bin");
+                        response = await fetch("build/esp32.esp32.esp32s3/Sugarota/sugarota.ino.bin");
                     }
                     if (!response.ok) throw new Error(`HTTP ${response.status}`);
                     const arrayBuffer = await response.arrayBuffer();

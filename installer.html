@@ -706,7 +706,8 @@
                 <div class="form-group">
                     <label>Firmware Image Selection</label>
                     <select id="firmware-mode-select" onchange="toggleFirmwareMode()">
-                        <option value="bundled">Bundled Latest Firmware (sugarota.ino.bin)</option>
+                        <option value="bundled-full">Bundled Full Firmware (Brand New Device)</option>
+                        <option value="bundled">Bundled Update Only (sugarota.ino.bin)</option>
                         <option value="custom">Upload Custom Binary File (.bin)</option>
                     </select>
                 </div>
@@ -1549,8 +1550,8 @@
             let filesToFlash = [];
             let firmwareFileName = "sugarota.ino.bin";
 
-            if (mode === "bundled") {
-                log("Fetching bundled firmware partitions for a full flash...", "var(--accent-blue)");
+            if (mode === "bundled" || mode === "bundled-full") {
+                log(mode === "bundled-full" ? "Fetching bundled firmware partitions for a full flash..." : "Fetching main firmware for OTA update...", "var(--accent-blue)");
                 try {
                     const fetchBin = async (name) => {
                         let response = await fetch(`build/esp32.esp32.esp32s3/${name}`);
@@ -1561,20 +1562,29 @@
                         return new Uint8Array(await response.arrayBuffer());
                     };
 
-                    const bootloaderData = await fetchBin("sugarota.ino.bootloader.bin");
-                    const partitionsData = await fetchBin("sugarota.ino.partitions.bin");
-                    const bootApp0Data = await fetchBin("boot_app0.bin");
                     const appData = await fetchBin("sugarota.ino.bin");
-                    
-                    filesToFlash = [
-                        { data: bootloaderData, address: 0x0 },
-                        { data: partitionsData, address: 0x8000 },
-                        { data: bootApp0Data, address: 0xe000 },
-                        { data: appData, address: 0x10000 }
-                    ];
-                    
-                    firmwareFileName = "Full Sugarota Firmware (4 Partitions)";
-                    log("All bundled firmware partitions downloaded successfully!", "var(--accent-green)");
+
+                    if (mode === "bundled-full") {
+                        const bootloaderData = await fetchBin("sugarota.ino.bootloader.bin");
+                        const partitionsData = await fetchBin("sugarota.ino.partitions.bin");
+                        const bootApp0Data = await fetchBin("boot_app0.bin");
+                        
+                        filesToFlash = [
+                            { data: bootloaderData, address: 0x0 },
+                            { data: partitionsData, address: 0x8000 },
+                            { data: bootApp0Data, address: 0xe000 },
+                            { data: appData, address: 0x10000 }
+                        ];
+                        
+                        firmwareFileName = "Full Sugarota Firmware (4 Partitions)";
+                        log("All bundled firmware partitions downloaded successfully!", "var(--accent-green)");
+                    } else {
+                        filesToFlash = [
+                            { data: appData, address: 0x10000 }
+                        ];
+                        firmwareFileName = "Sugarota Main Application (OTA Update)";
+                        log("Main firmware application downloaded successfully!", "var(--accent-green)");
+                    }
                 } catch (err) {
                     SoundEffects.warning();
                     log(`Failed to fetch firmware partitions: ${err.message}.`, "var(--accent-red)");

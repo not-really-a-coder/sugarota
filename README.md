@@ -17,10 +17,11 @@ See [CHANGELOG](CHANGELOG.md) for latest build updates.
 1. Buy the Waveshare ESP32-S3-Touch-LCD-3.49 on manufacturer's website or AliExpress.
 2. Go to the installation page: https://not-really-a-coder.github.io/sugarota/installer.html
 3. Connect the device to your computer using USB-C cable, click "Connect USB device", and select the port.
-4. Enter Wi-Fi credentials and CGM Data Provider details.
-5. Click "Start Flashing Firmware". The device will automatically restart once the firmware is flashed.
+4. The installer will automatically detect a blank device and prepare a **Full Install**. Click "Start Flashing Firmware".
+5. Once flashed, the device will boot. Shake the device vigorously to enter **Config Mode**.
+6. Scan the QR code displayed on the screen (or navigate to `http://sugarota.local` / the displayed IP) from your smartphone to securely configure your Wi-Fi and CGM credentials wirelessly!
 
-All entered credentials and settings are saved ONLY on the device during flashing. Nothing is being saved or stored on the local or remote host by the author of this software.
+All entered credentials and settings are saved ONLY on the device. Nothing is being saved or stored on the local or remote host by the author of this software.
 
 ### Local installation
 
@@ -32,11 +33,11 @@ The local setup center requires **zero external python packages** (no `requireme
     python run_installer.py
     ```
 2.  **Access the Dashboard**:
-    Open your browser to: **[http://localhost:8000/installer.html](http://localhost:8000/installer.html)**
+    Open your browser to: **[http://localhost:8123/installer.html](http://localhost:8123/installer.html)**
 3.  **Flash & Configure**:
     *   Connect your ESP32-S3 screen via USB-C.
-    *   Select **Bundled Latest Firmware** and click **Start Flashing**.
-    *   Once flashed, use the **Device Configuration** forms to set up Wi-Fi, timezones, and CGM credentials, then apply them instantly over the serial channel.
+    *   The installer will auto-detect a new device and select **Full Install**. Click **Start Flashing Firmware**.
+    *   Once flashed, shake the device to enter wireless Config Mode and scan the QR code to set up Wi-Fi and CGM credentials.
 
 ---
 
@@ -51,15 +52,15 @@ python run_installer.py --no-browser
 ```
 
 ### 2. Browser HTTPS Secure Context Requirement (CRITICAL)
-Modern browsers (Chrome, Edge, Opera) restrict the **WebSerial API** strictly to **Secure Contexts (HTTPS)** when accessed over a network. If you access the server remotely via an insecure HTTP address (e.g., `http://your-vps-ip:8000/installer.html`), the **Connect/Flash buttons will be disabled** by your browser.
+Modern browsers (Chrome, Edge, Opera) restrict the **WebSerial API** strictly to **Secure Contexts (HTTPS)** when accessed over a network. If you access the server remotely via an insecure HTTP address (e.g., `http://your-vps-ip:8123/installer.html`), the **Connect/Flash buttons will be disabled** by your browser.
 
 You can solve this elegantly in two ways:
 *   **Method A: SSH Tunneling (Recommended & Easiest)**
     Instead of dealing with domains and SSL certificates for a private setup utility, tunnel the port securely to your local machine:
     ```bash
-    ssh -L 8000:localhost:8000 user@your-vps-ip
+    ssh -L 8123:localhost:8123 user@your-vps-ip
     ```
-    Once connected, navigate to **`http://localhost:8000/installer.html`** in your local browser. Because it is mapped to `localhost`, the browser grants full WebSerial access natively!
+    Once connected, navigate to **`http://localhost:8123/installer.html`** in your local browser. Because it is mapped to `localhost`, the browser grants full WebSerial access natively!
 *   **Method B: Reverse Proxy**
     Put the server behind Nginx/Apache and secure it with a free SSL certificate from **Let's Encrypt** (Certbot).
 
@@ -82,6 +83,7 @@ Install these libraries via the Arduino IDE Library Manager:
 *   **ArduinoJson** (v6.x or v7.x) — For serial communication and settings parsing.
 *   **Arduino_GFX_Library** — High-performance graphics and LCD screen drivers.
 *   **SensorQMI8658** — Driver for the onboard IMU/Accelerometer sensor.
+*   **qrcode** (by Richard Moore) — For rendering the on-device configuration QR code.
 
 ### 3. Bundled Hardware Libraries
 All internal board support files (codec configurations, TCA9554 IO expanders) are pre-packaged inside the [src/](src/) directory of this repository and require **no** manual installation.

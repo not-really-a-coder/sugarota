@@ -2,6 +2,23 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.06.02.2] — Web Installer and Hotspot Connectivity (2026-06-02)
+
+This release focuses on improving the initial device flashing experience and ensuring reliable wireless configuration on restrictive networks like Android mobile hotspots.
+
+### Installation & Configuration
+
+- Separated OTA Update from Full Install in the web installer interface
+- Web installer automatically detects blank devices via serial output and defaults to full flash installation
+- Removed mandatory validation for Wi-Fi credentials in the web configurator
+- Web installer now reliably fetches firmware files across local and GitHub Pages hosting environments
+- Changed default port of local web server for installer from 8000 to 8123 to avoid conflicts with other applications
+
+### Interface
+
+- Added device IP address display on the screen when Config Mode is active
+- Added a dynamically generated QR Code to the screen during Config Mode for instant mobile connection (zoom in with smartphone camera to read)
+
 ## [v0.05.24.8] — Battery Icon and UI Tweaks (2026-05-24)
 
 This release focuses on improving the battery level visibility with a new graphical icon, as well as minor UI adjustments to the status bar and config mode timeout.

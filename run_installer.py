@@ -8,9 +8,13 @@ import os
 import shutil
 import json
 
-PORT = 8000
+PORT = 8123
 
 class QuietHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+    def address_string(self):
+        # Disable slow reverse DNS lookups on Windows that cause hangs and ERR_EMPTY_RESPONSE
+        return self.client_address[0]
+
     def log_message(self, format, *args):
         # Keep the terminal output clean and readable
         sys.stdout.write(f"[HTTP] {self.address_string()} - {format%args}\n")
@@ -48,22 +52,28 @@ class QuietHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
 
 def start_server():
-    
+    global PORT
     handler = QuietHTTPRequestHandler
+    
     # Allow port reuse immediately to prevent "Address already in use" errors
     socketserver.ThreadingTCPServer.allow_reuse_address = True
     
-    with socketserver.ThreadingTCPServer(("", PORT), handler) as httpd:
-        print(f"\n[SERVER] SUGAROTA LOCAL WEB SERVER STARTED!")
-        print(f"==================================================")
-        print(f"[URL] Local Web URL: http://localhost:{PORT}/installer.html")
-        print(f"[DIR] Served from: current directory")
-        print(f"==================================================")
-        print(f"Press Ctrl+C in this terminal window to stop the server.\n")
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\nShutting down server...")
+    try:
+        httpd = socketserver.ThreadingTCPServer(("127.0.0.1", PORT), handler)
+    except OSError as e:
+        print(f"[SERVER ERROR] Port {PORT} is in use or unavailable. Please free it up.")
+        sys.exit(1)
+
+    print(f"\n[SERVER] SUGAROTA LOCAL WEB SERVER STARTED!")
+    print(f"==================================================")
+    print(f"[URL] Local Web URL: http://localhost:{PORT}/installer.html")
+    print(f"[DIR] Served from: current directory")
+    print(f"==================================================")
+    print(f"Press Ctrl+C in this terminal window to stop the server.\n")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down server...")
 
 def open_browser():
     time.sleep(0.5)

@@ -761,7 +761,9 @@
                     </svg>
                     Device Configuration
                 </h2>
-                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: -12px; margin-bottom: 20px; opacity: 0.85;">* - Required fields</p>
+                <p
+                    style="font-size: 0.85rem; color: var(--text-secondary); margin-top: -12px; margin-bottom: 20px; opacity: 0.85;">
+                    * - Required fields</p>
 
                 <div class="btn-row">
                     <button class="btn btn-green" id="btn-read-config" disabled>
@@ -792,11 +794,11 @@
                         <div class="accordion-content" id="wifi-content">
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label>Primary Wi-Fi SSID*</label>
+                                    <label>Primary Wi-Fi SSID</label>
                                     <input type="text" id="wifi-primary-ssid" required placeholder="My Home Network">
                                 </div>
                                 <div class="form-group">
-                                    <label>Primary Wi-Fi Password*</label>
+                                    <label>Primary Wi-Fi Password</label>
                                     <div class="password-wrapper">
                                         <input type="password" id="wifi-primary-pass" required
                                             placeholder="••••••••••••••••">
@@ -1259,7 +1261,7 @@
                             lineAccumulator = lineAccumulator.substring(newlineIndex + 1);
 
                             const trimmedLine = line.trim();
-                            
+
                             if (trimmedLine.includes("invalid header") || trimmedLine.includes("flash read err") || trimmedLine.includes("No bootable app")) {
                                 if (!isBrandNewDevice) {
                                     isBrandNewDevice = true;
@@ -1577,14 +1579,14 @@
                         const bootloaderData = await fetchBin("sugarota.ino.bootloader.bin");
                         const partitionsData = await fetchBin("sugarota.ino.partitions.bin");
                         const bootApp0Data = await fetchBin("boot_app0.bin");
-                        
+
                         filesToFlash = [
                             { data: bootloaderData, address: 0x0 },
                             { data: partitionsData, address: 0x8000 },
                             { data: bootApp0Data, address: 0xe000 },
                             { data: appData, address: 0x10000 }
                         ];
-                        
+
                         firmwareFileName = "Full Sugarota Firmware (4 Partitions)";
                         log("All bundled firmware partitions downloaded successfully!", "var(--accent-green)");
                     } else {

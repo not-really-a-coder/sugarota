@@ -1,4 +1,4 @@
-#define SUGAROTA_VERSION "v0.05.24.8"
+#define SUGAROTA_VERSION "v0.06.02.2"
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -15,7 +15,7 @@
 #include "src/codec_board/codec_init.h"
 #include <WebServer.h>
 #include <ESPmDNS.h>
-
+#include "qrcode.h"
 esp_codec_dev_handle_t playback = NULL;
 WebServer server(80);
 bool isConfigMode = false;
@@ -722,6 +722,12 @@ void loop() {
            if (isConfigMode) {
              configModeStartTime = millis();
              if (WiFi.status() != WL_CONNECTED) connectWiFi();
+             
+             // Restart mDNS to broadcast on the new interface/IP address (crucial for Hotspots)
+             MDNS.end();
+             if (MDNS.begin("sugarota")) {
+               MDNS.addService("http", "tcp", 80);
+             }
            } else {
              if (!isFetching) { WiFi.disconnect(true); WiFi.mode(WIFI_OFF); }
            }
@@ -2458,6 +2464,46 @@ void drawStatusBar() {
         gfx->setTextColor(ORANGE);
         gfx->setCursor(currentLeftX, 7);
         gfx->print("*");
+        
+        // Print IP address in the middle of the status bar so users can connect if mDNS fails on Hotspots
+        String ipMsg;
+        if (WiFi.status() == WL_CONNECTED) {
+          ipMsg = "IP: " + WiFi.localIP().toString();
+        } else {
+          ipMsg = "IP: Connecting...";
+        }
+        int16_t x1, y1;
+        uint16_t w, h;
+        gfx->getTextBounds(ipMsg.c_str(), 0, 0, &x1, &y1, &w, &h);
+        
+        int textX = (640 - w) / 2;
+        gfx->setCursor(textX, 7);
+        gfx->print(ipMsg);
+        
+        // Draw small QR Code if connected
+        if (WiFi.status() == WL_CONNECTED) {
+          String url = "http://" + WiFi.localIP().toString();
+          
+          QRCode qrcode;
+          uint8_t qrcodeData[qrcode_getBufferSize(2)];
+          qrcode_initText(&qrcode, qrcodeData, 2, 0, url.c_str());
+          
+          int qrSize = qrcode.size; // Should be 25 for version 2
+          int qrX = textX + w + 10; // Place to the right of the IP text
+          int qrY = 2; // Center in the 30px height header
+          
+          // Draw white background
+          gfx->fillRect(qrX - 2, qrY - 2, qrSize + 4, qrSize + 4, WHITE);
+          
+          // Draw modules
+          for (uint8_t y = 0; y < qrSize; y++) {
+            for (uint8_t x = 0; x < qrSize; x++) {
+              if (qrcode_getModule(&qrcode, x, y)) {
+                gfx->drawPixel(qrX + x, qrY + y, BLACK);
+              }
+            }
+          }
+        }
       }
       gfx->setTextColor(textColor); // Restore standard text color
     }

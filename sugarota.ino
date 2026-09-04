@@ -1,4 +1,4 @@
-#define SUGAROTA_VERSION "v0.06.02.2"
+#define SUGAROTA_VERSION "v0.09.04.0"
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -10,7 +10,9 @@
 #include <SensorQMI8658.hpp>
 #include <SensorPCF85063.hpp>
 #include <LittleFS.h>
-#include <esp_partition.h>
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 #include "src/codec_board/codec_board.h"
 #include "src/codec_board/codec_init.h"
 #include <WebServer.h>
@@ -57,6 +59,10 @@ String dexSessionId    = "";
 enum Provider { PROVIDER_NIGHTSCOUT, PROVIDER_DEXCOM };
 Provider currentProvider = PROVIDER_DEXCOM;
 
+enum BGUnits { UNIT_MGDL, UNIT_MMOLL };
+BGUnits bgUnits = UNIT_MGDL;
+inline const char* getBGUnitsStr() { return (bgUnits == UNIT_MMOLL) ? "mmol/L" : "mg/dL"; }
+
 String ntpServer       = "pool.ntp.org";
 long gmtOffset_sec     = 0;
 int daylightOffset_sec = 0;
@@ -66,7 +72,6 @@ int daylightOffset_sec = 0;
 #define PIN_PWR_BTN    16 // Power button
 #define PIN_BOOT_BTN   0  // Boot button
 #define PIN_BAT_ADC    4  // Battery ADC
-#define PIN_BUZZER     15 // Buzzer output pin
 
 // I2C Pins for TCA9554 (Power control)
 #define I2C_SDA        47
@@ -91,7 +96,7 @@ bool offlineMode = false;
 
 // UI State
 bool isDarkTheme = true;
-int brightnessLevel = 128; // 0-255
+int brightnessLevel = 76; // 0-255
 unsigned long lastUiUpdate = 0;
 
 // GFX Objects
@@ -109,7 +114,29 @@ struct ButtonState {
 ButtonState pwrBtn = {PIN_PWR_BTN, false, 0, false};
 ButtonState bootBtn = {PIN_BOOT_BTN, false, 0, false};
 
-// Battery Tracking
+// Battery Tracking & Hardware ADC Calibration
+static adc_oneshot_unit_handle_t adc1_handle = NULL;
+static adc_cali_handle_t adc1_cali_handle = NULL;
+static bool adc1_calibrated = false;
+
+float readBatteryVoltageSingle() {
+  if (!adc1_handle) {
+    // Fallback if ADC uninitialized
+    return (analogReadMilliVolts(PIN_BAT_ADC) * 3.0) / 1000.0;
+  }
+  int raw_data = 0;
+  esp_err_t err = adc_oneshot_read(adc1_handle, ADC_CHANNEL_3, &raw_data);
+  if (err != ESP_OK) {
+    return 0.0f;
+  }
+  if (adc1_calibrated && adc1_cali_handle) {
+    int voltage_mv = 0;
+    adc_cali_raw_to_voltage(adc1_cali_handle, raw_data, &voltage_mv);
+    return (0.001f * voltage_mv * 3.0f);
+  }
+  return ((float)raw_data * 3.3f / 4096.0f) * 3.0f;
+}
+
 float voltageHistory[60];
 int voltageIndex = 0;
 bool historyFilled = false;
@@ -123,7 +150,6 @@ float preSpikeVoltage = 0.0;
 unsigned long usbLowStartTime = 0;
 unsigned long usbHighStartTime = 0;
 unsigned long lastUSBUnplugTime = 0;
-String bgUnits = "mg/dL";
 bool isShowingUnitDialog = false;
 unsigned long lastTouchStartTime = 0;
 bool isLongTapping = false;
@@ -150,8 +176,11 @@ String formatDelta(int delta);
 #define MAX_HISTORY 48
 BGReading bgHistory[MAX_HISTORY];
 int historyCount = 0;
+bool historyDirty = false;
+unsigned long lastHistorySaveTime = 0;
 unsigned long lastDataFetch = 0;
 const unsigned long FETCH_INTERVAL = 60000; // 1 minute
+const unsigned long HISTORY_SAVE_INTERVAL = 1800000; // 30 minutes to reduce flash wear
 
 // Function Declarations
 void powerOffDevice();
@@ -396,7 +425,9 @@ void handleSaveConfig() {
   nsUrl = server.arg("ns_url"); nsSecret = server.arg("ns_secret");
   dexUser = server.arg("dex_user"); dexPass = server.arg("dex_pass"); dexServer = server.arg("dex_server");
   
-  if (server.hasArg("units")) bgUnits = server.arg("units");
+  if (server.hasArg("units")) {
+    bgUnits = (server.arg("units") == "mmol/L") ? UNIT_MMOLL : UNIT_MGDL;
+  }
   
   ntpServer = server.arg("ntp");
   gmtOffset_sec = server.arg("gmt_offset").toInt() * 60;
@@ -484,19 +515,44 @@ void setup() {
   initUI();
   setBrightness(brightnessLevel);
 
-  // 3. Initialize Buttons
+  // 3. Initialize Buttons & Calibrated Battery ADC
   pinMode(PIN_PWR_BTN, INPUT_PULLUP);
   pinMode(PIN_BOOT_BTN, INPUT_PULLUP);
+
+  // Initialize ESP-IDF Calibrated ADC for accurate battery readings
+  adc_oneshot_unit_init_cfg_t init_config1 = {};
+  init_config1.unit_id = ADC_UNIT_1;
+  if (adc_oneshot_new_unit(&init_config1, &adc1_handle) == ESP_OK) {
+    adc_oneshot_chan_cfg_t config = {};
+    config.atten = ADC_ATTEN_DB_12;
+    config.bitwidth = ADC_BITWIDTH_12;
+    adc_oneshot_config_channel(adc1_handle, ADC_CHANNEL_3, &config);
+
+    adc_cali_curve_fitting_config_t cali_config = {};
+    cali_config.unit_id = ADC_UNIT_1;
+    cali_config.atten = ADC_ATTEN_DB_12;
+    cali_config.bitwidth = ADC_BITWIDTH_12;
+    if (adc_cali_create_scheme_curve_fitting(&cali_config, &adc1_cali_handle) == ESP_OK) {
+      adc1_calibrated = true;
+      DBG_PRINTLN("ADC: Factory curve-fitting calibration initialized successfully.");
+    } else {
+      adc1_calibrated = false;
+      DBG_PRINTLN("ADC: Warning - calibration scheme creation failed, falling back to uncalibrated math.");
+    }
+  }
 
   // Init battery history
   for(int i=0; i<60; i++) voltageHistory[i] = 0;
   updateBattery(digitalRead(PIN_PWR_BTN) == LOW);
   
   char batMsg[40];
-  sprintf(batMsg, "Battery: %.2fV (%d%%)", currentBatteryVoltage, currentBatteryPct);
+  snprintf(batMsg, sizeof(batMsg), "Battery: %.2fV (%d%%)", currentBatteryVoltage, currentBatteryPct);
 
   // 4. Initial Hardware Checks
   logBoot("Initializing FS...");
+  if (!LittleFS.begin(true, "/littlefs", 10, "ffat")) {
+    logBoot("FS Mount Failed!");
+  }
   loadConfig();
   // Configure system timezone offset so getLocalTime() works offline/immediately
   configTime(gmtOffset_sec, daylightOffset_sec, "");
@@ -774,12 +830,12 @@ void loop() {
   bool pinLow = (digitalRead(PIN_PWR_BTN) == LOW);
   bool currentUSB = wasUSBPlugged; // Default to last known state
   
-  // Average 4 ADC readings to smooth out ESP32 ADC noise and prevent false voltage spikes
-  float instantV_raw = 0;
+  // Average 4 calibrated ADC readings to smooth out noise and prevent false voltage spikes
+  float instantV_sum = 0;
   for (int i=0; i<4; i++) {
-    instantV_raw += analogReadMilliVolts(PIN_BAT_ADC);
+    instantV_sum += readBatteryVoltageSingle();
   }
-  float instantV = (instantV_raw / 4.0) * 3.0 / 1000.0;
+  float instantV = instantV_sum / 4.0;
   
   if (pinLow) {
     usbHighStartTime = 0; // Reset unplug debounce timer
@@ -826,6 +882,11 @@ void loop() {
   // Periodic data fetch every minute
   if (!offlineMode && (millis() - lastDataFetch >= FETCH_INTERVAL)) {
     fetchData();
+  }
+
+  // Periodic deferred flash write for history cache (reduces flash wear)
+  if (historyDirty && (millis() - lastHistorySaveTime >= HISTORY_SAVE_INTERVAL)) {
+    saveHistoryToCache();
   }
 
   if (isConfigMode) {
@@ -1075,12 +1136,8 @@ void checkButton(ButtonState &btn, const char* name) {
         if (duration >= 1500) {
           Serial.printf("%s Button: LONG Press detected (Hold >= 1.5s)\n", name);
           btn.handled = true;
-          if (!offlineMode) {
-            DBG_PRINTLN("ACTION: Force Data Refresh");
-            fetchData();
-          } else {
-            DBG_PRINTLN("ACTION: Force Data Refresh (Disabled in Offline Mode)");
-          }
+          DBG_PRINTLN("ACTION: Toggle Theme");
+          toggleTheme();
         }
       }
     }
@@ -1110,7 +1167,12 @@ void checkButton(ButtonState &btn, const char* name) {
       } else if (btn.pin == PIN_BOOT_BTN) {
         if (duration > 50 && duration < 1500) {
           Serial.printf("%s Button: SHORT Press detected (Release)\n", name);
-          toggleTheme();
+          if (!offlineMode) {
+            DBG_PRINTLN("ACTION: Force Data Refresh");
+            fetchData();
+          } else {
+            DBG_PRINTLN("ACTION: Force Data Refresh (Disabled in Offline Mode)");
+          }
         }
       }
     }
@@ -1132,9 +1194,8 @@ void fillVoltageHistory(float voltage) {
 
 void updateBattery(bool isUSBPlugged) {
 
-  // Use analogReadMilliVolts for accurate factory-calibrated ADC measurement.
-  // Multiply by 3 for the voltage divider.
-  float currentV = analogReadMilliVolts(PIN_BAT_ADC) * 3.0 / 1000.0; 
+  // Use ESP-IDF factory curve-fitting calibrated ADC measurement (with board voltage divider)
+  float currentV = readBatteryVoltageSingle(); 
 
   // Detect USB state transitions
   if (isUSBPlugged && !wasUSBPlugged) {
@@ -1319,7 +1380,7 @@ void fetchData() {
 }
 
 void parseResponse(const String& payload) {
-  DynamicJsonDocument doc(8192);
+  JsonDocument doc;
   DeserializationError error = deserializeJson(doc, payload);
   
   if (error) {
@@ -1364,7 +1425,7 @@ void parseResponse(const String& payload) {
   }
   
   if (historyCount > 0) {
-    saveHistoryToCache();
+    historyDirty = true; // Mark cache dirty; flash write deferred to reduce wear
     time_t rawtime = (time_t)bgHistory[0].timestamp;
     struct tm * ti = localtime(&rawtime);
     DBG_PRINTF("Success: %d readings. Latest SGV: %d (%s, delta: %+d) at %02d:%02d\n", 
@@ -1382,20 +1443,18 @@ void parseResponse(const String& payload) {
 }
 
 void saveHistoryToCache() {
-  if (!LittleFS.begin(true, "/littlefs", 10, "ffat")) return;
+  if (!historyDirty && LittleFS.exists("/history.dat")) return;
   File f = LittleFS.open("/history.dat", "w");
   if (!f) return;
   f.write((uint8_t*)&historyCount, sizeof(historyCount));
   f.write((uint8_t*)bgHistory, sizeof(BGReading) * historyCount);
   f.close();
-  DBG_PRINTF("Cache: Saved %d readings\n", historyCount);
+  historyDirty = false;
+  lastHistorySaveTime = millis();
+  DBG_PRINTF("Cache: Saved %d readings to flash\n", historyCount);
 }
 
 void loadHistoryFromCache() {
-  if (!LittleFS.begin(true, "/littlefs", 10, "ffat")) {
-    DBG_PRINTLN("Cache: FS Mount Failed");
-    return;
-  }
   if (!LittleFS.exists("/history.dat")) {
     DBG_PRINTLN("Cache: No history file");
     return;
@@ -1406,23 +1465,14 @@ void loadHistoryFromCache() {
   if (historyCount > MAX_HISTORY) historyCount = MAX_HISTORY;
   f.read((uint8_t*)bgHistory, sizeof(BGReading) * historyCount);
   f.close();
+  historyDirty = false;
+  lastHistorySaveTime = millis();
   DBG_PRINTF("Cache: Loaded %d readings\n", historyCount);
 
   // Built-in system clock is initialized from external hardware RTC or NTP
 }
 
-// Disabled filesystem tools removed (obsolete/unused)
-
 void loadConfig() {
-  // printPartitionTable(); // Uncomment to debug FS
-  
-  if (!LittleFS.begin(true, "/littlefs", 10, "ffat")) {
-    DBG_PRINTLN("Config: FS Mount Failed");
-    return;
-  }
-
-  // listDir("/", 1); // Uncomment to debug FS
-
   if (!LittleFS.exists("/config.json")) {
     DBG_PRINTLN("Config: File not found. Creating default...");
     saveConfig(); // Create default file
@@ -1435,7 +1485,7 @@ void loadConfig() {
     return;
   }
   
-  DynamicJsonDocument doc(2048);
+  JsonDocument doc;
   DeserializationError error = deserializeJson(doc, f);
   f.close();
   
@@ -1447,7 +1497,6 @@ void loadConfig() {
   if (doc.containsKey("debug")) {
     debugMode = doc["debug"].as<bool>();
   }
-
 
   if (doc.containsKey("wifi")) {
     primarySSID = doc["wifi"]["primary_ssid"].as<String>();
@@ -1479,7 +1528,7 @@ void loadConfig() {
   }
 
   if (doc.containsKey("units")) {
-    bgUnits = doc["units"].as<String>();
+    bgUnits = (doc["units"].as<String>() == "mmol/L") ? UNIT_MMOLL : UNIT_MGDL;
   }
 
   if (doc.containsKey("timezone")) {
@@ -1495,7 +1544,7 @@ void saveConfig() {
   File f = LittleFS.open("/config.json", "w");
   if (!f) return;
   
-  DynamicJsonDocument doc(2048);
+  JsonDocument doc;
   doc["debug"] = debugMode;
   doc["wifi"]["primary_ssid"] = primarySSID;
   doc["wifi"]["primary_pass"] = primaryPass;
@@ -1511,7 +1560,7 @@ void saveConfig() {
   doc["dexcom"]["server"] = dexServer;
   
   doc["provider"] = currentProvider == PROVIDER_DEXCOM ? "DEXCOM" : "NIGHTSCOUT";
-  doc["units"] = bgUnits;
+  doc["units"] = getBGUnitsStr();
   
   doc["timezone"]["ntp"] = ntpServer;
   doc["timezone"]["offset"] = gmtOffset_sec;
@@ -1689,7 +1738,7 @@ void updateUI() {
     gfx->setTextColor(WHITE);
     gfx->setTextSize(2);
     gfx->setCursor(dx + 10, dy + 10);
-    if (bgUnits == "mg/dL") {
+    if (bgUnits == UNIT_MGDL) {
       gfx->println("Switch to");
       gfx->setCursor(dx + 10, dy + 30);
       gfx->println("mmol/L?");
@@ -1748,7 +1797,7 @@ void drawGlucoseContainer() {
       char ageStr[16];
       if (diffMin == 0) strcpy(ageStr, "Now");
       else if (diffMin > 99) strcpy(ageStr, ">99m ago");
-      else sprintf(ageStr, "%dm ago", diffMin);
+      else snprintf(ageStr, sizeof(ageStr), "%dm ago", diffMin);
       
       gfx->setTextSize(1);
       gfx->setTextColor(isDarkTheme ? CYAN : BLUE);
@@ -1762,7 +1811,7 @@ void drawGlucoseContainer() {
   String sgvStr = formatBG(latest.sgv);
   int numChars = sgvStr.length();
   int sgvX;
-  if (bgUnits == "mmol/L") {
+  if (bgUnits == UNIT_MMOLL) {
     // Dynamic centering between Ball (56px) and Arrow (275px). 
     // Shifted 5px left from previous centered positions (73 -> 68, 97 -> 92)
     sgvX = (numChars >= 4) ? 68 : 92;
@@ -1774,7 +1823,7 @@ void drawGlucoseContainer() {
   gfx->setTextSize(8); 
   gfx->setCursor(sgvX, 60);
 
-  if (bgUnits == "mmol/L") {
+  if (bgUnits == UNIT_MMOLL) {
     int dotIdx = sgvStr.indexOf('.');
     if (dotIdx > 0) {
       String intPart = sgvStr.substring(0, dotIdx);
@@ -1800,15 +1849,15 @@ void drawGlucoseContainer() {
   }
 
   // 3. Custom Trend Arrow
-  int arrowX = (bgUnits == "mmol/L") ? 265 : 255;
+  int arrowX = (bgUnits == UNIT_MMOLL) ? 265 : 255;
   drawTrendArrow(arrowX, 90, latest.direction, bgValColor);
 
   // 4. Delta
   gfx->setTextColor(isDarkTheme ? WHITE : BLACK);
   gfx->setTextSize(3);
-  int deltaX = (bgUnits == "mmol/L") ? 55 : 85;
+  int deltaX = (bgUnits == UNIT_MMOLL) ? 55 : 85;
   gfx->setCursor(deltaX, 135);
-  gfx->printf("%s %s", formatDelta(latest.delta).c_str(), bgUnits.c_str());
+  gfx->printf("%s %s", formatDelta(latest.delta).c_str(), getBGUnitsStr());
 }
 
 void drawHarveyBall(int x, int y, int radius, long long timestamp) {
@@ -2033,7 +2082,7 @@ void checkTouch() {
       
       // YES Button (dx+10, dy+80, 60, 30)
       if (touchX > dx+10 && touchX < dx+70 && touchY > dy+80 && touchY < dy+110) {
-        bgUnits = (bgUnits == "mg/dL") ? "mmol/L" : "mg/dL";
+        bgUnits = (bgUnits == UNIT_MGDL) ? UNIT_MMOLL : UNIT_MGDL;
         saveConfig();
         ESP.restart();
       }
@@ -2365,7 +2414,7 @@ void drawStatusBar() {
   
   if (showBG && historyCount > 0) {
     BGReading latest = bgHistory[0];
-    String sgvStr = (bgUnits == "mmol/L") ? String(latest.sgv / 18.0182, 1) : String(latest.sgv);
+    String sgvStr = (bgUnits == UNIT_MMOLL) ? String(latest.sgv / 18.0182, 1) : String(latest.sgv);
     
     // Draw BG value with its specific status color
     gfx->setTextColor(getBGColor(latest.sgv));
@@ -2587,6 +2636,11 @@ void logBoot(const String& msg) {
 void powerOffDevice() {
   DBG_PRINTLN(F("--- Powering Off ---"));
   
+  // Flush dirty history cache to LittleFS before shutting down
+  if (historyDirty) {
+    saveHistoryToCache();
+  }
+
   // 1. Show shutdown message (Size 3)
   gfx->fillScreen(BLACK);
   gfx->setTextColor(GREEN);
@@ -2626,24 +2680,24 @@ void powerOffDevice() {
   esp_deep_sleep_start();
 }
 String formatBG(int mgdl) {
-  if (bgUnits == "mmol/L") {
+  if (bgUnits == UNIT_MMOLL) {
     float mmol = mgdl / 18.0182; // Precise conversion
     char buf[16];
-    sprintf(buf, "%.1f", mmol);
+    snprintf(buf, sizeof(buf), "%.1f", mmol);
     return String(buf);
   }
   return String(mgdl);
 }
 
 String formatDelta(int delta) {
-  if (bgUnits == "mmol/L") {
+  if (bgUnits == UNIT_MMOLL) {
     float mmol = delta / 18.0182;
     char buf[16];
-    sprintf(buf, "%+.1f", mmol);
+    snprintf(buf, sizeof(buf), "%+.1f", mmol);
     return String(buf);
   }
   char buf[16];
-  sprintf(buf, "%+d", delta);
+  snprintf(buf, sizeof(buf), "%+d", delta);
   return String(buf);
 }
 
@@ -2669,7 +2723,7 @@ void checkSerialConsole() {
       String jsonPayload = command.substring(11);
       
       // Perform validation check to guarantee JSON integrity before writing
-      DynamicJsonDocument doc(2048);
+      JsonDocument doc;
       DeserializationError error = deserializeJson(doc, jsonPayload);
       
       if (!error) {

@@ -12,6 +12,7 @@ __pycache__/
 *.pyc
 
 # Local build and partition caches
+build/cache/
 data.bin
 
 # User configuration credentials (DO NOT PUBLISH)
@@ -19,6 +20,7 @@ data/config.json
 
 # Developer references, simulations, and sandboxes (DO NOT PUBLISH)
 other/
+extras/
 .agents/
 
 # OS Files

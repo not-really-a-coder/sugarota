@@ -2,6 +2,44 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.04.0] — Hardware-Calibrated ADC, Interface Inversion & Build Optimization (2026-09-04)
+
+This release upgrades battery voltage measurement to ESP-IDF hardware calibration, refines hardware button interaction gestures, and accelerates command-line compilation.
+
+### Power Management
+
+- Upgraded battery ADC sensing to ESP-IDF oneshot curve-fitting calibration scheme on GPIO 4 with hardware divider scaling
+- Replaced raw uncalibrated readings with factory eFuse calibrated millivolt conversion for precise battery percentages
+
+### Interface
+
+- Inverted BOOT/Config button gestures: single short press forces immediate data refresh
+- Inverted BOOT/Config button gestures: long press (1.5s hold) cycles theme between dark and light
+
+### Build & Toolchain
+
+- Added persistent object caching to build.ps1 and build.bat to prevent full recompilation on single-line edits
+- Implemented real-time compilation progress bar with percentage, monotonic stage tracking, and active elapsed time
+- Relocated vendor LCD example trees to extras directory and excluded them in .gitignore to eliminate unnecessary recursive compiler scans
+
+## [v0.09.03.0] — Firmware Optimizations & Build Environment Setup (2026-09-03)
+
+This release focuses on establishing command-line build automation, modernizing JSON handling, reducing flash memory write cycles, and cleaning up dead code.
+
+### Firmware & Performance
+
+- Deferred history cache writes to LittleFS from every minute to every 30 minutes and during shutdown to reduce flash memory wear
+- Replaced deprecated DynamicJsonDocument allocations with ArduinoJson 7 JsonDocument
+- Converted blood glucose unit tracking from dynamic String comparisons to an internal enum representation
+- Replaced dynamic String formatting with safe stack buffers across status and metric displays
+- Removed unused esp_partition header and unused buzzer pin definition
+- Initialized LittleFS filesystem once at boot rather than on each read/write call
+
+### Build & Toolchain
+
+- Added automated verbose build script build.ps1 with target board configuration flags
+- Added requirements.md documenting prerequisites, Arduino CLI toolchain commands, and hardware settings
+
 ## [v0.06.02.2] — Web Installer and Hotspot Connectivity (2026-06-02)
 
 This release focuses on improving the initial device flashing experience and ensuring reliable wireless configuration on restrictive networks like Android mobile hotspots.

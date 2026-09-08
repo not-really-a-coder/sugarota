@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 # Refresh environment PATH
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 
-# Ensure partitions.csv exists in root
+# Ensure partitions.csv exists in root and sketch folder
 if (-not (Test-Path "partitions.csv")) {
     if (Test-Path "build\esp32.esp32.esp32s3\partitions.csv") {
         Copy-Item "build\esp32.esp32.esp32s3\partitions.csv" -Destination "partitions.csv"
@@ -17,6 +17,9 @@ if (-not (Test-Path "partitions.csv")) {
     else {
         Write-Error "Could not find partitions.csv in root or build folder!"
     }
+}
+if (Test-Path "partitions.csv") {
+    Copy-Item "partitions.csv" -Destination "firmware\sugarota\partitions.csv" -Force
 }
 
 $fqbn = "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=custom"
@@ -30,7 +33,7 @@ $compileArgs = @(
     "--build-path", $buildPath,
     "--fqbn", $fqbn,
     "--output-dir", $outputDir,
-    "sugarota.ino"
+    "firmware/sugarota"
 )
 
 if ($Clean) {

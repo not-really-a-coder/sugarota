@@ -42,6 +42,7 @@ This document specifies the required toolchains, libraries, and board configurat
 | **ArduinoJson** | `<ArduinoJson.h>` | JSON parsing for configuration and API responses |
 | **GFX Library for Arduino** | `<Arduino_GFX_Library.h>` | Display driver (AXS15231B over QSPI) |
 | **SensorLib** | `<SensorQMI8658.hpp>`, `<SensorPCF85063.hpp>` | Drivers for QMI8658 IMU & PCF85063 RTC |
+| **NimBLE-Arduino** | `<NimBLEDevice.h>` | Lightweight BLE GATT server & peripheral stack |
 
 ### Bundled Libraries (In-Tree)
 

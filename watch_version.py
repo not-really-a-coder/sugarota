@@ -5,7 +5,7 @@ import re
 import datetime
 import sys
 
-INO_PATH = "sugarota.ino"
+INO_PATH = os.path.join("firmware", "sugarota", "sugarota.ino")
 STATE_PATH = os.path.join("data", "version_state.json")
 
 def get_calver_segments():
@@ -120,6 +120,9 @@ def watch():
                     # Let file writes settle for a brief moment
                     time.sleep(0.1)
                     update_version()
+                    # Sleep slightly and capture the new mtime produced by our own write
+                    # so the watcher does not re-trigger on its own change
+                    time.sleep(0.1)
                     last_mtime = os.path.getmtime(INO_PATH)
     except KeyboardInterrupt:
         print("\nStopping version watcher. Goodbye!")

@@ -2,6 +2,57 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.08.25] — Modular Architecture, BLE Reliability & Status Bar Enhancements (2026-09-08)
+
+This release reorganizes the firmware codebase into clean modules, enhances BLE data synchronization reliability and companion app bridging, and refines the status bar iconography and layout.
+
+### Architecture & Repository
+
+- Modularized monolithic firmware into focused domain components (`display`, `ui`, `net_client`, `web_portal`, `battery`, `audio`, `storage`, `input`, `ble_handler`)
+- Moved Arduino firmware and board drivers into dedicated `firmware/sugarota/` directory
+- Centralized system and protocol documentation into the `docs/` directory
+- Hardened `.gitignore` and purged build cache trees from Gradle and intermediate Arduino compilation artifacts
+
+### Interface & Status Bar
+
+- Replaced text Bluetooth 'B' with a scaled pixelated Bluetooth icon
+- Added pixelated Wi-Fi signal icon indicating active connection and background data transmission
+- Adjusted battery icon height to 14px to match font cap height and align baseline across all status bar glyphs
+- Adjusted Harvey ball touchscreen hit detection coordinates and clamped reading age calculation to eliminate clock skew issues
+- Maintained status bar clock, battery gauge, and BLE indicators even when NTP synchronization fails by falling back to local time and hardware RTC
+- Suppressed spurious OFFLINE indicator while an active BLE companion bridge connection is present
+- Restored visual data fetch spinner feedback during manual refreshes triggered via BLE
+
+### Connectivity & Bluetooth
+
+- Synchronized boot splash screen to wait for complete glucose and history packets before rendering dashboard
+- Added timestamp-based buffer eviction to guarantee fresh readings overwrite the oldest data points when the 48-reading cache is full
+- Mitigated FreeRTOS task stack overflows by deferring BLE UI update triggers to the main Arduino loop
+- Implemented immediate time and timezone offset synchronization upon companion app BLE connection
+- Merged historical readings by timestamp across reconnects to eliminate gaps and chart line dropouts
+
+### Android Companion App
+
+- Initial stable release
+- Configured default BLE MTU to 517 bytes to optimize throughput for large payloads
+- Expanded background data sync requests to 48 readings for Nightscout and Dexcom Share
+- Sorted historical reading arrays descending by timestamp to ensure chronological delivery
+- Streamlined connection retry handling and telemetry logging for companion bridge operations
+
+## [v0.09.04.6] — Bluetooth Low Energy (BLE) & Android Companion Integration (2026-09-04)
+
+This release integrates high-efficiency Bluetooth Low Energy (BLE) GATT connectivity using NimBLE-Arduino, preparing Sugarota for direct Android companion app bridging, wireless configuration sync, and OTA updating.
+
+### Bluetooth & Connectivity
+
+- Integrated NimBLE-Arduino peripheral stack with dynamic naming (`Sugarota-XXXX` using hardware BT MAC address)
+- Implemented BLE GATT Glucose Stream characteristic (`0x0002`) allowing companion apps to bridge data directly to the device without device Wi-Fi
+- Implemented BLE GATT Config characteristic (`0x0003`) with two-way read/write sync directly to device `/config.json` on LittleFS
+- Implemented BLE GATT Status telemetry characteristic (`0x0004`) broadcasting battery percentage, charging state, and firmware version
+- Implemented BLE GATT OTA flashing characteristic (`0x0005`) with rollback-safe dual partition writes
+- Added visual Bluetooth status indicator ('B' icon) to the top status bar when a central device is connected
+- Bypassed periodic Wi-Fi radio wakeups when active BLE bridge connection is present to dramatically conserve battery
+
 ## [v0.09.04.0] — Hardware-Calibrated ADC, Interface Inversion & Build Optimization (2026-09-04)
 
 This release upgrades battery voltage measurement to ESP-IDF hardware calibration, refines hardware button interaction gestures, and accelerates command-line compilation.

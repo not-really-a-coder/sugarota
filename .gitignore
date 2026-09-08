@@ -15,6 +15,25 @@ __pycache__/
 build/cache/
 data.bin
 
+# Arduino CLI intermediate compile tree
+build/esp32.esp32.esp32s3/sketch/
+build/esp32.esp32.esp32s3/core/
+build/esp32.esp32.esp32s3/libraries/
+build/esp32.esp32.esp32s3/*.cache
+build/esp32.esp32.esp32s3/compile_commands.json
+build/esp32.esp32.esp32s3/file_opts
+build/esp32.esp32.esp32s3/build_opt.h
+
+# Android build caches & IDE files
+.gradle/
+android-app/.gradle/
+android-app/.idea/
+android-app/**/build/
+android-app/build/
+android-app/local.properties
+*.iml
+.idea/
+
 # User configuration credentials (DO NOT PUBLISH)
 data/config.json
 

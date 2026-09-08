@@ -927,8 +927,8 @@
                             <div class="form-group">
                                 <label>Glucose Measurement Unit</label>
                                 <select id="units-select">
-                                    <option value="mg/dL">mg/dL (USA / Standard)</option>
-                                    <option value="mmol/L">mmol/L (International / UK / RU)</option>
+                                    <option value="mg/dL">mg/dL</option>
+                                    <option value="mmol/L">mmol/L</option>
                                 </select>
                             </div>
                             <div class="form-group">
@@ -957,6 +957,23 @@
                                 <select id="daylight-offset">
                                     <option value="0" selected>Disabled (0)</option>
                                     <option value="3600">Enabled (+1 Hour / 3600s)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Connection Mode</label>
+                                <select id="connection-mode-select">
+                                    <option value="AUTO" selected>Auto (BLE first with Wi-Fi fallback)</option>
+                                    <option value="BLE_ONLY">BLE Only (Low power, Android app required)</option>
+                                    <option value="WIFI_ONLY">Wi-Fi Only (Direct polling)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Update Frequency (Poll Interval)</label>
+                                <select id="poll-interval-select">
+                                    <option value="30">30 seconds</option>
+                                    <option value="60" selected>1 minute (60s - Recommended)</option>
+                                    <option value="120">2 minutes (120s)</option>
+                                    <option value="300">5 minutes (300s)</option>
                                 </select>
                             </div>
                             <div class="checkbox-group">
@@ -1376,6 +1393,18 @@
                     document.getElementById("daylight-offset").value = config.timezone.daylight !== undefined ? config.timezone.daylight : 0;
                 }
 
+                if (config.connection_mode) {
+                    document.getElementById("connection-mode-select").value = config.connection_mode.toUpperCase();
+                } else {
+                    document.getElementById("connection-mode-select").value = "AUTO";
+                }
+
+                if (config.poll_interval_sec) {
+                    document.getElementById("poll-interval-select").value = String(config.poll_interval_sec);
+                } else {
+                    document.getElementById("poll-interval-select").value = "60";
+                }
+
                 document.getElementById("debug-mode-checkbox").checked = config.debug !== false;
 
                 log("Configuration loaded successfully into all form fields!", "var(--accent-green)");
@@ -1403,6 +1432,8 @@
             const config = {
                 debug: document.getElementById("debug-mode-checkbox").checked,
                 units: document.getElementById("units-select").value,
+                connection_mode: document.getElementById("connection-mode-select").value,
+                poll_interval_sec: parseInt(document.getElementById("poll-interval-select").value) || 60,
                 wifi: {
                     primary_ssid: primarySsid,
                     primary_pass: primaryPass,

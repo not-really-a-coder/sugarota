@@ -66,27 +66,25 @@ You can solve this elegantly in two ways:
 
 ---
 
+## 📚 Documentation & Technical Specifications
+
+Detailed technical documentation, data models, and specifications are organized in the [`docs/`](docs/) directory:
+* [System Architecture & State Flow](docs/architecture.md)
+* [BLE GATT Protocol Specification](docs/ble_gatt_spec.md)
+* [Data Schemas & Telemetry Formats](docs/data_schemas.md)
+* [Hardware Guide & Pinout Reference](docs/hardware_guide.md)
+* [Build & Toolchain Requirements](docs/build_requirements.md)
+
+---
+
 ## 🛠️ Arduino Compilation Requirements
 
-If you want to modify or compile the C++ firmware (`sugarota.ino`) directly from source, set up your development environment as follows:
+If you want to modify or compile the C++ firmware directly from source, refer to the [Build Requirements Guide](docs/build_requirements.md). The main sketch and modules are located under [`firmware/sugarota/`](firmware/sugarota/).
 
-### 1. Board Manager Configuration 
-*   **Core**: Espressif **ESP32** Board Package (v2.0.x or v3.0.x compatible)
-*   **Target Board**: `ESP32-S3 Dev Module`
-*   **Recommended Settings**:
-    *   *Flash Size*: 16MB (for robust partition maps)
-    *   *Partition Scheme*: Custom or Large FFat
-    *   *PSRAM*: Enabled (OPI)
-
-### 2. External Library Dependencies
-Install these libraries via the Arduino IDE Library Manager:
-*   **ArduinoJson** (v6.x or v7.x) — For serial communication and settings parsing.
-*   **Arduino_GFX_Library** — High-performance graphics and LCD screen drivers.
-*   **SensorQMI8658** — Driver for the onboard IMU/Accelerometer sensor.
-*   **qrcode** (by Richard Moore) — For rendering the on-device configuration QR code.
-
-### 3. Bundled Hardware Libraries
-All internal board support files (codec configurations, TCA9554 IO expanders) are pre-packaged inside the [src/](src/) directory of this repository and require **no** manual installation.
+To compile from command line via Arduino CLI:
+```powershell
+.\build.ps1
+```
 
 Refer to the [Manufacturer's GitHub Repository](https://github.com/waveshareteam/ESP32-S3-Touch-LCD-3.49/) and [device technical documentation](https://docs.waveshare.com/ESP32-S3-Touch-LCD-3.49?variant=ESP32-S3-Touch-LCD-3.49-EN) for more details.
 

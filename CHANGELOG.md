@@ -22,6 +22,9 @@ This release reorganizes the firmware codebase into clean modules, enhances BLE 
 - Maintained status bar clock, battery gauge, and BLE indicators even when NTP synchronization fails by falling back to local time and hardware RTC
 - Suppressed spurious OFFLINE indicator while an active BLE companion bridge connection is present
 - Restored visual data fetch spinner feedback during manual refreshes triggered via BLE
+- Fixed stopwatch timer screen rotation by applying 180° rotation on canvas during upside-down device orientation
+- Fixed stopwatch unexpected beeping on rotation; restored minute-by-minute pattern (1-4 min: N short beeps, 5-9 min: 1 long + [N-5] short, 10 min: 2 long and stop)
+- Added tilt hysteresis and 250ms debounce filter to prevent stopwatch resets when tilted 45° or moving
 
 ### Connectivity & Bluetooth
 

@@ -10,7 +10,9 @@ import android.content.Context
 import android.content.Intent
 import android.os.Binder
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.util.Log
@@ -569,30 +571,102 @@ class SugarotaBleService : Service() {
 
     // Write config to a specific device
     fun writeConfig(address: String, configJson: String, onComplete: (Boolean) -> Unit) {
-        val gatt = connectedGatts[address] ?: return onComplete(false)
+        val mainHandler = Handler(Looper.getMainLooper())
+        val gatt = connectedGatts[address]
+        if (gatt == null) {
+            mainHandler.post { onComplete(false) }
+            return
+        }
         val service = gatt.getService(BleUuids.SUGAROTA_SERVICE)
-        val configChar = service?.getCharacteristic(BleUuids.CHAR_CONFIG) ?: return onComplete(false)
+        val configChar = service?.getCharacteristic(BleUuids.CHAR_CONFIG)
+        if (configChar == null) {
+            mainHandler.post { onComplete(false) }
+            return
+        }
 
         deviceConfigs[address] = configJson
-        val bytes = configJson.toByteArray(Charsets.UTF_8)
-        val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val res = gatt.writeCharacteristic(configChar, bytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-            res == BluetoothStatusCodes.SUCCESS
-        } else {
-            @Suppress("DEPRECATION")
-            configChar.value = bytes
-            @Suppress("DEPRECATION")
-            configChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-            @Suppress("DEPRECATION")
-            gatt.writeCharacteristic(configChar)
-        }
-        if (success) {
-            serviceScope.launch {
-                delay(300)
-                fetchAndPushForDevice(address, forcePush = true)
+
+        serviceScope.launch {
+            try {
+                // Minify JSON to ensure minimal payload footprint
+                val compactJson = try {
+                    org.json.JSONObject(configJson).toString()
+                } catch (e: Exception) {
+                    configJson.trim()
+                }
+
+                val allBytes = compactJson.toByteArray(Charsets.UTF_8)
+                val deviceMtu = currentMtu[address] ?: 517
+                val maxChunkSize = (deviceMtu - 3).coerceAtLeast(20)
+
+                var overallSuccess: Boolean = false
+
+                if (allBytes.size <= maxChunkSize) {
+                    // Fits in a single packet directly
+                    overallSuccess = writeConfigCharacteristicDirect(gatt, configChar, allBytes)
+                } else {
+                    // Multi-packet chunking protocol supported by Sugarota firmware:
+                    // 1. Send "[START]"
+                    // 2. Send chunks
+                    // 3. Send "[END]"
+                    val startBytes = "[START]".toByteArray(Charsets.UTF_8)
+                    var ok = writeConfigCharacteristicDirect(gatt, configChar, startBytes)
+                    delay(50)
+
+                    if (ok) {
+                        var offset = 0
+                        while (offset < allBytes.size && ok) {
+                            val chunkLen = minOf(maxChunkSize, allBytes.size - offset)
+                            val chunkBytes = allBytes.copyOfRange(offset, offset + chunkLen)
+                            ok = writeConfigCharacteristicDirect(gatt, configChar, chunkBytes)
+                            offset += chunkLen
+                            delay(60)
+                        }
+                    }
+
+                    if (ok) {
+                        delay(50)
+                        val endBytes = "[END]".toByteArray(Charsets.UTF_8)
+                        ok = writeConfigCharacteristicDirect(gatt, configChar, endBytes)
+                    }
+                    overallSuccess = ok
+                }
+
+                Log.i("SugarotaBleService", "writeConfig to $address completed. Success=$overallSuccess (bytes=${allBytes.size})")
+
+                mainHandler.post {
+                    onComplete(overallSuccess)
+                }
+            } catch (e: Exception) {
+                Log.e("SugarotaBleService", "writeConfig exception", e)
+                mainHandler.post {
+                    onComplete(false)
+                }
             }
         }
-        onComplete(success)
+    }
+
+    private fun writeConfigCharacteristicDirect(
+        gatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        bytes: ByteArray
+    ): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val res = gatt.writeCharacteristic(characteristic, bytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                res == BluetoothStatusCodes.SUCCESS
+            } else {
+                @Suppress("DEPRECATION")
+                characteristic.value = bytes
+                @Suppress("DEPRECATION")
+                characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                @Suppress("DEPRECATION")
+                gatt.writeCharacteristic(characteristic)
+            }
+        } catch (e: Exception) {
+            Log.e("SugarotaBleService", "writeConfigCharacteristicDirect error", e)
+            false
+        }
     }
 
     fun getCachedConfig(address: String): String? = deviceConfigs[address]

@@ -8,12 +8,14 @@
 *.bak
 
 # Local Python Caches
-__pycache__/
-*.pyc
+**/__pycache__/
+*.py[cod]
 
 # Local build and partition caches
+.cache/
 build/cache/
 data.bin
+compile_commands.json
 
 # Arduino CLI intermediate compile tree
 build/esp32.esp32.esp32s3/sketch/
@@ -33,6 +35,8 @@ android-app/build/
 android-app/local.properties
 *.iml
 .idea/
+.vscode/
+
 
 # User configuration credentials (DO NOT PUBLISH)
 data/config.json

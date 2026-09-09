@@ -8,9 +8,14 @@ import os
 import shutil
 import json
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 PORT = 8123
 
 class QuietHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=REPO_ROOT, **kwargs)
+
     def address_string(self):
         # Disable slow reverse DNS lookups on Windows that cause hangs and ERR_EMPTY_RESPONSE
         return self.client_address[0]
@@ -27,7 +32,7 @@ class QuietHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 post_data = self.rfile.read(content_length)
                 config_data = json.loads(post_data.decode('utf-8'))
                 
-                data_dir = os.path.join(os.getcwd(), "data")
+                data_dir = os.path.join(REPO_ROOT, "data")
                 os.makedirs(data_dir, exist_ok=True)
                 
                 config_path = os.path.join(data_dir, "config.json")

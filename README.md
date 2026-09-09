@@ -30,7 +30,7 @@ The local setup center requires **zero external python packages** (no `requireme
 1.  **Launch the Setup Server**:
     Run the multi-threaded host script from the repository root:
     ```bash
-    python run_installer.py
+    python utils/run_web_installer.py
     ```
 2.  **Access the Dashboard**:
     Open your browser to: **[http://localhost:8123/installer.html](http://localhost:8123/installer.html)**
@@ -48,7 +48,7 @@ If you want to host the installer server on a remote machine (such as an Oracle 
 ### 1. Run in Headless Mode
 Start the script with the `--no-browser` or `--headless` flag to prevent Python from attempting to open a GUI browser on the host server:
 ```bash
-python run_installer.py --no-browser
+python utils/run_web_installer.py --no-browser
 ```
 
 ### 2. Browser HTTPS Secure Context Requirement (CRITICAL)
@@ -83,10 +83,20 @@ If you want to modify or compile the C++ firmware directly from source, refer to
 
 To compile from command line via Arduino CLI:
 ```powershell
-.\build.ps1
+.\utils\firmware_build.ps1
 ```
 
 Refer to the [Manufacturer's GitHub Repository](https://github.com/waveshareteam/ESP32-S3-Touch-LCD-3.49/) and [device technical documentation](https://docs.waveshare.com/ESP32-S3-Touch-LCD-3.49?variant=ESP32-S3-Touch-LCD-3.49-EN) for more details.
+
+---
+
+## 📱 Android Companion App
+
+To build, install, and run the Android companion app directly on a connected device:
+```powershell
+.\utils\run_android_app.ps1
+```
+* Use `.\utils\run_android_app.ps1 -Logs` to stream live Logcat output for the app.
 
 ---
 
@@ -94,4 +104,4 @@ Refer to the [Manufacturer's GitHub Repository](https://github.com/waveshareteam
 
 Your local configuration containing passwords and API keys is protected by design:
 *   **`data/config.template.json`**: Standard configuration template containing generic placeholders for Wi-Fi and API servers.
-*   **`data/config.json`**: Your active credentials file that will be created after your first run. When you start `run_installer.py`, the server automatically creates this file from the template if it is missing. Make sure that file creation permissions are enabled in the **`data/`** folder. 
+*   **`data/config.json`**: Your active credentials file that will be created after your first run. When you start `utils/run_web_installer.py`, the server automatically creates this file from the template if it is missing. Make sure that file creation permissions are enabled in the **`data/`** folder. 

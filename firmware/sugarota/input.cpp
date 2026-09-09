@@ -308,40 +308,84 @@ void pollIMU() {
         }
       }
       
-      // 2. Timer Mode
-      bool isHorizontalRotated = (y > 0.8 && abs(x) < 0.4);
-      if (isHorizontalRotated) {
-        if (!isTimerMode) {
-          isTimerMode = true;
-          timerStartTime = millis();
-          timerElapsedMs = 0;
-          isTimerStopped = false;
-          lastBeepedMinute = 0;
-          DBG_PRINTLN("ROTATED HORIZONTAL: Start Timer Mode");
-          playBeeps(1, 0);
-          updateUI();
-        } else {
-          if (!isTimerStopped) {
-            timerElapsedMs = millis() - timerStartTime;
-            int currentMinute = timerElapsedMs / 60000;
-            if (currentMinute > lastBeepedMinute) {
-              lastBeepedMinute = currentMinute;
-              playBeeps(0, currentMinute);
+      // Calculate dynamic acceleration magnitude to detect movement/shaking
+      float magnitude = sqrt(x*x + y*y + z*z);
+      bool isMoving = (abs(magnitude - 1.0) > 0.25);
+
+      // 2. Timer Mode (Rotated Landscape)
+      // Regular Landscape has buttons on top (y < -0.4).
+      // Rotated Landscape has buttons on bottom (y > 0.4).
+      // Hysteresis: enter when y > 0.45; exit only when rotated back upright (y < 0.20)
+      bool isRotatedLandscape = isTimerMode ? (y > 0.20 && !currentZState) : (y > 0.45 && !currentZState);
+      
+      // Debounce orientation transition to prevent random restarts when tilted back or moved
+      static unsigned long orientTransitionStartTime = 0;
+      static bool pendingOrientation = false;
+      
+      if (!isMoving && !isFetching) {
+        if (isRotatedLandscape != isTimerMode) {
+          if (!pendingOrientation) {
+            pendingOrientation = true;
+            orientTransitionStartTime = millis();
+          } else if (millis() - orientTransitionStartTime >= 250) { // 250ms debounce
+            pendingOrientation = false;
+            if (isRotatedLandscape) {
+              if (brightnessLevel > 0) {
+                isTimerMode = true;
+                isTimerStopped = false;
+                lastBeepedMinute = 0;
+                setScreenRotation(3); // 180° rotation for upside-down device
+                timerStartTime = millis();
+                timerElapsedMs = 0;
+                DBG_PRINTLN("TIMER START: Device rotated 180 degrees");
+                updateUI();
+              }
+            } else {
+              isTimerMode = false;
+              isTimerStopped = false;
+              lastBeepedMinute = 0;
+              setScreenRotation(1); // Restore normal landscape
+              timerStartTime = 0;
+              timerElapsedMs = 0;
+              DBG_PRINTLN("TIMER STOP: Device rotated back upright");
+              updateUI();
             }
           }
-          static unsigned long lastTimerDraw = 0;
-          if (millis() - lastTimerDraw > 100) {
-            lastTimerDraw = millis();
-            updateUI();
-          }
+        } else {
+          pendingOrientation = false;
         }
       } else {
-        if (isTimerMode) {
-          DBG_PRINTLN("ROTATED BACK: Stop/Exit Timer Mode");
-          isTimerMode = false;
-          isTimerStopped = false;
-          playBeeps(0, 2);
+        pendingOrientation = false;
+      }
+      
+      // Update timer elapsed time and play predefined beeping pattern
+      if (isTimerMode) {
+        if (!isTimerStopped) {
+          timerElapsedMs = millis() - timerStartTime;
+          int currentMinute = timerElapsedMs / 60000;
+          if (currentMinute > lastBeepedMinute && currentMinute <= 10) {
+            lastBeepedMinute = currentMinute;
+            if (currentMinute >= 1 && currentMinute <= 4) {
+              // 1 to 4: N short beeps
+              playBeeps(0, currentMinute);
+            } else if (currentMinute >= 5 && currentMinute <= 9) {
+              // 5 to 9: 1 long beep + (N-5) short beeps
+              playBeeps(1, currentMinute - 5);
+            } else if (currentMinute == 10) {
+              // 10: 2 long beeps and stop timer
+              playBeeps(2, 0);
+              isTimerStopped = true;
+              timerElapsedMs = 600000;
+            }
+          }
           updateUI();
+        } else {
+          // Timer stopped at 10m: refresh at 500ms for blinking display
+          static unsigned long lastStoppedBlinkTime = 0;
+          if (millis() - lastStoppedBlinkTime >= 500) {
+            lastStoppedBlinkTime = millis();
+            updateUI();
+          }
         }
       }
       

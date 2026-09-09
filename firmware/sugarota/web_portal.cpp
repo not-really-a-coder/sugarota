@@ -45,6 +45,10 @@ button:active { transform: scale(0.98); }
     <input type="password" name="secondary_pass" id="secondary_pass">
     <span class="pwd-toggle" onclick="togglePwd('secondary_pass', this)">SHOW</span>
   </div>
+  <div class="checkbox-container">
+    <input type="checkbox" name="use_secondary_first" id="use_secondary_first" value="1">
+    <label style="margin-top:0;">Connect to Secondary Wi-Fi First</label>
+  </div>
 </div>
 
 <div class="section">
@@ -135,6 +139,7 @@ fetch('/api/config').then(function(r){return r.json();}).then(function(c){
     document.getElementById('primary_pass').value = c.wifi.primary_pass || '';
     document.getElementById('secondary_ssid').value = c.wifi.secondary_ssid || '';
     document.getElementById('secondary_pass').value = c.wifi.secondary_pass || '';
+    document.getElementById('use_secondary_first').checked = c.wifi.use_secondary_first || false;
   }
   document.getElementById('provider').value = c.provider || 'DEXCOM';
   if(c.nightscout) {
@@ -178,6 +183,7 @@ void handleSaveConfig() {
   if (server.method() != HTTP_POST) { server.send(405, "text/plain", "Method Not Allowed"); return; }
   primarySSID = server.arg("primary_ssid"); primaryPass = server.arg("primary_pass");
   secondarySSID = server.arg("secondary_ssid"); secondaryPass = server.arg("secondary_pass");
+  useSecondaryFirst = server.hasArg("use_secondary_first");
   String p = server.arg("provider");
   if (p == "DEXCOM") currentProvider = PROVIDER_DEXCOM; else if (p == "NIGHTSCOUT") currentProvider = PROVIDER_NIGHTSCOUT;
   nsUrl = server.arg("ns_url"); nsSecret = server.arg("ns_secret");

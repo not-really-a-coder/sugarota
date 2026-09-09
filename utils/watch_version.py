@@ -5,8 +5,11 @@ import re
 import datetime
 import sys
 
-INO_PATH = os.path.join("firmware", "sugarota", "sugarota.ino")
-STATE_PATH = os.path.join("data", "version_state.json")
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(SCRIPT_DIR)
+
+INO_PATH = os.path.join(REPO_ROOT, "firmware", "sugarota", "sugarota.ino")
+STATE_PATH = os.path.join(REPO_ROOT, "data", "version_state.json")
 
 def get_calver_segments():
     now = datetime.datetime.now()

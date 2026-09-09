@@ -8,18 +8,24 @@ $ErrorActionPreference = "Stop"
 # Refresh environment PATH
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 
-# Ensure partitions.csv exists in root and sketch folder
-if (-not (Test-Path "partitions.csv")) {
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+if (-not (Test-Path (Join-Path $RepoRoot "firmware\sugarota"))) {
+    $RepoRoot = (Get-Location).Path
+}
+
+$CurrentDir = (Get-Location).Path
+Set-Location $RepoRoot
+
+# Ensure custom partitions.csv exists in sketch folder
+$SketchPartitions = "firmware\sugarota\partitions.csv"
+if (-not (Test-Path $SketchPartitions)) {
     if (Test-Path "build\esp32.esp32.esp32s3\partitions.csv") {
-        Copy-Item "build\esp32.esp32.esp32s3\partitions.csv" -Destination "partitions.csv"
-        Write-Host "[BUILD] Copied partitions.csv to sketch root." -ForegroundColor Cyan
+        Copy-Item "build\esp32.esp32.esp32s3\partitions.csv" -Destination $SketchPartitions -Force
+        Write-Host "[BUILD] Restored partitions.csv to sketch directory." -ForegroundColor Cyan
     }
     else {
-        Write-Error "Could not find partitions.csv in root or build folder!"
+        Write-Error "Could not find partitions.csv in firmware/sugarota or build folder!"
     }
-}
-if (Test-Path "partitions.csv") {
-    Copy-Item "partitions.csv" -Destination "firmware\sugarota\partitions.csv" -Force
 }
 
 $fqbn = "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=custom"
@@ -127,6 +133,8 @@ while (-not $proc.HasExited) {
 $remainingOut = $proc.StandardOutput.ReadToEnd()
 $stderrOut = $proc.StandardError.ReadToEnd()
 
+Set-Location $CurrentDir
+
 if ($proc.ExitCode -eq 0) {
     # 100% Completed
     $bar = "#" * 30
@@ -147,10 +155,10 @@ if ($proc.ExitCode -eq 0) {
 }
 else {
     Write-Host "`n`n[ERROR] Build failed with exit code $($proc.ExitCode)." -ForegroundColor Red
-    if ($stderrOut) {
+    if (-not [string]::IsNullOrWhiteSpace($stderrOut)) {
         Write-Host $stderrOut -ForegroundColor Red
     }
-    if ($remainingOut) {
+    if (-not [string]::IsNullOrWhiteSpace($remainingOut)) {
         Write-Host $remainingOut
     }
     exit $proc.ExitCode

@@ -1,0 +1,8 @@
+CompileFlags:
+  CompilationDatabase: ../../build/cache
+  Remove:
+    - -fno-rtti
+    - -fno-exceptions
+    - -mlongcalls
+    - -mfix-esp32-psram-cache-issue
+    - -fstrict-volatile-bitfields

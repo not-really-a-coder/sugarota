@@ -697,47 +697,58 @@ fun DeviceConfigScreen(
                             // Ensure latest custom device name is saved in app locally
                             service?.setDeviceCustomName(deviceAddress, customName)
 
-                            val root = try {
-                                 if (rawConfigText.trim().startsWith("{")) org.json.JSONObject(rawConfigText) else org.json.JSONObject()
+                            try {
+                                val root = try {
+                                     if (rawConfigText.trim().startsWith("{")) org.json.JSONObject(rawConfigText) else org.json.JSONObject()
+                                } catch (e: Exception) {
+                                     org.json.JSONObject()
+                                }
+
+                                root.put("provider", provider)
+                                root.put("units", units)
+                                root.put("debug", debugMode)
+                                root.put("connection_mode", connectionMode)
+                                root.put("poll_interval_sec", pollIntervalSec)
+
+                                val nsObj = root.optJSONObject("nightscout") ?: org.json.JSONObject()
+                                nsObj.put("url", nsUrl.trim())
+                                nsObj.put("secret", nsSecret.trim())
+                                root.put("nightscout", nsObj)
+
+                                val dexObj = root.optJSONObject("dexcom") ?: org.json.JSONObject()
+                                dexObj.put("user", dexUser.trim())
+                                dexObj.put("pass", dexPass.trim())
+                                dexObj.put("server", dexServer.trim())
+                                root.put("dexcom", dexObj)
+
+                                val wifiObj = root.optJSONObject("wifi") ?: org.json.JSONObject()
+                                wifiObj.put("primary_ssid", primarySsid.trim())
+                                wifiObj.put("primary_pass", primaryPass.trim())
+                                wifiObj.put("secondary_ssid", secondarySsid.trim())
+                                wifiObj.put("secondary_pass", secondaryPass.trim())
+                                wifiObj.put("use_secondary_first", useSecondaryFirst)
+                                root.put("wifi", wifiObj)
+
+                                val finalJson = root.toString(2)
+                                rawConfigText = finalJson
+
+                                if (service == null) {
+                                    isSaving = false
+                                    statusMessage = "BLE Service unavailable"
+                                    return@ShadcnButton
+                                }
+
+                                service.writeConfig(deviceAddress, finalJson) { success ->
+                                     isSaving = false
+                                     if (success) {
+                                         statusMessage = "Saved! Device rebooting..."
+                                     } else {
+                                         statusMessage = "Failed to write configuration"
+                                     }
+                                }
                             } catch (e: Exception) {
-                                 org.json.JSONObject()
-                            }
-
-                            root.put("provider", provider)
-                            root.put("units", units)
-                            root.put("debug", debugMode)
-                            root.put("connection_mode", connectionMode)
-                            root.put("poll_interval_sec", pollIntervalSec)
-
-                            val nsObj = root.optJSONObject("nightscout") ?: org.json.JSONObject()
-                            nsObj.put("url", nsUrl.trim())
-                            nsObj.put("secret", nsSecret.trim())
-                            root.put("nightscout", nsObj)
-
-                            val dexObj = root.optJSONObject("dexcom") ?: org.json.JSONObject()
-                            dexObj.put("user", dexUser.trim())
-                            dexObj.put("pass", dexPass.trim())
-                            dexObj.put("server", dexServer.trim())
-                            root.put("dexcom", dexObj)
-
-                            val wifiObj = root.optJSONObject("wifi") ?: org.json.JSONObject()
-                            wifiObj.put("primary_ssid", primarySsid.trim())
-                            wifiObj.put("primary_pass", primaryPass.trim())
-                            wifiObj.put("secondary_ssid", secondarySsid.trim())
-                            wifiObj.put("secondary_pass", secondaryPass.trim())
-                            wifiObj.put("use_secondary_first", useSecondaryFirst)
-                            root.put("wifi", wifiObj)
-
-                            val finalJson = root.toString(2)
-                            rawConfigText = finalJson
-
-                            service?.writeConfig(deviceAddress, finalJson) { success ->
-                                 isSaving = false
-                                 if (success) {
-                                     statusMessage = "Saved! Device rebooting..."
-                                 } else {
-                                     statusMessage = "Failed to write configuration"
-                                 }
+                                isSaving = false
+                                statusMessage = "Error: ${e.localizedMessage ?: "Unknown error"}"
                             }
                         },
                         variant = ShadcnButtonVariant.DEFAULT,

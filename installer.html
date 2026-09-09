@@ -837,6 +837,10 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="checkbox-group" style="margin-top: 12px;">
+                                <input type="checkbox" id="wifi-secondary-first">
+                                <label style="margin-bottom: 0; cursor: pointer;">Connect to Secondary Wi-Fi First</label>
+                            </div>
                         </div>
                     </div>
 
@@ -1365,6 +1369,7 @@
                     document.getElementById("wifi-primary-pass").value = config.wifi.primary_pass || "";
                     document.getElementById("wifi-secondary-ssid").value = config.wifi.secondary_ssid || "";
                     document.getElementById("wifi-secondary-pass").value = config.wifi.secondary_pass || "";
+                    document.getElementById("wifi-secondary-first").checked = config.wifi.use_secondary_first === true;
                 }
 
                 if (config.provider) {
@@ -1419,12 +1424,20 @@
             SoundEffects.click();
             if (!port || !port.writable) {
                 SoundEffects.warning();
-                log("Error: Serial write interface is not active!", "var(--accent-red)");
+                log("Error: Serial write interface is not active! Please pair your Sugarota screen first.", "var(--accent-red)");
+                alert("Device not connected! Please click 'Pair USB Device' first.");
                 return;
             }
 
             const primarySsid = document.getElementById("wifi-primary-ssid").value.trim();
             const primaryPass = document.getElementById("wifi-primary-pass").value.trim();
+
+            if (!primarySsid) {
+                SoundEffects.warning();
+                log("Error: Primary Wi-Fi SSID cannot be blank.", "var(--accent-red)");
+                alert("Please enter a Primary Wi-Fi SSID.");
+                return;
+            }
 
             log("Generating new JSON configuration payload...");
 
@@ -1438,7 +1451,8 @@
                     primary_ssid: primarySsid,
                     primary_pass: primaryPass,
                     secondary_ssid: document.getElementById("wifi-secondary-ssid").value.trim(),
-                    secondary_pass: document.getElementById("wifi-secondary-pass").value.trim()
+                    secondary_pass: document.getElementById("wifi-secondary-pass").value.trim(),
+                    use_secondary_first: document.getElementById("wifi-secondary-first").checked
                 },
                 nightscout: {
                     url: document.getElementById("nightscout-url").value.trim(),
@@ -1460,26 +1474,32 @@
             const jsonString = JSON.stringify(config);
             log("Uploading new settings to device...");
 
-            const encoder = new TextEncoder();
-            const writer = port.writable.getWriter();
-            await writer.write(encoder.encode(`SET_CONFIG ${jsonString}\n`));
-            writer.releaseLock();
-
-            log("Settings successfully uploaded! The Sugarota screen is rebooting now to apply...", "var(--accent-green)");
-            SoundEffects.success();
-
-            // Also save a copy back to the local computer's data/config.json
             try {
-                const saveResponse = await fetch("/api/save-config", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: jsonString
-                });
-                if (saveResponse.ok) {
-                    log("A secured copy of this configuration was saved locally on your computer (data/config.json).", "var(--accent-green)");
+                const encoder = new TextEncoder();
+                const writer = port.writable.getWriter();
+                await writer.write(encoder.encode(`SET_CONFIG ${jsonString}\n`));
+                writer.releaseLock();
+
+                log("Settings successfully uploaded! The Sugarota screen is rebooting now to apply...", "var(--accent-green)");
+                SoundEffects.success();
+
+                // Also save a copy back to the local computer's data/config.json
+                try {
+                    const saveResponse = await fetch("/api/save-config", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: jsonString
+                    });
+                    if (saveResponse.ok) {
+                        log("A secured copy of this configuration was saved locally on your computer (data/config.json).", "var(--accent-green)");
+                    }
+                } catch (saveErr) {
+                    console.warn("Headless/Offline server: local copy not saved over HTTP.", saveErr);
                 }
-            } catch (saveErr) {
-                console.warn("Headless/Offline server: local copy not saved over HTTP.", saveErr);
+            } catch (writeErr) {
+                SoundEffects.warning();
+                log(`Failed to write configuration: ${writeErr.message}`, "var(--accent-red)");
+                alert(`Error uploading configuration: ${writeErr.message}`);
             }
         });
 

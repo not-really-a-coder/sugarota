@@ -8,7 +8,7 @@ This document specifies the required toolchains, libraries, and board configurat
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| **Python** | 3.10+ | Runs `run_installer.py` (local WebSerial flash server) & `watch_version.py` |
+| **Python** | 3.10+ | Runs `utils/run_web_installer.py` (local WebSerial flash server) & `utils/watch_version.py` |
 | **Arduino CLI** | 1.x+ | Command-line toolchain for board cores, library management, and compiling |
 | **Git** | 2.x+ | Source control |
 
@@ -77,9 +77,9 @@ arduino-cli lib install "SensorLib"
 ```
 
 ### Step 4: Ensure Custom Partition File
-Ensure `partitions.csv` is present in the sketch root directory (it defines the 16MB layout with OTA and FFat):
+Ensure `partitions.csv` is present in the sketch directory `firmware/sugarota/` (it defines the 16MB layout with OTA and FFat):
 ```powershell
-Copy-Item "build\esp32.esp32.esp32s3\partitions.csv" -Destination "partitions.csv"
+Copy-Item "build\esp32.esp32.esp32s3\partitions.csv" -Destination "firmware\sugarota\partitions.csv"
 ```
 
 ### Step 5: Compile Firmware
@@ -87,26 +87,42 @@ Copy-Item "build\esp32.esp32.esp32s3\partitions.csv" -Destination "partitions.cs
 #### Easy One-Command Build Script (with Live Progress & Build Caching)
 Run the bundled batch wrapper or PowerShell script from the repository root:
 ```powershell
-.\build.bat
+.\utils\firmware_build.bat
 ```
-*(or `.\build.ps1`)*
+*(or `.\utils\firmware_build.ps1`)*
 
 To force a clean rebuild without using cached objects:
 ```powershell
-.\build.bat -Clean
+.\utils\firmware_build.bat -Clean
 ```
-*(or `.\build.ps1 -Clean`)*
+*(or `.\utils\firmware_build.ps1 -Clean`)*
 
 The script automatically:
-* Copies `partitions.csv` to the sketch root if not already present.
+* Verifies `partitions.csv` in `firmware/sugarota/` (or restores it from `build/` if needed).
 * Uses `--build-path ./build/cache` to reuse previously compiled object files across minor edits.
 * Leverages all CPU cores (`--jobs 0`).
 * Displays a live progress bar with elapsed time.
+* Updates the root `compile_commands.json` for IDE IntelliSense.
 
 #### Manual CLI Command
 ```powershell
-arduino-cli compile -v --jobs 0 --build-path ./build/cache --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=custom --output-dir ./build/esp32.esp32.esp32s3 sugarota.ino
+arduino-cli compile -v --jobs 0 --build-path ./build/cache --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=custom --output-dir ./build/esp32.esp32.esp32s3 firmware/sugarota
 ```
+
+---
+
+## 5. Android Companion App Build & Run
+
+To build, install, and launch the Android companion app directly to a connected phone over ADB:
+
+```powershell
+.\utils\run_android_app.ps1
+```
+
+Options:
+* `.\utils\run_android_app.ps1 -Install`: Build and install the debug APK only.
+* `.\utils\run_android_app.ps1 -Launch`: Launch the installed app.
+* `.\utils\run_android_app.ps1 -Logs`: Stream real-time Logcat messages from the device.
 
 ---
 

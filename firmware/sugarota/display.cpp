@@ -12,8 +12,15 @@ void initDisplay() {
     DBG_PRINTLN("GFX Init Failed!");
     return;
   }
+  gfx->setRotation(1);
   gfx->fillScreen(isDarkTheme ? BLACK : WHITE);
   gfx->flush();
+}
+
+void setScreenRotation(uint8_t r) {
+  if (gfx) {
+    gfx->setRotation(r);
+  }
 }
 
 void setBrightness(int level) {

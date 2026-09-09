@@ -60,7 +60,7 @@ Stored persistently in ESP32 LittleFS root (`/config.json`). Also returned by th
 
 ## 2. Version State (`data/version_state.json`)
 
-Used by `watch_version.py` to manage CalVer auto-incrementing:
+Used by `utils/watch_version.py` to manage CalVer auto-incrementing:
 
 ```json
 {

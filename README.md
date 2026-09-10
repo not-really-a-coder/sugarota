@@ -1,12 +1,12 @@
-# 🍭 Sugarota: ESP32-S3 Glucose Monitor Firmware
+# 🍭 Sugarota: A Pocket-Size Smart Glucose Monitor Firmware and Android App
 
-Sugarota is a state-of-the-art wireless blood glucose display and telemetry terminal powered by the ESP32-S3 chipset. It syncs real-time CGM data from Dexcom Share or Nightscout APIs, plots high-DPI historical trend graphs on the screen, and features a gorgeous browser-based WebSerial interface to flash firmware and manage device settings.
+Sugarota is a wireless blood glucose display and telemetry terminal powered by the ESP32-S3 chipset. It syncs real-time CGM data from Dexcom Share or Nightscout APIs, plots high-DPI historical trend graphs on the screen, and features a browser-based WebSerial interface to flash firmware and manage device settings. The Android companion app bridges the gap between the display and your phone, providing seamless data management and synchronization through energy-efficient BLE connectivity.
 
-<a href="https://www.youtube.com/watch?v=fj86CE9E_Lw" target="_blank"><img src="https://img.youtube.com/vi/fj86CE9E_Lw/0.jpg" alt="Short demo video"></a>
+![Real device with Android app on Pixel 7, enhanced with AI for clarity](pix/photo-2.jpg)
 
 Initially built for Waveshare ESP32-S3-Touch-LCD-3.49 Development platform. 
 
-See [CHANGELOG](CHANGELOG.md) for latest build updates.
+See [CHANGELOG](CHANGELOG.md) for latest builds updates.
 
 ---
 
@@ -129,6 +129,8 @@ python utils/watch_version.py --watch
 ---
 
 ## 🔒 Security & Local Settings
+
+**No data is shared or sent anywhere. Only you and your provider has access to it.**
 
 Your local configuration containing passwords and API keys is protected by design:
 *   **`data/config.template.json`**: Standard configuration template containing generic placeholders for Wi-Fi and API servers.

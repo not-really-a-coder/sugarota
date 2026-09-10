@@ -26,17 +26,28 @@ $Gradlew = Join-Path $AppDir "gradlew.bat"
 $env:JAVA_HOME = "$env:USERPROFILE\.jdks\jbr-21.0.11"
 
 if ($Install -or (-not $Install -and -not $Launch -and -not $Logs)) {
-    Write-Host "==> Building and Installing Debug APK..." -ForegroundColor Cyan
+    Write-Host "==> Building Debug APK..." -ForegroundColor Cyan
     Push-Location $AppDir
     try {
-        & $Gradlew installDebug
+        & $Gradlew assembleDebug
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "Gradle build/install failed."
+            Write-Error "Gradle build failed."
             exit $LASTEXITCODE
         }
     }
     finally {
         Pop-Location
+    }
+    $ApkPath = Join-Path $AppDir "app\build\outputs\apk\debug\app-debug.apk"
+    if (-not (Test-Path $ApkPath)) {
+        Write-Error "Built APK not found at $ApkPath"
+        exit 1
+    }
+    Write-Host "==> Installing Debug APK via ADB..." -ForegroundColor Cyan
+    & $Adb install -r $ApkPath
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "ADB install failed."
+        exit $LASTEXITCODE
     }
     Write-Host "[OK] App successfully installed on device!" -ForegroundColor Green
 }

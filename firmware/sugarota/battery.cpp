@@ -83,40 +83,19 @@ int getBatteryPercentage(float voltage) {
   return 100;
 }
 
-void updateBattery(bool isUSBPlugged) {
+void updateBattery() {
   float currentV = readBatteryVoltageSingle(); 
 
-  // Detect USB state transitions
-  if (isUSBPlugged && !wasUSBPlugged) {
+  // On this hardware, battery voltage > 4.18V indicates charging or full charge on USB
+  // (unplugged resting LiPo is typically <= 4.15V, while active charging floats at 4.20V - 4.30V).
+  bool isCharging = (currentV >= 4.20f);
+  
+  if (isCharging && !wasUSBPlugged) {
     wasUSBPlugged = true;
-    
-    float lastUnpluggedV = (preSpikeVoltage > 0) ? preSpikeVoltage : ((currentBatteryVoltage > 0) ? currentBatteryVoltage : currentV);
-    
-    chargingOffset = currentV - lastUnpluggedV;
-    if (chargingOffset < 0.05 || chargingOffset > 0.35) {
-      chargingOffset = 0.15;
-    }
-    
-    fillVoltageHistory(currentV);
-    
-    DBG_PRINTF("USB Plugged In. Last Unplugged: %.2fV, Current: %.2fV, Offset: %.2fV\n", 
-               lastUnpluggedV, currentV, chargingOffset);
-  } 
-  else if (!isUSBPlugged && wasUSBPlugged) {
+    DBG_PRINTF("Charging detected (Voltage: %.2fV)\n", currentV);
+  } else if (!isCharging && wasUSBPlugged && currentV < 4.12f) {
     wasUSBPlugged = false;
-    chargingOffset = 0.0;
-    
-    fillVoltageHistory(currentV);
-    
-    float avgV = currentV;
-    currentBatteryVoltage = avgV;
-    int targetPct = getBatteryPercentage(avgV);
-    currentBatteryPct = targetPct;
-    lastBatteryPctUpdate = millis();
-    lastUSBUnplugTime = millis();
-    
-    updateUI();
-    DBG_PRINTF("USB Plugged Out. Real Battery: %.2fV, Pct: %d%%\n", currentV, currentBatteryPct);
+    DBG_PRINTF("Charging ended / Unplugged (Voltage: %.2fV)\n", currentV);
   }
 
   voltageHistory[voltageIndex] = currentV;
@@ -135,58 +114,43 @@ void updateBattery(bool isUSBPlugged) {
   }
   float avgV = sum / count;
   
-  float estimatedV = avgV - chargingOffset;
-  currentBatteryVoltage = estimatedV;
+  currentBatteryVoltage = avgV;
 
   static bool bootVoltageChecked = false;
   static bool bootedLow = false;
   if (!bootVoltageChecked) {
-    if (estimatedV < 3.00) {
+    if (avgV < 3.00) {
       bootedLow = true;
-      DBG_PRINTF("Boot voltage checked: %.2fV (Low, < 3.00V). Will monitor for 10s.\n", estimatedV);
+      DBG_PRINTF("Boot voltage checked: %.2fV (Low, < 3.00V). Will monitor for 10s.\n", avgV);
     } else {
-      DBG_PRINTF("Boot voltage checked: %.2fV (Normal, >= 3.00V).\n", estimatedV);
+      DBG_PRINTF("Boot voltage checked: %.2fV (Normal, >= 3.00V).\n", avgV);
     }
     bootVoltageChecked = true;
   }
 
-  int targetPct = getBatteryPercentage(estimatedV);
+  int targetPct = getBatteryPercentage(avgV);
   
   if (currentBatteryPct == -1) {
     currentBatteryPct = targetPct;
     lastBatteryPctUpdate = millis();
+    updateUI();
   } else {
-    if (millis() - lastUSBUnplugTime < 30000) {
-      if (currentBatteryPct != targetPct) {
-        currentBatteryPct = targetPct;
-        lastBatteryPctUpdate = millis();
-        updateUI();
-      }
-    } else {
-      if (millis() - lastBatteryPctUpdate >= 60000) {
-        if (targetPct > currentBatteryPct) {
-          currentBatteryPct++;
-        } else if (targetPct < currentBatteryPct) {
-          currentBatteryPct--;
-        }
-        lastBatteryPctUpdate = millis();
-        updateUI();
-      }
+    if (currentBatteryPct != targetPct) {
+      currentBatteryPct = targetPct;
+      lastBatteryPctUpdate = millis();
+      updateUI();
     }
   }
   
-  DBG_PRINTF("Battery: %.2fV (Avg: %.2fV, Est: %.2fV) Target: %d%% Disp: %d%%\n", 
-             currentV, avgV, estimatedV, targetPct, currentBatteryPct);
-  if (isUSBPlugged) {
-      DBG_PRINTLN("-> STATUS: USB Charging Detected (GPIO16 LOW)");
-  }
+  DBG_PRINTF("Battery: %.2fV (Avg: %.2fV) Target: %d%% Disp: %d%%%s\n", 
+             currentV, avgV, targetPct, currentBatteryPct, wasUSBPlugged ? " [Charging]" : "");
   
-  if (!isUSBPlugged) {
+  if (!wasUSBPlugged) {
     if (bootedLow && millis() >= 15000) {
       DBG_PRINTLN(F("CRITICAL BATTERY: Booted with low voltage, shutting down after 15s..."));
       powerOffDevice();
     }
-    if (millis() >= 15000 && estimatedV < 3.00) {
+    if (millis() >= 15000 && avgV < 3.00) {
       DBG_PRINTLN(F("CRITICAL BATTERY: Voltage below 3.00V, shutting down..."));
       powerOffDevice();
     }

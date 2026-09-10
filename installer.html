@@ -62,7 +62,7 @@
 
         .logo-title {
             font-family: 'Outfit', sans-serif;
-            font-size: 3rem;
+            font-size: 2.25rem;
             font-weight: 800;
             letter-spacing: -0.03em;
             margin: 0;
@@ -76,10 +76,26 @@
 
         .subtitle {
             color: var(--text-secondary);
-            font-size: 1.15rem;
-            margin-top: 8px;
+            font-size: 0.95rem;
+            margin-top: 6px;
             font-weight: 500;
             letter-spacing: 0.03em;
+        }
+
+        .version-badge {
+            display: inline-flex;
+            align-items: center;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            color: var(--accent-blue);
+            background: rgba(0, 240, 255, 0.08);
+            border: 1px solid rgba(0, 240, 255, 0.25);
+            padding: 3px 10px;
+            border-radius: 9999px;
+            margin-top: 8px;
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.1);
         }
 
         /* Global Connection Status Widget */
@@ -121,7 +137,7 @@
         .status-text {
             font-family: 'Outfit', sans-serif;
             font-weight: 700;
-            font-size: 1.05rem;
+            font-size: 0.95rem;
             letter-spacing: 0.03em;
             color: var(--text-secondary);
             transition: color 0.3s ease;
@@ -135,20 +151,19 @@
             display: flex;
             gap: 24px;
             font-family: 'Fira Code', monospace;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             color: var(--text-secondary);
         }
 
-        .metric-item span {
-            color: var(--text-primary);
-            font-weight: 500;
+        .metric-item strong {
+            color: var(--accent-blue);
         }
 
-        /* Glassmorphism Panel Grid */
+        /* Responsive Grid Columns */
         .grid-container {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 32px;
+            gap: 28px;
         }
 
         @media (max-width: 960px) {
@@ -165,8 +180,8 @@
         .panel {
             background: var(--card-bg);
             border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 24px;
-            padding: 32px;
+            border-radius: 20px;
+            padding: 26px;
             box-sizing: border-box;
             backdrop-filter: blur(25px);
             box-shadow: 0 16px 40px 0 rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
@@ -180,13 +195,13 @@
 
         .panel-title {
             font-family: 'Outfit', sans-serif;
-            font-size: 1.6rem;
+            font-size: 1.35rem;
             font-weight: 800;
             margin-top: 0;
-            margin-bottom: 28px;
+            margin-bottom: 22px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             letter-spacing: -0.01em;
             text-transform: uppercase;
         }
@@ -202,14 +217,13 @@
         }
 
         /* Form Controls */
-        /* Form Controls */
         .form-group {
-            margin-bottom: 24px;
+            margin-bottom: 18px;
         }
 
         .form-row {
             display: flex;
-            gap: 20px;
+            gap: 16px;
             width: 100%;
         }
 
@@ -224,12 +238,12 @@
         }
 
         .password-wrapper input {
-            padding-right: 48px !important;
+            padding-right: 44px !important;
         }
 
         .password-toggle-btn {
             position: absolute;
-            right: 14px;
+            right: 12px;
             top: 50%;
             transform: translateY(-50%);
             background: transparent;
@@ -250,10 +264,10 @@
 
         label {
             display: block;
-            font-size: 0.8rem;
+            font-size: 0.72rem;
             font-weight: 700;
             color: var(--text-secondary);
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             text-transform: uppercase;
             letter-spacing: 0.08em;
         }
@@ -264,9 +278,9 @@
             width: 100%;
             background: rgba(0, 0, 0, 0.45);
             border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
-            padding: 14px 18px;
-            font-size: 0.95rem;
+            border-radius: 10px;
+            padding: 11px 14px;
+            font-size: 0.88rem;
             color: var(--text-primary);
             box-sizing: border-box;
             font-family: 'Inter', sans-serif;
@@ -285,15 +299,15 @@
         .checkbox-group {
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin-top: 24px;
+            gap: 10px;
+            margin-top: 16px;
             cursor: pointer;
             user-select: none;
         }
 
         input[type="checkbox"] {
-            width: 22px;
-            height: 22px;
+            width: 18px;
+            height: 18px;
             accent-color: var(--accent-green);
             cursor: pointer;
         }
@@ -301,23 +315,23 @@
         /* Buttons Container */
         .btn-row {
             display: flex;
-            gap: 16px;
-            margin-bottom: 24px;
+            gap: 14px;
+            margin-bottom: 20px;
         }
 
         .btn {
             flex: 1;
             font-family: 'Outfit', sans-serif;
             font-weight: 700;
-            font-size: 1rem;
-            padding: 15px 24px;
-            border-radius: 14px;
+            font-size: 0.88rem;
+            padding: 12px 20px;
+            border-radius: 12px;
             cursor: pointer;
             transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
+            gap: 8px;
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
             text-transform: uppercase;
             letter-spacing: 0.02em;
@@ -379,44 +393,103 @@
             transform: none;
         }
 
-        /* Config form sections (always visible cards) */
-        .accordion-section {
-            border: 1px solid rgba(255, 255, 255, 0.04);
-            border-radius: 16px;
-            margin-bottom: 16px;
-            overflow: hidden;
-            background: rgba(0, 0, 0, 0.2);
-            transition: all 0.3s ease;
-        }
-
-        .accordion-header {
-            padding: 18px 24px;
-            font-weight: 700;
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.05rem;
-            cursor: default;
+        /* Config Tab Navigation */
+        .config-tabs {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            user-select: none;
-            background: rgba(255, 255, 255, 0.02);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            padding: 4px;
+            gap: 4px;
+            margin-bottom: 20px;
         }
 
-        .accordion-content {
-            padding: 24px;
+        .tab-btn {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.84rem;
+            font-weight: 700;
+            padding: 10px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .tab-btn.active {
+            color: #020b05;
+            background: linear-gradient(135deg, #00c950 0%, var(--accent-green) 100%);
+            box-shadow: 0 2px 10px rgba(0, 255, 102, 0.3);
+        }
+
+        .tab-pane {
+            display: none;
+            animation: fadeIn 0.2s ease-in-out;
+        }
+
+        .tab-pane.active {
             display: block;
+        }
+
+        .tab-card {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 14px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(3px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         /* Terminal Console Shell & SCANLINES */
         .terminal-container {
-            margin-top: 28px;
+            margin-top: 24px;
             position: relative;
+        }
+
+        .terminal-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .terminal-header-row label {
+            margin-bottom: 0;
+        }
+
+        .terminal-actions-right {
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .terminal-wrapper {
             position: relative;
-            border-radius: 16px;
+            border-radius: 14px;
             overflow: hidden;
             border: 1px solid rgba(255, 255, 255, 0.08);
             background: #040407;
@@ -439,12 +512,12 @@
         }
 
         .terminal {
-            height: 240px;
-            padding: 20px;
+            height: 220px;
+            padding: 16px;
             overflow-y: auto;
             font-family: 'Fira Code', monospace;
-            font-size: 0.85rem;
-            line-height: 1.5;
+            font-size: 0.75rem;
+            line-height: 1.45;
             color: var(--terminal-green);
             text-shadow: 0 0 6px var(--terminal-glow);
             white-space: pre-wrap;
@@ -452,44 +525,51 @@
             box-sizing: border-box;
         }
 
-
-
-        /* Micro Action Buttons under Console */
-        .terminal-quick-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-            flex-wrap: wrap;
-        }
-
-        .btn-micro {
-            background: rgba(0, 240, 255, 0.05);
-            border: 1px solid rgba(0, 240, 255, 0.15);
-            color: var(--accent-blue);
-            font-family: 'Fira Code', monospace;
-            font-size: 0.75rem;
-            padding: 6px 12px;
+        /* Micro Action Buttons next to Console */
+        .btn-icon-micro {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            padding: 5px 8px;
             border-radius: 6px;
             cursor: pointer;
             transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
         }
 
-        .btn-micro:hover {
-            background: rgba(0, 240, 255, 0.18);
+        .btn-icon-micro:hover {
+            background: rgba(0, 240, 255, 0.15);
             border-color: var(--accent-blue);
+            color: var(--accent-blue);
             box-shadow: 0 0 8px var(--accent-blue-glow);
         }
 
-        .btn-micro.danger {
-            background: rgba(255, 59, 48, 0.05);
-            border-color: rgba(255, 59, 48, 0.15);
+        .btn-icon-micro.danger:hover {
+            background: rgba(255, 59, 48, 0.15);
+            border-color: var(--accent-red);
             color: var(--accent-red);
+            box-shadow: 0 0 8px var(--accent-red-glow);
         }
 
-        .btn-micro.danger:hover {
-            background: rgba(255, 59, 48, 0.18);
-            border-color: var(--accent-red);
-            box-shadow: 0 0 8px var(--accent-red-glow);
+        .btn-icon-micro:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+            border-color: rgba(255, 255, 255, 0.05);
+            background: transparent;
+            box-shadow: none;
+            color: var(--text-secondary);
+        }
+
+        .btn-inline-action {
+            flex-shrink: 0;
+            width: auto;
+            white-space: nowrap;
+            height: 42px;
+            padding: 0 18px;
         }
 
         /* Premium Drag & Drop Area */
@@ -634,7 +714,7 @@
     <div class="wrapper">
         <header>
             <h1 class="logo-title">SUGAROTA CONTROL CENTER</h1>
-            <div class="subtitle">Deploy Firmware & Sync Settings via Web Serial USB</div>
+            <div><span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.09.10.3</span></div>
         </header>
 
         <!-- Global Connection Status Banner -->
@@ -661,61 +741,87 @@
                     Firmware Flasher
                 </h2>
 
-                <div class="form-group">
-                    <label>Connection Speed (Baud Rate)</label>
-                    <select id="baudrate-select">
-                        <option value="115200">115200 (Standard)</option>
-                        <option value="460800">460800 (Medium Speed)</option>
-                        <option value="921600" selected>921600 (High Speed - Recommended)</option>
-                    </select>
+                <div class="form-row" style="align-items: flex-end; margin-bottom: 20px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Connection Speed (Baud Rate)</label>
+                        <select id="baudrate-select">
+                            <option value="115200">115200 (Standard)</option>
+                            <option value="460800">460800 (Medium Speed)</option>
+                            <option value="921600" selected>921600 (High Speed - Recommended)</option>
+                        </select>
+                    </div>
+                    <div style="flex-shrink: 0;">
+                        <button class="btn btn-blue btn-inline-action" id="btn-pair">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5">
+                                <path
+                                    d="M18 10h-1.55c-.15 0-.29-.06-.39-.17l-3.32-3.32a.55.55 0 0 1 .39-.94h4.12c.3 0 .55.25.55.55v3.33c0 .3-.25.55-.55.55zM6 14h1.55c.15 0 .29.06.39.17l3.32 3.32a.55.55 0 0 1-.39.94H6.75c-.3 0-.55-.25-.55-.55v-3.33c0-.3.25-.55.55-.55z" />
+                                <path d="M4.5 16.5L16.5 4.5M7.5 19.5l12-12" />
+                            </svg>
+                            Connect
+                        </button>
+                        <button class="btn btn-outline btn-inline-action" id="btn-disconnect"
+                            style="display: none;">Disconnect</button>
+                    </div>
                 </div>
 
-                <div class="btn-row">
-                    <button class="btn btn-blue" id="btn-pair">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.5">
-                            <path
-                                d="M18 10h-1.55c-.15 0-.29-.06-.39-.17l-3.32-3.32a.55.55 0 0 1 .39-.94h4.12c.3 0 .55.25.55.55v3.33c0 .3-.25.55-.55.55zM6 14h1.55c.15 0 .29.06.39.17l3.32 3.32a.55.55 0 0 1-.39.94H6.75c-.3 0-.55-.25-.55-.55v-3.33c0-.3.25-.55.55-.55z" />
-                            <path d="M4.5 16.5L16.5 4.5M7.5 19.5l12-12" />
-                        </svg>
-                        Connect USB Device
-                    </button>
-                    <button class="btn btn-outline" id="btn-disconnect" style="display: none;">Disconnect</button>
-                </div>
-
-                <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.05); margin: 28px 0;">
+                <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.05); margin: 20px 0;">
 
                 <!-- Logger Terminal -->
-                <div class="terminal-container" style="margin-top: 0; margin-bottom: 28px;">
-                    <label>System Command Console & Log Output</label>
+                <div class="terminal-container" style="margin-top: 0; margin-bottom: 20px;">
+                    <div class="terminal-header-row">
+                        <label>Console & Log Output</label>
+                        <div class="terminal-actions-right">
+                            <button class="btn-icon-micro danger" id="quick-btn-reboot" disabled
+                                title="Soft Reboot Device">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                                </svg>
+                            </button>
+                            <button class="btn-icon-micro" id="quick-btn-clear" title="Clear Screen">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path
+                                        d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+                                    </path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
                     <div class="terminal-wrapper">
                         <div class="terminal" id="terminal-log">Console system ready. Pair your USB device to sync
                             settings or deploy new software...</div>
                     </div>
-                    <!-- Micro Console Tools -->
-                    <div class="terminal-quick-actions">
-                        <button class="btn-micro danger" id="quick-btn-reboot" disabled
-                            title="Perform soft CPU reboot">⚡ Soft reboot</button>
-                        <button class="btn-micro" id="quick-btn-clear" style="margin-left: auto;">🗑️ Clear
-                            screen</button>
-                    </div>
                 </div>
 
-                <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.05); margin: 28px 0;">
+                <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.05); margin: 20px 0;">
 
-                <div class="form-group">
-                    <label>Firmware Image Selection</label>
-                    <select id="firmware-mode-select" onchange="toggleFirmwareMode()">
-                        <option value="bundled-full">Bundled Full Firmware (Brand New Device)</option>
-                        <option value="bundled">Bundled Update Only (sugarota.ino.bin)</option>
-                        <option value="custom">Upload Custom Binary File (.bin)</option>
-                    </select>
+                <div class="form-row" style="align-items: flex-end; margin-bottom: 12px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Firmware Image Selection</label>
+                        <select id="firmware-mode-select" onchange="toggleFirmwareMode()">
+                            <option value="bundled-full">Bundled Full (Brand New Device)</option>
+                            <option value="bundled">Bundled Update (sugarota.ino.bin)</option>
+                            <option value="custom">Upload Custom Binary (.bin)</option>
+                        </select>
+                    </div>
+                    <div style="flex-shrink: 0;">
+                        <button class="btn btn-green btn-inline-action" id="btn-flash" disabled>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                            </svg>
+                            Flash
+                        </button>
+                    </div>
                 </div>
 
                 <div class="form-group" id="custom-file-group" style="display: none;">
                     <label>Select Custom firmware.bin</label>
                     <div class="dropzone" id="custom-file-dropzone">
-                        <svg class="dropzone-icon" width="40" height="40" viewBox="0 0 24 24" fill="none"
+                        <svg class="dropzone-icon" width="36" height="36" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="1.5">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
                         </svg>
@@ -729,14 +835,6 @@
                         <input type="file" id="custom-file-input" accept=".bin" style="display: none;">
                     </div>
                 </div>
-
-                <button class="btn btn-green" id="btn-flash" style="width: 100%; margin-top: 12px;" disabled>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="2.5">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
-                    </svg>
-                    Start Flashing Firmware
-                </button>
 
                 <!-- Progress Bar -->
                 <div class="progress-container" id="flash-progress-container">
@@ -761,37 +859,33 @@
                     </svg>
                     Device Configuration
                 </h2>
-                <p
-                    style="font-size: 0.85rem; color: var(--text-secondary); margin-top: -12px; margin-bottom: 20px; opacity: 0.85;">
-                    * - Required fields</p>
 
-                <div class="btn-row">
-                    <button class="btn btn-green" id="btn-read-config" disabled>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.5">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-                        </svg>
-                        Retrieve Config
+                <!-- Tabs Header -->
+                <div class="config-tabs">
+                    <button type="button" class="tab-btn active" id="tab-btn-network" onclick="switchTab('network')">
+                        📶 Network
                     </button>
-                    <button class="btn btn-outline" id="btn-write-config" disabled>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.5">
-                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                            <polyline points="17 21 17 13 7 13 7 21" />
-                            <polyline points="7 3 7 8 15 8" />
-                        </svg>
-                        Save & Apply Config
+                    <button type="button" class="tab-btn" id="tab-btn-data" onclick="switchTab('data')">
+                        🩸 Data
+                    </button>
+                    <button type="button" class="tab-btn" id="tab-btn-general" onclick="switchTab('general')">
+                        ⚙️ General
                     </button>
                 </div>
 
-                <!-- Form Accordions -->
+                <!-- Form Tab Panes -->
                 <form id="config-form" onsubmit="return false;" autocomplete="off">
-                    <!-- Section 1: Wi-Fi -->
-                    <div class="accordion-section">
-                        <div class="accordion-header" id="acc-header-wifi">
-                            <span>📶 Primary & Secondary Wi-Fi</span>
-                        </div>
-                        <div class="accordion-content" id="wifi-content">
+                    <!-- Tab 1: Network -->
+                    <div class="tab-pane active" id="pane-network">
+                        <div class="tab-card">
+                            <div class="form-group">
+                                <label>Connection Mode</label>
+                                <select id="connection-mode-select">
+                                    <option value="AUTO" selected>Auto (BLE first with Wi-Fi fallback)</option>
+                                    <option value="BLE_ONLY">BLE Only (Low power, Android app required)</option>
+                                    <option value="WIFI_ONLY">Wi-Fi Only (Direct polling)</option>
+                                </select>
+                            </div>
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Primary Wi-Fi SSID</label>
@@ -837,21 +931,38 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="checkbox-group" style="margin-top: 12px;">
+                            <div class="checkbox-group">
                                 <input type="checkbox" id="wifi-secondary-first">
-                                <label style="margin-bottom: 0; cursor: pointer;">Connect to Secondary Wi-Fi First</label>
+                                <label style="margin-bottom: 0; cursor: pointer;">Connect to Secondary Wi-Fi
+                                    First</label>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Section 2: CGM Data source -->
-                    <div class="accordion-section">
-                        <div class="accordion-header" id="acc-header-cgm">
-                            <span>🩸 CGM Data Provider</span>
-                        </div>
-                        <div class="accordion-content" id="cgm-content">
+                    <!-- Tab 2: Data -->
+                    <div class="tab-pane" id="pane-data">
+                        <div class="tab-card">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Glucose Units</label>
+                                    <select id="units-select">
+                                        <option value="mg/dL">mg/dL</option>
+                                        <option value="mmol/L">mmol/L</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Update Frequency</label>
+                                    <select id="poll-interval-select">
+                                        <option value="30">30 seconds</option>
+                                        <option value="60" selected>1 minute (60s - Recommended)</option>
+                                        <option value="120">2 minutes (120s)</option>
+                                        <option value="300">5 minutes (300s)</option>
+                                    </select>
+                                </div>
+                            </div>
+
                             <div class="form-group">
-                                <label>Data Provider Selection</label>
+                                <label>Data Provider</label>
                                 <select id="provider-select" onchange="toggleProviderFields()">
                                     <option value="DEXCOM">Dexcom Share Server</option>
                                     <option value="NIGHTSCOUT">Nightscout API Endpoint</option>
@@ -922,25 +1033,11 @@
                         </div>
                     </div>
 
-                    <!-- Section 3: Timezone & Unit options -->
-                    <div class="accordion-section">
-                        <div class="accordion-header" id="acc-header-system">
-                            <span>⚙️ General & Timezone Settings</span>
-                        </div>
-                        <div class="accordion-content" id="system-content">
+                    <!-- Tab 3: General -->
+                    <div class="tab-pane" id="pane-general">
+                        <div class="tab-card">
                             <div class="form-group">
-                                <label>Glucose Measurement Unit</label>
-                                <select id="units-select">
-                                    <option value="mg/dL">mg/dL</option>
-                                    <option value="mmol/L">mmol/L</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>NTP Server</label>
-                                <input type="text" id="ntp-server" value="pool.ntp.org">
-                            </div>
-                            <div class="form-group">
-                                <label>Timezone Offset (Seconds from GMT)</label>
+                                <label>Timezone</label>
                                 <select id="timezone-offset">
                                     <option value="0">GMT +0:00 (London)</option>
                                     <option value="3600">GMT +1:00 (Paris / Berlin)</option>
@@ -956,29 +1053,18 @@
                                     <option value="-28800">GMT -8:00 (Los Angeles / PST)</option>
                                 </select>
                             </div>
-                            <div class="form-group">
-                                <label>Daylight Saving Offset (Seconds)</label>
-                                <select id="daylight-offset">
-                                    <option value="0" selected>Disabled (0)</option>
-                                    <option value="3600">Enabled (+1 Hour / 3600s)</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Connection Mode</label>
-                                <select id="connection-mode-select">
-                                    <option value="AUTO" selected>Auto (BLE first with Wi-Fi fallback)</option>
-                                    <option value="BLE_ONLY">BLE Only (Low power, Android app required)</option>
-                                    <option value="WIFI_ONLY">Wi-Fi Only (Direct polling)</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Update Frequency (Poll Interval)</label>
-                                <select id="poll-interval-select">
-                                    <option value="30">30 seconds</option>
-                                    <option value="60" selected>1 minute (60s - Recommended)</option>
-                                    <option value="120">2 minutes (120s)</option>
-                                    <option value="300">5 minutes (300s)</option>
-                                </select>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>NTP Server</label>
+                                    <input type="text" id="ntp-server" value="pool.ntp.org">
+                                </div>
+                                <div class="form-group">
+                                    <label>Daylight Saving Offset</label>
+                                    <select id="daylight-offset">
+                                        <option value="0" selected>Disabled (0)</option>
+                                        <option value="3600">Enabled (+1 Hour / 3600s)</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="checkbox-group">
                                 <input type="checkbox" id="debug-mode-checkbox" checked>
@@ -987,24 +1073,24 @@
                         </div>
                     </div>
 
-                    <!-- Bottom Save & Apply Button Duplicate -->
-                    <div class="btn-row" style="margin-top: 24px;">
-                        <button class="btn btn-outline" id="btn-write-config-bottom" disabled style="width: 100%;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2.5">
-                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                                <polyline points="17 21 17 13 7 13 7 21" />
-                                <polyline points="7 3 7 8 15 8" />
-                            </svg>
-                            Save & Apply Config
-                        </button>
-                    </div>
+                    <!-- Universal Save & Apply Button (Visible across all tabs) -->
+                    <button class="btn btn-outline" id="btn-write-config" disabled style="width: 100%;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                            <polyline points="17 21 17 13 7 13 7 21" />
+                            <polyline points="7 3 7 8 15 8" />
+                        </svg>
+                        Save & Apply Config
+                    </button>
                 </form>
             </div>
         </div>
     </div>
 
     <script>
+        const INSTALLER_VERSION = "v0.09.10.3";
+
         // Toggle Password Visibility Reveal Icon Logic
         function togglePasswordVisibility(inputId, btn) {
             SoundEffects.click();
@@ -1078,14 +1164,31 @@
         let readBuffer = "";
         let isBrandNewDevice = false;
 
+        // Tab Navigation Switcher
+        function switchTab(tabName) {
+            SoundEffects.click();
+            const tabs = ['network', 'data', 'general'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`tab-btn-${t}`);
+                const pane = document.getElementById(`pane-${t}`);
+                if (btn && pane) {
+                    if (t === tabName) {
+                        btn.classList.add('active');
+                        pane.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                        pane.classList.remove('active');
+                    }
+                }
+            });
+        }
+
         // DOM Elements
         const terminalEl = document.getElementById("terminal-log");
         const pairBtn = document.getElementById("btn-pair");
         const disconnectBtn = document.getElementById("btn-disconnect");
         const flashBtn = document.getElementById("btn-flash");
-        const readConfigBtn = document.getElementById("btn-read-config");
         const writeConfigBtn = document.getElementById("btn-write-config");
-        const writeConfigBtnBottom = document.getElementById("btn-write-config-bottom");
         const statusDot = document.getElementById("global-status-dot");
         const statusText = document.getElementById("global-status-text");
         const customFileGroup = document.getElementById("custom-file-group");
@@ -1103,15 +1206,18 @@
         const metricBaud = document.getElementById("metric-baud");
         const metricChip = document.getElementById("metric-chip");
 
-        // Print logs to styled terminal container
+        // Print logs to styled terminal container in 24-hour time format (preserves scroll position if scrolled up)
         function log(message, color = null) {
-            const time = new Date().toLocaleTimeString();
+            const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
             let displayMessage = message;
             if (color) {
                 displayMessage = `<span style="color: ${color};">${message}</span>`;
             }
+            const isNearBottom = (terminalEl.scrollHeight - terminalEl.scrollTop - terminalEl.clientHeight) <= 45;
             terminalEl.innerHTML += `[${time}] ${displayMessage}\n`;
-            terminalEl.scrollTop = terminalEl.scrollHeight;
+            if (isNearBottom) {
+                terminalEl.scrollTop = terminalEl.scrollHeight;
+            }
         }
 
         function clearLog() {
@@ -1160,17 +1266,19 @@
                 port = await navigator.serial.requestPort();
                 log("Port selected! Opening serial link...");
 
-                // Open standard serial line at 115200 for regular config updates
-                await port.open({ baudRate: 115200 });
+                // Read user-selected baud rate from the Connection Speed dropdown
+                const selectedBaud = parseInt(document.getElementById("baudrate-select").value) || 115200;
 
-                // Assert DTR/RTS signals to support ESP32-S3 native USB CDC
+                await port.open({ baudRate: selectedBaud });
+
+                // Assert DTR and de-assert RTS so ESP32-S3 native USB CDC is active without triggering auto-reset
                 try {
-                    await port.setSignals({ dataTerminalReady: true, requestToSend: true });
+                    await port.setSignals({ dataTerminalReady: true, requestToSend: false });
                 } catch (sigErr) {
                     console.warn("Could not set DTR/RTS signals:", sigErr);
                 }
 
-                log("Serial connection opened successfully at 115200 baud!", "var(--accent-green)");
+                log(`Serial connection opened successfully at ${selectedBaud} baud!`, "var(--accent-green)");
                 SoundEffects.connect();
 
                 setConnectedState(true);
@@ -1178,7 +1286,7 @@
                 // Get USB Port Details
                 const info = port.getInfo();
                 metricPort.innerText = info.usbVendorId ? `USB:${info.usbVendorId.toString(16).toUpperCase()}` : "Active";
-                metricBaud.innerText = "115200 bps";
+                metricBaud.innerText = `${selectedBaud} bps`;
 
                 startSerialReadLoop();
 
@@ -1214,6 +1322,10 @@
             }
             if (port) {
                 try {
+                    // Explicitly release DTR/RTS cleanly before closing port
+                    try {
+                        await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+                    } catch (e) { }
                     await port.close();
                 } catch (e) { }
                 port = null;
@@ -1228,9 +1340,7 @@
                 pairBtn.style.display = "none";
                 disconnectBtn.style.display = "block";
                 flashBtn.disabled = false;
-                readConfigBtn.disabled = false;
                 writeConfigBtn.disabled = false;
-                writeConfigBtnBottom.disabled = false;
 
                 // Interactive CLI / console buttons
                 quickRebootBtn.disabled = false;
@@ -1242,9 +1352,7 @@
                 pairBtn.style.display = "block";
                 disconnectBtn.style.display = "none";
                 flashBtn.disabled = true;
-                readConfigBtn.disabled = true;
                 writeConfigBtn.disabled = true;
-                writeConfigBtnBottom.disabled = true;
 
                 // Interactive CLI / console buttons
                 quickRebootBtn.disabled = true;
@@ -1304,9 +1412,12 @@
                                 continue;
                             }
 
-                            // Print standard debug lines cleanly
+                            // Print standard debug lines cleanly, preserving scroll if user scrolled up
+                            const isNearBottom = (terminalEl.scrollHeight - terminalEl.scrollTop - terminalEl.clientHeight) <= 45;
                             terminalEl.innerHTML += line.replace(/\r/g, "");
-                            terminalEl.scrollTop = terminalEl.scrollHeight;
+                            if (isNearBottom) {
+                                terminalEl.scrollTop = terminalEl.scrollHeight;
+                            }
                         }
 
                         // Look for JSON EOF marker in the full buffer to trigger config parsing
@@ -1328,12 +1439,6 @@
                 }
             }
         }
-
-        // Retrieve live configuration over serial
-        readConfigBtn.addEventListener("click", () => {
-            SoundEffects.click();
-            retrieveConfig();
-        });
 
 
 
@@ -1503,11 +1608,6 @@
             }
         });
 
-        writeConfigBtnBottom.addEventListener("click", () => {
-            SoundEffects.click();
-            writeConfigBtn.click();
-        });
-
         // Custom Drag-and-Drop Event Listeners
         const dropzone = document.getElementById("custom-file-dropzone");
         const customFileInput = document.getElementById("custom-file-input");
@@ -1616,15 +1716,39 @@
                 log(mode === "bundled-full" ? "Fetching bundled firmware partitions for a full flash..." : "Fetching main firmware for OTA update...", "var(--accent-blue)");
                 try {
                     const fetchBin = async (name) => {
-                        let response = await fetch(`build/esp32.esp32.esp32s3/${name}`);
+                        const cacheBuster = `?t=${Date.now()}`;
+                        let response = await fetch(`build/esp32.esp32.esp32s3/${name}${cacheBuster}`, { cache: "no-store" });
                         if (!response.ok) {
-                            response = await fetch(`build/esp32.esp32.esp32s3/Sugarota/${name}`);
+                            response = await fetch(`build/esp32.esp32.esp32s3/Sugarota/${name}${cacheBuster}`, { cache: "no-store" });
                         }
                         if (!response.ok) throw new Error(`HTTP ${response.status} for ${name}`);
                         return new Uint8Array(await response.arrayBuffer());
                     };
 
                     const appData = await fetchBin("sugarota.ino.bin");
+
+                    // Inspect binary to extract Sugarota's embedded CalVer version string (e.g. v0.09.10.2)
+                    let detectedVersion = "Unknown";
+                    try {
+                        const decoder = new TextDecoder("ascii");
+                        const decodedStr = decoder.decode(appData);
+                        // Specifically look for Sugarota CalVer (vX.MM.DD.B) or Sugarota version tag
+                        const match = decodedStr.match(/Sugarota\s+(v\d+\.\d{2}\.\d{2}\.\d+)/) || 
+                                      decodedStr.match(/(v\d+\.\d{2}\.\d{2}\.\d+)/) ||
+                                      decodedStr.match(/v\d+\.\d+\.\d+\.\d+/);
+                        if (match) {
+                            detectedVersion = match[1] || match[0];
+                        }
+                    } catch (e) { }
+
+                    log(`Firmware binary loaded: version [${detectedVersion}] (${(appData.byteLength / 1024).toFixed(1)} KB)`, "var(--accent-green)");
+
+                    // Prompt user with version before proceeding to flash
+                    const confirmMsg = `Sugarota Firmware Version: ${detectedVersion}\n\nMode: ${mode === "bundled-full" ? "Full Clean Flash (All Partitions)" : "App OTA Flash (Partition 0x10000)"}\n\nDo you want to proceed with flashing this version to the device?`;
+                    if (!confirm(confirmMsg)) {
+                        log("Flashing operation cancelled by user.", "var(--accent-yellow)");
+                        return;
+                    }
 
                     if (mode === "bundled-full") {
                         const bootloaderData = await fetchBin("sugarota.ino.bootloader.bin");
@@ -1638,14 +1762,14 @@
                             { data: appData, address: 0x10000 }
                         ];
 
-                        firmwareFileName = "Full Sugarota Firmware (4 Partitions)";
+                        firmwareFileName = `Full Sugarota Firmware (${detectedVersion}, 4 Partitions)`;
                         log("All bundled firmware partitions downloaded successfully!", "var(--accent-green)");
                     } else {
                         filesToFlash = [
                             { data: appData, address: 0x10000 }
                         ];
-                        firmwareFileName = "Sugarota Main Application (OTA Update)";
-                        log("Main firmware application downloaded successfully!", "var(--accent-green)");
+                        firmwareFileName = `Sugarota Main App (${detectedVersion})`;
+                        log(`Main firmware application (${detectedVersion}) downloaded successfully!`, "var(--accent-green)");
                     }
                 } catch (err) {
                     SoundEffects.warning();
@@ -1659,6 +1783,26 @@
                     alert("Please upload a custom firmware.bin file to upload!");
                     return;
                 }
+
+                // Inspect custom binary if possible
+                let customVersion = "Unknown";
+                try {
+                    const decoder = new TextDecoder("ascii");
+                    const decodedStr = decoder.decode(customFirmwareData);
+                    const match = decodedStr.match(/Sugarota\s+(v\d+\.\d{2}\.\d{2}\.\d+)/) || 
+                                  decodedStr.match(/(v\d+\.\d{2}\.\d{2}\.\d+)/) ||
+                                  decodedStr.match(/v\d+\.\d+\.\d+\.\d+/);
+                    if (match) {
+                        customVersion = match[1] || match[0];
+                    }
+                } catch (e) { }
+
+                const confirmCustomMsg = `Custom Firmware File: ${customFileInput.files[0] ? customFileInput.files[0].name : "custom_firmware.bin"}\nDetected Version: ${customVersion}\n\nDo you want to proceed with flashing?`;
+                if (!confirm(confirmCustomMsg)) {
+                    log("Flashing operation cancelled by user.", "var(--accent-yellow)");
+                    return;
+                }
+
                 filesToFlash = [
                     { data: customFirmwareData, address: 0x10000 }
                 ];

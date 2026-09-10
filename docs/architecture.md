@@ -94,8 +94,33 @@ firmware/sugarota/
 ├── input.h / .cpp       # Button debouncing, touch controller, QMI8658 IMU (shake, face-down, timer)
 ├── ble_handler.h / .cpp # BLE glucose normalization, history sorting/eviction, pairing dialogs
 ├── sugarota.ino         # System setup(), main loop(), task scheduling, serial CLI
-├── sugarota_ble.h / .cpp# NimBLE GATT server, 128-bit encryption, bonding
+├── ble.h / .cpp         # NimBLE GATT server, 128-bit encryption, bonding
 ├── qrcode.h / .c        # Embedded QR code generator library
 ├── partitions.csv       # 16MB custom partition scheme (OTA + FFat + NVS)
 └── src/                 # In-tree Waveshare audio codec & TCA9554 expander drivers
 ```
+
+---
+
+## 4. Unified Versioning Architecture (CalVer)
+
+Sugarota implements a unified **Calendar Versioning (CalVer)** system across all components:
+
+$$\text{Format: } \mathbf{v\{\text{YearOffset}\}.\{\text{Month:02d}\}.\{\text{Day:02d}\}.\{\text{Build}\}}$$
+
+- **$\text{YearOffset}$**: $\text{Current Year} - 2026$ (e.g. `2026` $\rightarrow$ `0`).
+- **$\text{Month}$ & $\text{Day}$**: Zero-padded month and day strings (e.g. `09.09`).
+- **$\text{Build}$**: Daily incremental counter, resetting to `0` at midnight UTC.
+
+### Deliverables & Independent Build Counters:
+
+| Deliverable | Key Files | Definition / Display |
+|---|---|---|
+| **Firmware** | `sugarota.ino`, `config.h` | `#define SUGAROTA_VERSION "..."` |
+| **Web Installer** | `installer.html` | `const INSTALLER_VERSION = "..."` & Header Badge |
+| **Android App** | `build.gradle.kts`, `MainActivity.kt` | `versionName = "..."` & Companion Footer |
+
+Each deliverable tracks build revisions independently in `data/version_state.json`, managed via `utils/watch_version.py`.
+
+### Android Companion Testing Workflow:
+The primary scenario for compiling, testing, and deploying the Android application is via `utils/run_android_app.ps1`. See [build_requirements.md Section 5](build_requirements.md#5-android-companion-app-build--run-primary-testing-workflow) for details.

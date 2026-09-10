@@ -130,6 +130,8 @@ void handleBLEGlucose(const JsonDocument& doc) {
   offlineMode = false;
   historyDirty = true;
   isFetching = false;
+  fetchStartTime = 0;
+  lastDataFetch = millis();
   bleGlucoseReceived = true;
   DBG_PRINTF("BLE: Ingested glucose successfully. Readings: %d, Latest SGV: %d (%s, delta: %+d, ts: %lld)\n",
              historyCount, (historyCount > 0 ? bgHistory[0].sgv : 0),

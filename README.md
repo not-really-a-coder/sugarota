@@ -70,6 +70,7 @@ You can solve this elegantly in two ways:
 
 Detailed technical documentation, data models, and specifications are organized in the [`docs/`](docs/) directory:
 * [System Architecture & State Flow](docs/architecture.md)
+* [Design System & Color Palette](docs/design_system.md)
 * [BLE GATT Protocol Specification](docs/ble_gatt_spec.md)
 * [Data Schemas & Telemetry Formats](docs/data_schemas.md)
 * [Hardware Guide & Pinout Reference](docs/hardware_guide.md)
@@ -92,11 +93,38 @@ Refer to the [Manufacturer's GitHub Repository](https://github.com/waveshareteam
 
 ## 📱 Android Companion App
 
-To build, install, and run the Android companion app directly on a connected device:
+The Android Companion App provides direct Bluetooth Low Energy (BLE) background bridging, syncing glucose telemetry and history packets from Dexcom Share or Nightscout directly to the Sugarota display without requiring the device to wake its Wi-Fi radio.
+
+To build, install, and run the Android companion app directly on a connected device (over USB or Wireless ADB):
 ```powershell
 .\utils\run_android_app.ps1
 ```
-* Use `.\utils\run_android_app.ps1 -Logs` to stream live Logcat output for the app.
+* `.\utils\run_android_app.ps1 -Install`: Build debug APK and install to connected device only.
+* `.\utils\run_android_app.ps1 -Launch`: Launch the companion app without rebuilding.
+* `.\utils\run_android_app.ps1 -Logs`: Stream filtered real-time Logcat output (`SugarotaBleService`, `MainActivity`).
+
+See [Build & Toolchain Requirements](docs/build_requirements.md) for zero-setup environment details.
+
+---
+
+## 🔢 Calendar Versioning (CalVer)
+
+Sugarota uses unified Calendar Versioning across all deliverables: `v{YearOffset}.{Month:02d}.{Day:02d}.{Build}` (e.g. `v0.09.10.3`).
+
+Each target (Firmware, Web Installer, and Android Companion) maintains its own independent daily build revision counter in `data/version_state.json`. You can manage or auto-bump versions using the unified version utility:
+
+```powershell
+# Bump revision for a specific deliverable
+python utils/watch_version.py --target firmware --bump
+python utils/watch_version.py --target installer --bump
+python utils/watch_version.py --target android --bump
+
+# Synchronize state without incrementing
+python utils/watch_version.py --sync
+
+# Start background file system watcher to auto-bump upon code modifications
+python utils/watch_version.py --watch
+```
 
 ---
 

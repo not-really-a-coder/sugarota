@@ -66,7 +66,7 @@ String formatDelta(int delta) {
 
 uint16_t getBGColor(int sgv) {
   if (sgv <= 0) return GRAY;
-  if (sgv < 55 || sgv > 240) return RED;
+  if (sgv < 55 || sgv >= 230) return RED;
   if (sgv < 70 || sgv > 180) return ORANGE;
   return isDarkTheme ? GREEN : 0x03E0;
 }

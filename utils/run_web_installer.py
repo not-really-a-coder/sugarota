@@ -24,6 +24,13 @@ class QuietHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         # Keep the terminal output clean and readable
         sys.stdout.write(f"[HTTP] {self.address_string()} - {format%args}\n")
 
+    def end_headers(self):
+        # Prevent browser caching of firmware binaries and static pages
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
+
     def do_POST(self):
         # Custom endpoint to write live user credentials back to the local PC's config.json
         if self.path == "/api/save-config":

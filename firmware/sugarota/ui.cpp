@@ -1,5 +1,5 @@
 #include "ui.h"
-#include "sugarota_ble.h"
+#include "ble.h"
 #include "qrcode.h"
 #include <WiFi.h>
 
@@ -71,8 +71,9 @@ void updateUI() {
     gfx->print("YES");
     
     // NO Button
-    gfx->fillRoundRect(dx + 80, dy + 80, 60, 30, 4, RED);
-    gfx->setTextColor(WHITE);
+    gfx->fillRoundRect(dx + 80, dy + 80, 60, 30, 4, LIGHT_PINK);
+    gfx->setTextColor(DARK_RED);
+    gfx->setTextSize(2);
     gfx->setCursor(dx + 95, dy + 87);
     gfx->print("NO");
   } else if (isShowingPairingDialog) {
@@ -109,8 +110,8 @@ void updateUI() {
     gfx->print("YES");
 
     // NO Button
-    gfx->fillRoundRect(dx + 120, dy + 88, 80, 32, 4, RED);
-    gfx->setTextColor(WHITE);
+    gfx->fillRoundRect(dx + 120, dy + 88, 80, 32, 4, LIGHT_PINK);
+    gfx->setTextColor(DARK_RED);
     gfx->setTextSize(2);
     gfx->setCursor(dx + 148, dy + 96);
     gfx->print("NO");
@@ -277,12 +278,38 @@ void drawGlucoseContainer() {
   }
 
   String sgvStr = formatBG(latest.sgv);
-  int numChars = sgvStr.length();
+  int arrowX = (bgUnits == UNIT_MMOLL) ? 265 : 255;
+  int arrowLeft = arrowX - 25; // Left visual extent of trend arrow
+  int hbRight = 56;            // Right edge of harvey ball (center 40 + radius 16)
+  int centerTarget = (hbRight + arrowLeft) / 2; // ~143
+
   int sgvX;
   if (bgUnits == UNIT_MMOLL) {
-    sgvX = (numChars >= 4) ? 68 : 92;
+    // e.g. "5.4" (2 digits + 12px dot = 100px) -> sgvX ~ 93; "12.3" (3 digits + dot = 148px) -> sgvX ~ 69
+    int dotIdx = sgvStr.indexOf('.');
+    int totalWidth;
+    if (dotIdx > 0) {
+      int intLen = dotIdx;
+      int decLen = sgvStr.length() - dotIdx - 1;
+      int intWidth = (intLen == 2 && sgvStr[0] == '1') ? 86 : (intLen * 48 - 8);
+      totalWidth = intWidth + 14 + (decLen * 48 - 8);
+    } else {
+      totalWidth = sgvStr.length() * 48 - 8;
+    }
+    sgvX = centerTarget - (totalWidth / 2);
   } else {
-    sgvX = (numChars >= 3) ? 65 : 85;
+    int numDigits = sgvStr.length();
+    int totalWidth;
+    if (numDigits == 2) {
+      // 2-digit: compensate if leading digit is '1' (which is visually narrower in standard 5x7 font)
+      totalWidth = (sgvStr[0] == '1') ? 78 : 88;
+    } else if (numDigits == 3) {
+      // 3-digit: standard 3 digits is 136px; if leading digit is '1' (e.g. 100-199), ~128px
+      totalWidth = (sgvStr[0] == '1') ? 128 : 136;
+    } else {
+      totalWidth = numDigits * 48 - 8;
+    }
+    sgvX = centerTarget - (totalWidth / 2);
   }
   
   gfx->setTextColor(bgValColor);
@@ -308,7 +335,6 @@ void drawGlucoseContainer() {
     gfx->print(sgvStr);
   }
 
-  int arrowX = (bgUnits == UNIT_MMOLL) ? 265 : 255;
   drawTrendArrow(arrowX, 90, latest.direction, bgValColor);
 
   gfx->setTextColor(isDarkTheme ? WHITE : BLACK);
@@ -393,7 +419,7 @@ void drawHistoryChart() {
         int start_py = center_py - textH / 2;
         
         gfx->setRotation(textRot);
-        gfx->setTextColor(RED);
+        gfx->setTextColor(DARK_RED);
         gfx->setTextSize(1);
         gfx->setCursor(start_px, start_py);
         gfx->print(vMsg);
@@ -618,10 +644,10 @@ void drawStatusBar() {
     
     cursorX = (640 - 15) - indicatorWidth;
     
-    bool isWifiActive = (WiFi.getMode() != WIFI_OFF && (WiFi.status() == WL_CONNECTED || isConfigMode || isFetching));
+    bool isWifiActive = (WiFi.getMode() != WIFI_OFF && (WiFi.status() == WL_CONNECTED || isConfigMode));
     int batLeftX = cursorX;
     if (wasUSBPlugged && !pwrBtn.pressed) batLeftX -= 15;
-    if (SugarotaBLE::getInstance().isConnected()) batLeftX -= 16;
+    if (SugarotaBLE::getInstance().isConnected()) batLeftX -= 18;
     if (isWifiActive) batLeftX -= 18;
     if (isConfigMode) batLeftX -= 15;
     
@@ -663,7 +689,7 @@ void drawStatusBar() {
       }
 
       if (SugarotaBLE::getInstance().isConnected()) {
-        currentLeftX -= 16;
+        currentLeftX -= 18;
         uint16_t btColor = isDarkTheme ? CYAN : BLUE;
         drawBluetoothIcon(currentLeftX + 3, 7, btColor);
       }
@@ -727,5 +753,5 @@ void drawStatusBar() {
     }
   }
   
-  gfx->drawFastHLine(0, 30, 640, GRAY);
+  gfx->drawFastHLine(0, 30, 640, isDarkTheme ? ZINC_BORDER : GRAY);
 }

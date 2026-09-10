@@ -1,6 +1,7 @@
 param(
     [switch]$Clean,
-    [switch]$VerboseOutput
+    [switch]$VerboseOutput,
+    [switch]$Yes
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,12 +47,32 @@ if ($Clean) {
     $compileArgs += "--clean"
 }
 
+# Read current firmware version from sugarota.ino
+$Version = "Unknown"
+$InoFile = Join-Path $RepoRoot "firmware\sugarota\sugarota.ino"
+if (Test-Path $InoFile) {
+    $InoContent = Get-Content $InoFile -Raw
+    if ($InoContent -match '#define\s+SUGAROTA_VERSION\s+"([^"]+)"') {
+        $Version = $Matches[1]
+    }
+}
+
 Write-Host "==========================================================" -ForegroundColor Green
-Write-Host "       Starting Sugarota Firmware Build                   " -ForegroundColor Green
+Write-Host "       Sugarota Firmware Build Tool                       " -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green
-Write-Host "FQBN:        $fqbn" -ForegroundColor DarkGray
-Write-Host "Output Dir:  $outputDir" -ForegroundColor DarkGray
-Write-Host "Build Cache: $buildPath`n" -ForegroundColor DarkGray
+Write-Host "Target Version: $Version" -ForegroundColor Yellow
+Write-Host "FQBN:           $fqbn" -ForegroundColor DarkGray
+Write-Host "Output Dir:     $outputDir" -ForegroundColor DarkGray
+Write-Host "Build Cache:    $buildPath`n" -ForegroundColor DarkGray
+
+if (-not $Yes) {
+    $Prompt = Read-Host "Proceed with compiling firmware $Version? (Y/n)"
+    if ($Prompt -and $Prompt.Trim() -notmatch "^(?i:y|yes)$") {
+        Write-Host "Build cancelled by user." -ForegroundColor Yellow
+        exit 0
+    }
+}
+
 
 # Pipeline sequential stages:
 # 1: Analyzing (10%)

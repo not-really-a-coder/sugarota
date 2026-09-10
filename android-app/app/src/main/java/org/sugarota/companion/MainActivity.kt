@@ -107,11 +107,22 @@ class MainActivity : ComponentActivity() {
                         onSurface = Color(0xFFFAFAFA)
                     )
                 ) {
+                    var showSplash by remember { mutableStateOf(true) }
+
+                    LaunchedEffect(Unit) {
+                        kotlinx.coroutines.delay(1000L)
+                        showSplash = false
+                    }
+
                     Surface(
                         modifier = Modifier.fillMaxSize(),
                         color = ShadcnTheme.colors.background
                     ) {
-                        CompanionAppContent(bleService)
+                        if (showSplash) {
+                            SplashWelcomeScreen()
+                        } else {
+                            CompanionAppContent(bleService)
+                        }
                     }
                 }
             }
@@ -239,28 +250,10 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                             text = "Sugarota Companion",
                             style = typography.h2
                         )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        val activeCount = deviceList.count { it.isConnected }
-                        ShadcnBadge(
-                            text = "$activeCount Active",
-                            variant = if (activeCount > 0) ShadcnButtonVariant.DEFAULT else ShadcnButtonVariant.SECONDARY
-                        )
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        android.util.Log.i("SugarotaPull", "Scan icon clicked in TopAppBar")
-                        service?.triggerScan()
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Scan for Devices",
-                            tint = if (isScanning || pullDistancePx > 5f) colors.primary else colors.mutedForeground,
-                            modifier = Modifier.graphicsLayer {
-                                rotationZ = scanIconRotation
-                            }
-                        )
-                    }
+                    // Scan icon removed per requirement
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = colors.background,
@@ -364,14 +357,14 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = if (isScanning) {
-                                "Scanning for Sugarota displays..."
+                                "Scanning..."
                             } else if (hasReachedThreshold || pullDistancePx >= scanThresholdPx) {
                                 "Release to scan"
                             } else {
                                 "Pull down to scan"
                             },
                             style = typography.caption.copy(
-                                fontWeight = if (hasReachedThreshold || pullDistancePx >= scanThresholdPx) FontWeight.Bold else FontWeight.Normal
+                                fontWeight = FontWeight.Bold
                             ),
                             color = colors.primary
                         )
@@ -387,6 +380,15 @@ fun CompanionAppContent(service: SugarotaBleService?) {
             Spacer(modifier = Modifier.height(10.dp))
 
                 if (deviceList.isEmpty()) {
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val currentAppVersion = remember(context) {
+                        try {
+                            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                            pInfo.versionName ?: "v0.09.09.0"
+                        } catch (e: Exception) {
+                            "v0.09.09.0"
+                        }
+                    }
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -394,16 +396,34 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                             .verticalScroll(rememberScrollState()),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                        ) {
+                            androidx.compose.foundation.Image(
+                                painter = androidx.compose.ui.res.painterResource(id = org.sugarota.companion.R.drawable.ic_sugarota_logo),
+                                contentDescription = "Sugarota Logo",
+                                modifier = Modifier
+                                    .size(88.dp)
+                                    .padding(bottom = 12.dp)
+                            )
                             Text(
-                                text = "No Sugarota devices paired.",
-                                style = typography.body,
-                                color = colors.foreground
+                                text = "Sugarota Companion",
+                                style = typography.h3,
+                                color = colors.foreground,
+                                fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
+                                text = currentAppVersion,
+                                style = typography.caption,
+                                color = colors.mutedForeground.copy(alpha = 0.7f)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
                                 text = "Pull down or power on Sugarota to scan & pair.",
-                                style = typography.caption
+                                style = typography.caption,
+                                color = colors.mutedForeground
                             )
                         }
                     }
@@ -425,6 +445,25 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val appVersion = remember(context) {
+                    try {
+                        val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                        pInfo.versionName ?: "v0.09.09.0"
+                    } catch (e: Exception) {
+                        "v0.09.09.0"
+                    }
+                }
+                Text(
+                    text = "Sugarota Companion $appVersion",
+                    style = typography.caption,
+                    color = colors.mutedForeground.copy(alpha = 0.6f),
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(bottom = 6.dp)
+                )
             }
         }
 
@@ -1222,7 +1261,7 @@ fun mapTrendToSymbol(direction: String): String {
 fun getGlucoseColor(sgv: Int): Color {
     return when {
         sgv <= 0 -> Color(0xFF848484)
-        sgv < 55 || sgv > 240 -> Color(0xFFEF4444)   // Red
+        sgv < 55 || sgv >= 230 -> Color(0xFFEF4444)  // Red
         sgv < 70 || sgv > 180 -> Color(0xFFF97316)   // Orange
         else -> Color(0xFF00E676)                    // Green
     }
@@ -1397,7 +1436,7 @@ fun DeviceCard(
                             modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Close,
+                                imageVector = Icons.Default.BluetoothDisabled,
                                 contentDescription = "Disconnect",
                                 tint = colors.destructive,
                                 modifier = Modifier.size(20.dp)
@@ -1574,3 +1613,46 @@ fun CompanionAppPreview() {
     }
 }
 
+@Composable
+fun SplashWelcomeScreen() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val appVersion = remember(context) {
+        try {
+            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            pInfo.versionName ?: "v0.09.09.0"
+        } catch (e: Exception) {
+            "v0.09.09.0"
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ShadcnTheme.colors.background),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(id = org.sugarota.companion.R.drawable.ic_sugarota_logo),
+                contentDescription = "Sugarota Companion Logo",
+                modifier = Modifier.size(96.dp)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Sugarota Companion",
+                style = ShadcnTheme.typography.h2,
+                color = ShadcnTheme.colors.foreground,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = appVersion,
+                style = ShadcnTheme.typography.body,
+                color = ShadcnTheme.colors.mutedForeground
+            )
+        }
+    }
+}

@@ -28,6 +28,18 @@ data class GlucoseData(
     val units: String = "mg/dL",
     val history: List<GlucoseData> = emptyList()
 ) {
+    val trendArrow: String
+        get() = when (direction.trim().lowercase()) {
+            "doubleup", "double_up" -> "⇈"
+            "singleup", "single_up" -> "↑"
+            "fortyfiveup", "forty_five_up" -> "↗"
+            "flat" -> "→"
+            "fortyfivedown", "forty_five_down" -> "↘"
+            "singledown", "single_down" -> "↓"
+            "doubledown", "double_down" -> "⇊"
+            else -> direction
+        }
+
     fun toJson(): String {
         val obj = JSONObject()
         obj.put("sgv", sgv)

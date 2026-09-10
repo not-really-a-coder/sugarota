@@ -1,5 +1,5 @@
 CompileFlags:
-  CompilationDatabase: ../../build/cache
+  CompilationDatabase: build/cache
   Remove:
     - -fno-rtti
     - -fno-exceptions

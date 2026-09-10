@@ -117,3 +117,32 @@ Broadcast by Sugarota to connected smartphones every 10s or when battery/chargin
   "version": "v0.09.08.24"
 }
 ```
+
+---
+
+## 4. Multi-Target Version State Schema (`data/version_state.json`)
+
+The unified version control system stores build counters and active CalVer strings independently for all three deliverables:
+
+```json
+{
+  "firmware": {
+    "last_date": "2026-09-09",
+    "build_increment": 5,
+    "version": "v0.09.09.5"
+  },
+  "installer": {
+    "last_date": "2026-09-09",
+    "build_increment": 0,
+    "version": "v0.09.09.0"
+  },
+  "android": {
+    "last_date": "2026-09-09",
+    "build_increment": 0,
+    "version": "v0.09.09.0"
+  }
+}
+```
+
+- **Format**: `v{YearOffset}.{Month:02d}.{Day:02d}.{Build}` (where `YearOffset = year - 2026`).
+- **Target Independence**: Bumping the build number for one target does not affect the others. Build counters reset to 0 daily.

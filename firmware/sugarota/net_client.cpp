@@ -111,6 +111,12 @@ void connectWiFi() {
     wifiRetryLoop++;
     spinnerDelay(1000);
   }
+
+  // If connection was unsuccessful, power down Wi-Fi radio to save battery and avoid stuck STA state
+  if (WiFi.status() != WL_CONNECTED && !isConfigMode) {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+  }
 }
 
 static const char* mapTrendToString(int trend) {
@@ -265,6 +271,7 @@ void parseResponse(const String& payload) {
   
   if (historyCount > 0) {
     historyDirty = true;
+    offlineMode = false;
     time_t rawtime = (time_t)bgHistory[0].timestamp;
     struct tm * ti = localtime(&rawtime);
     DBG_PRINTF("Success: %d readings. Latest SGV: %d (%s, delta: %+d) at %02d:%02d\n", 
@@ -277,11 +284,13 @@ void parseResponse(const String& payload) {
     DBG_PRINTLN("Power Saving: WiFi Radio OFF");
   }
   isFetching = false;
+  fetchStartTime = 0;
   updateUI();
 }
 
 void fetchData() {
   isFetching = true;
+  fetchStartTime = millis();
   updateUI();
 
   if (WiFi.status() != WL_CONNECTED) {
@@ -290,6 +299,7 @@ void fetchData() {
     if (WiFi.status() != WL_CONNECTED) {
       logBoot("Fetch skipped: WiFi connect failed");
       isFetching = false;
+      fetchStartTime = 0;
       updateUI();
       return;
     }
@@ -305,7 +315,16 @@ void fetchData() {
     url += "/api/v1/entries.json?count=";
     url += MAX_HISTORY;
   } else {
-    if (dexSessionId == "" && !loginDexcom()) return;
+    if (dexSessionId == "" && !loginDexcom()) {
+      if (!isConfigMode) {
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+      }
+      isFetching = false;
+      fetchStartTime = 0;
+      updateUI();
+      return;
+    }
     url += "https://";
     url += dexServer;
     url += "/ShareWebServices/Services/Publisher/ReadPublisherLatestGlucoseValues?sessionId=";
@@ -335,6 +354,14 @@ void fetchData() {
     if (currentProvider == PROVIDER_DEXCOM && (httpCode == 401 || httpCode == 500 || httpCode == 405)) {
       dexSessionId = "";
     }
+    if (!isConfigMode) {
+      WiFi.disconnect(true);
+      WiFi.mode(WIFI_OFF);
+      DBG_PRINTLN("Power Saving: WiFi Radio OFF after HTTP error");
+    }
+    isFetching = false;
+    fetchStartTime = 0;
+    updateUI();
   }
   http.end();
 }

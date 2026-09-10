@@ -4,18 +4,21 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#define SUGAROTA_VERSION "v0.09.08.25"
+#define SUGAROTA_VERSION "v0.09.10.3"
 
-// --- Colors ---
-#define BLACK   0x0000
-#define WHITE   0xFFFF
-#define RED     0xF800
-#define GREEN   0x07E0
-#define CYAN    0x07FF
-#define YELLOW  0xFFE0
-#define BLUE    0x001F
-#define GRAY    0x8410
-#define ORANGE  0xFD20
+// --- Design System Colors (RGB565 matching Shadcn Zinc Dark & Telemetry Palette) ---
+#define BLACK   0x0841  // #09090B (OLED Zinc Dark Canvas)
+#define WHITE   0xF7BE  // #FAFAFA (Zinc-50 High-Contrast Foreground)
+#define RED     0xEA28  // #EF4444 (Destructive / Urgent Hypo & Severe Hyperglycemia)
+#define GREEN   0x072E  // #00E676 (Emerald-400 Primary / In-Target Euglycemia)
+#define ORANGE  0xFBA2  // #F97316 (Warning / Borderline Hyperglycemia)
+#define GRAY    0x8410  // #848484 (Muted / Stale Telemetry)
+#define CYAN    0x07FF  // #00F0FF (Accent Cyan)
+#define YELLOW  0xFFE0  // #FFE600 (Notice Yellow)
+#define BLUE    0x3CFE  // #3B82F6 (Secondary Blue)
+#define ZINC_BORDER 0x2104 // #27272A (Zinc-800 subtle container border & dividers)
+#define DARK_RED    0x8800 // #880000 (High-contrast dark red)
+#define LIGHT_PINK  0xFF3E // #FCE7F3 (Soft light pink button background)
 
 // --- Hardware Pins ---
 #define PIN_BL         8
@@ -100,6 +103,7 @@ extern unsigned long configModeStartTime;
 extern bool isBooting;
 extern String bootLog;
 extern bool isFetching;
+extern unsigned long fetchStartTime;
 
 extern bool isDarkTheme;
 extern int brightnessLevel;

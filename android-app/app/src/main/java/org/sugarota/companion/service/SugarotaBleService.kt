@@ -3,6 +3,7 @@ package org.sugarota.companion.service
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.bluetooth.*
 import android.bluetooth.le.*
@@ -13,6 +14,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import org.sugarota.companion.MainActivity
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.util.Log
@@ -719,7 +721,8 @@ class SugarotaBleService : Service() {
                 _lastReading.value = reading
                 val timeStr = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
                     .format(java.util.Date(reading.timestamp * 1000))
-                val summary = "${reading.sgv} ${reading.direction} (${if (reading.delta >= 0) "+" else ""}${reading.delta}) at $timeStr"
+                val arrow = reading.trendArrow
+                val summary = "${reading.sgv} $arrow (${if (reading.delta >= 0) "+" else ""}${reading.delta}) at $timeStr"
 
                 val lastTs = lastPushedTimestamps[address]
                 if (!forcePush && lastTs != null && lastTs == reading.timestamp) {
@@ -812,10 +815,21 @@ class SugarotaBleService : Service() {
     }
 
     private fun buildNotification(text: String): Notification {
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Sugarota Companion")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
     }

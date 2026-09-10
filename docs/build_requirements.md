@@ -111,22 +111,28 @@ arduino-cli compile -v --jobs 0 --build-path ./build/cache --fqbn esp32:esp32:es
 
 ---
 
-## 5. Android Companion App Build & Run
+## 5. Android Companion App Build & Run (Primary Testing Workflow)
 
-To build, install, and launch the Android companion app directly to a connected phone over ADB:
+The primary and recommended method to build, deploy, and test the Android Companion App (over both USB and **Wireless ADB**) is the dedicated PowerShell automation script:
 
 ```powershell
-.\utils\run_android_app.ps1
+powershell -ExecutionPolicy Bypass -File .\utils\run_android_app.ps1
 ```
 
-Options:
-* `.\utils\run_android_app.ps1 -Install`: Build and install the debug APK only.
-* `.\utils\run_android_app.ps1 -Launch`: Launch the installed app.
-* `.\utils\run_android_app.ps1 -Logs`: Stream real-time Logcat messages from the device.
+### Key Highlights:
+- **Zero-Setup Runtime**: Automatically binds the bundled JDK (`$env:USERPROFILE\.jdks\jbr-21.0.11`) and SDK tools (`$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe`). Opening Android Studio GUI or setting system-wide `JAVA_HOME` is not required.
+- **Wireless ADB Compatible**: Compiles with Gradle `assembleDebug` and deploys directly via `adb install -r`, avoiding Gradle daemon wireless device detection timeouts.
+- **Automatic Launch**: Launches `org.sugarota.companion/.MainActivity` immediately after install.
+
+### Execution Options:
+* `powershell -ExecutionPolicy Bypass -File .\utils\run_android_app.ps1`: Full pipeline (Build debug APK $\rightarrow$ Install over ADB $\rightarrow$ Launch activity).
+* `powershell -ExecutionPolicy Bypass -File .\utils\run_android_app.ps1 -Install`: Build APK and stream install to connected device only.
+* `powershell -ExecutionPolicy Bypass -File .\utils\run_android_app.ps1 -Launch`: Launch app on device without rebuilding.
+* `powershell -ExecutionPolicy Bypass -File .\utils\run_android_app.ps1 -Logs`: Stream filtered real-time Logcat messages (`SugarotaBleService`, `MainActivity`).
 
 ---
 
-## 5. Setup via Arduino IDE 2.x GUI (Option B)
+## 6. Setup via Arduino IDE 2.x GUI (Option B)
 
 1. Add `https://espressif.github.io/arduino-esp32/package_esp32_index.json` to **File > Preferences > Additional boards manager URLs**.
 2. Open **Tools > Board > Boards Manager**, search for `esp32`, and install **esp32 by Espressif Systems**.

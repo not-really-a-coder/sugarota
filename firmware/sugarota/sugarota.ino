@@ -1,3 +1,6 @@
+// --- Version Control ---
+#define SUGAROTA_VERSION "v0.09.10.3"
+
 #include "config.h"
 #include "storage.h"
 #include "battery.h"
@@ -8,7 +11,7 @@
 #include "ui.h"
 #include "input.h"
 #include "ble_handler.h"
-#include "sugarota_ble.h"
+#include "ble.h"
 #include <time.h>
 #include <Wire.h>
 
@@ -47,6 +50,7 @@ unsigned long configModeStartTime = 0;
 bool isBooting = true;
 String bootLog = "";
 bool isFetching = false;
+unsigned long fetchStartTime = 0;
 
 bool isDarkTheme = true;
 int brightnessLevel = 76;
@@ -230,24 +234,16 @@ void setup() {
 
   Serial.setRxBufferSize(2048);
   Serial.begin(115200);
+  Serial.setTxTimeoutMs(0); // CRITICAL: Prevent USB CDC writes from blocking when terminal is not open or after cold boot
   Serial.setTimeout(0);
   delay(100);
 
   if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
     pinMode(PIN_PWR_BTN, INPUT_PULLUP);
-    unsigned long wakeStart = millis();
-    bool released = false;
-    while (millis() - wakeStart < 2000) {
-      if (digitalRead(PIN_PWR_BTN) == HIGH) {
-        released = true;
-        break;
-      }
+    // Wait for user to release the power button after waking up to avoid false short/long press
+    unsigned long waitStart = millis();
+    while (digitalRead(PIN_PWR_BTN) == LOW && (millis() - waitStart < 2000)) {
       delay(10);
-    }
-    
-    if (released) {
-      esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_PWR_BTN, 0); 
-      esp_deep_sleep_start();
     }
   }
 
@@ -278,7 +274,7 @@ void setup() {
 
   // Battery ADC
   initBatteryADC();
-  updateBattery(digitalRead(PIN_PWR_BTN) == LOW);
+  updateBattery();
   
   char batMsg[40];
   snprintf(batMsg, sizeof(batMsg), "Battery: %.2fV (%d%%)", currentBatteryVoltage, currentBatteryPct);
@@ -329,7 +325,7 @@ void setup() {
       bool hasWifiConfigured = (primarySSID.length() > 0 || secondarySSID.length() > 0);
       bool isFirstLaunch = (!hasWifiConfigured && NimBLEDevice::getNumBonds() == 0);
       
-      unsigned long bleCheckDuration = isFirstLaunch ? 15000 : 5000;
+      unsigned long bleCheckDuration = isFirstLaunch ? 15000 : 7000;
       if (isFirstLaunch) {
         logBoot("First Launch: Pairing Mode");
         logBoot("Open App & Tap Scan to Pair");
@@ -453,6 +449,7 @@ void loop() {
     updateUI();
   }
   
+  checkButtons();
   if (!deviceOn) {
     powerOffDevice();
     return;
@@ -465,7 +462,6 @@ void loop() {
     updateUI();
   }
 
-  checkButtons();
   if (brightnessLevel > 0) {
     checkTouch();
   } else {
@@ -485,15 +481,21 @@ void loop() {
   pollIMU();
 
   static unsigned long lastBatCheck = 0;
-  if (millis() - lastBatCheck >= 500) {
+  if (millis() - lastBatCheck >= 60000 || lastBatCheck == 0) {
     lastBatCheck = millis();
-    updateBattery(digitalRead(PIN_PWR_BTN) == LOW);
+    updateBattery();
   }
 
   static unsigned long lastBleStatus = 0;
-  if (millis() - lastBleStatus >= 10000) {
-    lastBleStatus = millis();
-    if (SugarotaBLE::getInstance().isConnected()) {
+  static int lastNotifiedBattery = -1;
+  static bool lastNotifiedCharging = false;
+  bool batteryChanged = (currentBatteryPct != lastNotifiedBattery) || (wasUSBPlugged != lastNotifiedCharging);
+
+  if (SugarotaBLE::getInstance().isConnected()) {
+    if (batteryChanged || (millis() - lastBleStatus >= 60000)) {
+      lastBleStatus = millis();
+      lastNotifiedBattery = currentBatteryPct;
+      lastNotifiedCharging = wasUSBPlugged;
       SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION);
     }
   }
@@ -502,18 +504,42 @@ void loop() {
     server.handleClient();
   }
 
+  // Smooth spinner animation while fetching
+  static unsigned long lastSpinnerTick = 0;
+  if (isFetching) {
+    if (millis() - lastSpinnerTick >= 150) {
+      lastSpinnerTick = millis();
+      if (!isTimerMode) {
+        updateUI();
+      }
+    }
+    // Safety timeout: prevent spinner from freezing or staying active indefinitely
+    if (fetchStartTime > 0 && (millis() - fetchStartTime > 15000)) {
+      DBG_PRINTLN("FETCH: Timed out after 15s, clearing isFetching");
+      isFetching = false;
+      fetchStartTime = 0;
+      if (!isConfigMode && WiFi.getMode() != WIFI_OFF) {
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+      }
+      updateUI();
+    }
+  }
+
   static unsigned long lastClockTick = 0;
   if (millis() - lastClockTick >= 1000) {
     lastClockTick = millis();
-    if (!isTimerMode) {
+    if (!isTimerMode && !isFetching) {
       updateUI();
     }
   }
 
   bool isBleConnected = SugarotaBLE::getInstance().isConnected();
-  bool canFetchWifi = (connectionMode != "BLE_ONLY") && (!isBleConnected || (millis() - lastDataFetch > 600000));
+  // Don't wake Wi-Fi if BLE is connected and we received data within the last 10 minutes
+  bool bleDataStale = (SugarotaBLE::getInstance().getLastPacketTime() == 0) || (millis() - SugarotaBLE::getInstance().getLastPacketTime() > 600000);
+  bool canFetchWifi = (connectionMode != "BLE_ONLY") && (!isBleConnected || bleDataStale);
   
-  if (canFetchWifi && !isConfigMode && !offlineMode && (millis() - lastDataFetch >= getFetchIntervalMs())) {
+  if (canFetchWifi && !isConfigMode && (millis() - lastDataFetch >= getFetchIntervalMs())) {
     fetchData();
   }
 

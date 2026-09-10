@@ -2,6 +2,47 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.10.3] — Unified CalVer, Web Installer Suite & Hardware Refinements (2026-09-10)
+
+This release implements an automated multi-target CalVer versioning workflow, redesigns the web installer with interactive serial terminal controls and live binary version inspection, refines battery and power management, enhances glucose typography alignment, and improves Android companion connectivity and onboarding.
+
+### Automation & Version Management
+
+- Built multi-target Calendar Versioning manager (`utils/watch_version.py`) tracking firmware, web installer, and Android app build increments independently
+- Added automated file system watcher monitoring firmware, Android source trees, and web installer to auto-bump revisions upon file modification
+- Extended build script (`utils/firmware_build.ps1`) to automatically locate repo root, maintain custom partitions, and provide build progress indication
+- Added Android companion automation script (`utils/run_android_app.ps1`) to streamline building, installing via ADB, launching, and streaming logcat
+- Added automatic HTTP server handler (`utils/run_web_installer.py`) with fast local configuration saving and DNS lookup latency bypass
+
+### Firmware & Hardware
+
+- Decoupled USB charging detection from GPIO16 power button, switching to battery ADC voltage thresholding (> 4.20V) to avoid spurious charging states
+- Polled battery levels once per minute with change-driven BLE telemetry notifications instead of polling every 500ms
+- Fixed power-off hold duration handling so device can power off cleanly even when USB power is present
+- Optimized glucose value horizontal centering on display with proportional glyph width calculations for 2-digit and 3-digit values
+- Added 15-second safety watchdog timeout for data fetch spinner animations to prevent visual hangs
+- Added soft contrast palette (light pink background with dark red text) for dialog action buttons and chart vertical indicators
+- Renamed BLE module source files to `ble.cpp` and `ble.h` for cleaner project structure
+- Aligned status bar horizontal divider color to zinc border palette in dark theme
+
+### Web Installer
+
+- Added real-time binary version extraction from compiled `.bin` assets before flashing to verify firmware version
+- Added user confirmation prompt before flashing displaying target partition and extracted firmware version
+- Redesigned web installer layout with collapsible side drawer, quick reboot command, terminal clear, and scroll lock controls
+- Refactored WebSerial connection lifecycle to cleanly release DTR/RTS signals and prevent connection lockups
+- Fixed auto-scroll behavior in serial console to preserve scrollback when reviewing previous log outputs
+- Added cache-busting query parameter when fetching bundled firmware binaries
+
+### Android Companion App
+
+- Added branded splash welcome screen displaying app icon, title, and current CalVer version
+- Added version footer badge displaying active version name in app settings
+- Added unicode trend arrow conversion helper (`⇈`, `↑`, `↗`, `→`, `↘`, `↓`, `⇊`) for companion notifications and summary views
+- Added pending launch intent to persistent foreground service notification to restore MainActivity on tap
+- Replaced device card disconnect action icon with Bluetooth disabled glyph
+- Updated glucose color thresholds aligning severe hyperglycemia boundary to 230 mg/dL
+
 ## [v0.09.08.25] — Modular Architecture, BLE Reliability & Status Bar Enhancements (2026-09-08)
 
 This release reorganizes the firmware codebase into clean modules, enhances BLE data synchronization reliability and companion app bridging, and refines the status bar iconography and layout.

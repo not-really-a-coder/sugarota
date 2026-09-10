@@ -1,4 +1,5 @@
-#include "sugarota_ble.h"
+#include "ble.h"
+#include <ArduinoJson.h>
 
 // Forward reference
 extern bool debugMode;
@@ -13,10 +14,14 @@ public:
     void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
         m_ble->m_connectedCount++;
         BLE_DBG_PRINTF("[BLE] Central connected: %s (total clients: %d)\n", connInfo.getAddress().toString().c_str(), m_ble->m_connectedCount);
-        // Continue advertising if more connections are possible
-        if (pServer->getConnectedCount() < 3) {
-            NimBLEDevice::startAdvertising();
-        }
+        
+        // Stop advertising while connected to save significant radio power
+        NimBLEDevice::stopAdvertising();
+
+        // Negotiate power-efficient BLE connection parameters:
+        // minInterval = 80 (100ms), maxInterval = 120 (150ms), latency = 4 intervals, timeout = 600 (6s)
+        // This allows the radio to sleep between readings while remaining responsive.
+        pServer->updateConnParams(connInfo.getConnHandle(), 80, 120, 4, 600);
     }
 
     void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
@@ -31,6 +36,8 @@ public:
             }
         }
         BLE_DBG_PRINTF("[BLE] Central disconnected (reason %d). Remaining clients: %d\n", reason, m_ble->m_connectedCount);
+        
+        // Immediately resume advertising so the phone (or a new phone) can auto-reconnect
         NimBLEDevice::startAdvertising();
     }
 
@@ -343,13 +350,13 @@ void SugarotaBLE::begin(const char* deviceNamePrefix) {
 
     m_pService->start();
 
-    // Advertising
+    // Advertising (100ms min, 150ms max - standard recommended interval for low power discovery)
     NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
     pAdvertising->setName(fullDeviceName);
     pAdvertising->addServiceUUID(SUGAROTA_SERVICE_UUID);
     pAdvertising->enableScanResponse(true);
-    pAdvertising->setMinInterval(0x0020); // 20ms
-    pAdvertising->setMaxInterval(0x0040); // 40ms
+    pAdvertising->setMinInterval(0x00A0); // 160 * 0.625ms = 100ms
+    pAdvertising->setMaxInterval(0x00F0); // 240 * 0.625ms = 150ms
     pAdvertising->start();
 
     BLE_DBG_PRINTF("[BLE] Started advertising as '%s' (LE Secure Connections enabled)\n", fullDeviceName);

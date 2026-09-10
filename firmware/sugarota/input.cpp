@@ -4,7 +4,7 @@
 #include "storage.h"
 #include "net_client.h"
 #include "audio.h"
-#include "sugarota_ble.h"
+#include "ble.h"
 #include <ESPmDNS.h>
 #include <Wire.h>
 
@@ -56,7 +56,7 @@ void checkButton(ButtonState &btn, const char* name) {
     if (!btn.handled) {
       unsigned long duration = millis() - btn.pressTime;
       if (btn.pin == PIN_PWR_BTN) {
-        if (duration >= 2000 && !wasUSBPlugged) {
+        if (duration >= 2000) {
           Serial.printf("%s Button: LONG Press detected (Hold >= 2s)\n", name);
           btn.handled = true;
           deviceOn = false;
@@ -98,13 +98,14 @@ void checkButton(ButtonState &btn, const char* name) {
           if (SugarotaBLE::getInstance().isConnected()) {
             DBG_PRINTLN("ACTION: Force Data Refresh via BLE Companion");
             isFetching = true;
+            fetchStartTime = millis();
             updateUI();
             SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION);
-          } else if (!offlineMode) {
+          } else if (connectionMode != "BLE_ONLY") {
             DBG_PRINTLN("ACTION: Force Data Refresh via Wi-Fi");
             fetchData();
           } else {
-            DBG_PRINTLN("ACTION: Force Data Refresh (Disabled in Offline Mode)");
+            DBG_PRINTLN("ACTION: Force Data Refresh (Disabled in BLE_ONLY Mode)");
           }
         }
       }

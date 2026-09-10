@@ -9,7 +9,7 @@
 void initBatteryADC();
 float readBatteryVoltageSingle();
 int getBatteryPercentage(float voltage);
-void updateBattery(bool isUSBPlugged);
+void updateBattery();
 void fillVoltageHistory(float voltage);
 
 #endif // SUGAROTA_BATTERY_H

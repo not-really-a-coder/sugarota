@@ -725,7 +725,9 @@ class SugarotaBleService : Service() {
                 val summary = "${reading.sgv} $arrow (${if (reading.delta >= 0) "+" else ""}${reading.delta}) at $timeStr"
 
                 val lastTs = lastPushedTimestamps[address]
-                if (!forcePush && lastTs != null && lastTs == reading.timestamp) {
+                val isNewData = (lastTs == null || reading.timestamp > lastTs)
+
+                if (!forcePush && !isNewData) {
                     // Reading has not changed on the server yet and not a force push; do not push duplicate entry
                     _bridgeStatus.value = "Synced $summary (current)"
                     return true
@@ -747,6 +749,37 @@ class SugarotaBleService : Service() {
         }
     }
 
+    private fun computeNextDelayMs(): Long {
+        // Find configured poll interval from connected device configs (fallback 60s)
+        var pollSec = 60L
+        for (cfg in deviceConfigs.values) {
+            try {
+                val sec = org.json.JSONObject(cfg).optLong("poll_interval_sec", 60L)
+                if (sec in 30..600) {
+                    pollSec = sec
+                    break
+                }
+            } catch (e: Exception) {
+                // ignore JSON error
+            }
+        }
+
+        val reading = _lastReading.value
+        val nowSec = System.currentTimeMillis() / 1000L
+
+        if (reading != null && reading.timestamp > 0) {
+            var targetTs = reading.timestamp + pollSec
+            while (targetTs <= nowSec) {
+                targetTs += pollSec
+            }
+            val delaySec = (targetTs - nowSec).coerceIn(10L, pollSec)
+            Log.i("SugarotaBleService", "Timestamp-aligned schedule: readingTs=${reading.timestamp}, nowSec=$nowSec, nextTargetTs=$targetTs, delaySec=$delaySec")
+            return delaySec * 1000L
+        }
+
+        return pollSec * 1000L
+    }
+
     private fun startPeriodicBridge() {
         bridgeJob?.cancel()
         bridgeJob = serviceScope.launch {
@@ -759,20 +792,8 @@ class SugarotaBleService : Service() {
                     _bridgeStatus.value = "Idle · Waiting for displays"
                 }
 
-                // Dynamic interval honoring device's poll_interval_sec in /config.json (fallback 60s)
-                var intervalMs = 60_000L
-                for (cfg in deviceConfigs.values) {
-                    try {
-                        val sec = org.json.JSONObject(cfg).optLong("poll_interval_sec", 60L)
-                        if (sec in 30..600) {
-                            intervalMs = sec * 1000L
-                            break
-                        }
-                    } catch (e: Exception) {
-                        // ignore JSON error
-                    }
-                }
-                delay(intervalMs)
+                val delayMs = computeNextDelayMs()
+                delay(delayMs)
             }
         }
     }

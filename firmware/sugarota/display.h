@@ -1,13 +1,14 @@
 #ifndef SUGAROTA_DISPLAY_H
 #define SUGAROTA_DISPLAY_H
 
-#include "config.h"
+#include <Arduino.h>
 #include <Arduino_GFX_Library.h>
 
 extern Arduino_GFX *gfx;
 
 void initDisplay();
 void setBrightness(int level);
+void updateBacklightPower(bool enable);
 void setScreenRotation(uint8_t r);
 void toggleTheme();
 String formatBG(int mgdl);

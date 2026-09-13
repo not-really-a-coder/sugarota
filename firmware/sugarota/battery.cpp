@@ -85,17 +85,31 @@ int getBatteryPercentage(float voltage) {
 
 void updateBattery() {
   float currentV = readBatteryVoltageSingle(); 
+  if (currentV <= 0.0f) return;
 
-  // On this hardware, battery voltage > 4.18V indicates charging or full charge on USB
-  // (unplugged resting LiPo is typically <= 4.15V, while active charging floats at 4.20V - 4.30V).
-  bool isCharging = (currentV >= 4.20f);
-  
+  // Charging detection logic:
+  // Note: We do NOT use (Serial) because on ESP32-S3 HWCDC once a host connects,
+  // `Serial` stays true indefinitely even after unplugging unless TX fails.
+  // We rely on battery rail voltage:
+  // - V1: charging float voltage is around 4.14V-4.20V. High threshold 4.14V, low threshold 4.08V.
+  // - V2: charging float voltage reaches >= 4.20V. High threshold 4.18V, low threshold 4.12V.
+  float chargeHighThreshold = (hwVersion == 1) ? 4.14f : 4.18f;
+  float chargeLowThreshold  = (hwVersion == 1) ? 4.08f : 4.12f;
+
+  bool isCharging = (currentV >= chargeHighThreshold);
+
+  bool previousPluggedState = wasUSBPlugged;
   if (isCharging && !wasUSBPlugged) {
     wasUSBPlugged = true;
-    DBG_PRINTF("Charging detected (Voltage: %.2fV)\n", currentV);
-  } else if (!isCharging && wasUSBPlugged && currentV < 4.12f) {
+    DBG_PRINTF("Charging detected (HW: V%d, Voltage: %.2fV)\n", hwVersion, currentV);
+  } else if (!isCharging && wasUSBPlugged && (currentV < chargeLowThreshold)) {
     wasUSBPlugged = false;
-    DBG_PRINTF("Charging ended / Unplugged (Voltage: %.2fV)\n", currentV);
+    DBG_PRINTF("Charging ended / Unplugged (HW: V%d, Voltage: %.2fV)\n", hwVersion, currentV);
+  }
+
+  // Update UI immediately if charging state changed
+  if (previousPluggedState != wasUSBPlugged) {
+    updateUI();
   }
 
   voltageHistory[voltageIndex] = currentV;
@@ -145,13 +159,11 @@ void updateBattery() {
   DBG_PRINTF("Battery: %.2fV (Avg: %.2fV) Target: %d%% Disp: %d%%%s\n", 
              currentV, avgV, targetPct, currentBatteryPct, wasUSBPlugged ? " [Charging]" : "");
   
-  if (!wasUSBPlugged) {
-    if (bootedLow && millis() >= 15000) {
-      DBG_PRINTLN(F("CRITICAL BATTERY: Booted with low voltage, shutting down after 15s..."));
-      powerOffDevice();
-    }
-    if (millis() >= 15000 && avgV < 3.00) {
-      DBG_PRINTLN(F("CRITICAL BATTERY: Voltage below 3.00V, shutting down..."));
+  // Only shut down for low battery if USB is definitely not plugged in AND an actual depleted battery is connected.
+  // When running purely on USB or without battery, ADC may read 0.0V - 1.5V; never shut down in that state.
+  if (!wasUSBPlugged && !Serial) {
+    if (avgV >= 2.0f && avgV < 3.00f && millis() >= 15000) {
+      DBG_PRINTLN(F("CRITICAL BATTERY: Battery depleted below 3.00V, powering off device..."));
       powerOffDevice();
     }
   }

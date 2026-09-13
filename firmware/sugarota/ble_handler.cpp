@@ -132,12 +132,19 @@ void handleBLEGlucose(const JsonDocument& doc) {
   isFetching = false;
   fetchStartTime = 0;
   lastDataFetch = millis();
-  bleGlucoseReceived = true;
-  DBG_PRINTF("BLE: Ingested glucose successfully. Readings: %d, Latest SGV: %d (%s, delta: %+d, ts: %lld)\n",
-             historyCount, (historyCount > 0 ? bgHistory[0].sgv : 0),
-             (historyCount > 0 ? bgHistory[0].direction : "--"),
-             (historyCount > 0 ? bgHistory[0].delta : 0),
-             (historyCount > 0 ? bgHistory[0].timestamp : 0LL));
+  if (historyCount > 0 && bgHistory[0].timestamp > lastKnownReadingTs) {
+    lastKnownReadingTs = bgHistory[0].timestamp;
+    nextFetchIntervalMs = computeNextFetchDelayMs(bgHistory[0].timestamp, pollIntervalSec);
+  }
+  if (!isChunk) {
+    DBG_PRINTF("BLE: Ingested glucose successfully. Readings: %d, Latest SGV: %d (%s, delta: %+d, ts: %lld)\n",
+               historyCount, (historyCount > 0 ? bgHistory[0].sgv : 0),
+               (historyCount > 0 ? bgHistory[0].direction : "--"),
+               (historyCount > 0 ? bgHistory[0].delta : 0),
+               (historyCount > 0 ? bgHistory[0].timestamp : 0LL));
+  } else {
+    DBG_PRINTF("BLE: Ingested history chunk (%d readings cached)\n", historyCount);
+  }
   bleUIUpdatePending = true;
 }
 

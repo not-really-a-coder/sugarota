@@ -646,7 +646,6 @@ void drawStatusBar() {
     
     bool isWifiActive = (WiFi.getMode() != WIFI_OFF && (WiFi.status() == WL_CONNECTED || isConfigMode));
     int batLeftX = cursorX;
-    if (wasUSBPlugged && !pwrBtn.pressed) batLeftX -= 15;
     if (SugarotaBLE::getInstance().isConnected()) batLeftX -= 18;
     if (isWifiActive) batLeftX -= 18;
     if (isConfigMode) batLeftX -= 15;
@@ -682,11 +681,6 @@ void drawStatusBar() {
       }
       
       int currentLeftX = cursorX;
-      if (wasUSBPlugged && !pwrBtn.pressed) {
-        currentLeftX -= 15;
-        gfx->setCursor(currentLeftX, 7); 
-        gfx->print("+");
-      }
 
       if (SugarotaBLE::getInstance().isConnected()) {
         currentLeftX -= 18;

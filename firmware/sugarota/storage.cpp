@@ -108,7 +108,19 @@ void loadConfig() {
     }
   }
   
-  DBG_PRINTF("Config: Mode: %s, Poll: %lu s\n", connectionMode.c_str(), pollIntervalSec);
+  if (doc.containsKey("hw_version")) {
+    hwVersionConfig = doc["hw_version"].as<String>();
+    hwVersionConfig.toLowerCase();
+    if (hwVersionConfig == "v1") {
+      hwVersion = 1;
+    } else if (hwVersionConfig == "v2") {
+      hwVersion = 2;
+    } else {
+      hwVersionConfig = "auto";
+    }
+  }
+
+  DBG_PRINTF("Config: Mode: %s, Poll: %lu s, HW: %s (%d)\n", connectionMode.c_str(), pollIntervalSec, hwVersionConfig.c_str(), hwVersion);
   DBG_PRINTLN("Config: Loaded from LittleFS");
 }
 
@@ -118,6 +130,7 @@ void saveConfig() {
   
   JsonDocument doc;
   doc["debug"] = debugMode;
+  doc["hw_version"] = hwVersionConfig;
   doc["wifi"]["primary_ssid"] = primarySSID;
   doc["wifi"]["primary_pass"] = primaryPass;
   doc["wifi"]["secondary_ssid"] = secondarySSID;

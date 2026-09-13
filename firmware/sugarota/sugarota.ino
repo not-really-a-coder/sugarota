@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.10.3"
+#define SUGAROTA_VERSION "v0.09.13.16"
 
 #include "config.h"
 #include "storage.h"
@@ -37,6 +37,8 @@ BGUnits bgUnits = UNIT_MGDL;
 
 String connectionMode  = "AUTO";
 unsigned long pollIntervalSec = 60;
+unsigned long nextFetchIntervalMs = 60000;
+long long lastKnownReadingTs = 0;
 
 String ntpServer       = "pool.ntp.org";
 long gmtOffset_sec     = 0;
@@ -140,8 +142,49 @@ void logBoot(const String& msg) {
   gfx->flush();
 }
 
+int hwVersion = 1;
+String hwVersionConfig = "auto";
+
+static void detectHardwareVersion() {
+  if (hwVersionConfig == "v1") {
+    hwVersion = 1;
+    return;
+  } else if (hwVersionConfig == "v2") {
+    hwVersion = 2;
+    return;
+  }
+
+  // Auto-detection between V1 and V2:
+  // On V2, GPIO 8 is connected to TCA9554 INT (with external pull-up R39/R70)
+  // and GPIO 42 is connected to the AP3032 backlight boost CTRL pin (pulled down by R46 100k to GND).
+  // On V1, GPIO 8 is connected to the AP3032 backlight boost CTRL pin (pulled down to GND)
+  // and GPIO 42 is NC / unrouted.
+  // We sample GPIO 8 with no internal pull: if high due to the external TCA9554 pull-up, it is V2.
+  // Furthermore, we configure weak internal pull-up on GPIO 42:
+  // on V2, R46 (100k pull-down) forms a divider or pulls low, whereas on V1 it floats high.
+  pinMode(PIN_BL_V1, INPUT);
+  delay(2);
+  int g8_raw = digitalRead(PIN_BL_V1);
+
+  if (g8_raw == HIGH) {
+    hwVersion = 2;
+  } else {
+    // Check with internal pull-down on GPIO 8:
+    // On V2 (open-drain INT with external 10k pull-up to 3.3V), it stays HIGH.
+    pinMode(PIN_BL_V1, INPUT_PULLDOWN);
+    delay(2);
+    int g8_pd = digitalRead(PIN_BL_V1);
+    if (g8_pd == HIGH) {
+      hwVersion = 2;
+    } else {
+      hwVersion = 1;
+    }
+  }
+}
+
 void powerOffDevice() {
-  DBG_PRINTLN(F("--- Powering Off ---"));
+  DBG_PRINTLN(F("Powering off device..."));
+  deviceOn = false;
   
   if (historyDirty) {
     saveHistoryToCache();
@@ -165,14 +208,25 @@ void powerOffDevice() {
   gfx->flush();
   delay(50);
 
+  // Turn off backlight power enable on V2
+  updateBacklightPower(false);
+
+  // Disable peripheral power rails on TCA9554
   Wire.beginTransmission(TCA9554_ADDR);
-  Wire.write(0x01);
+  Wire.write(0x01); // Output Port
   Wire.write(0x00);
   Wire.endTransmission();
   
-  pinMode(PIN_BL, OUTPUT);
-  digitalWrite(PIN_BL, HIGH);
-  gpio_hold_en((gpio_num_t)PIN_BL);
+  // Set active backlight PWM pin to inactive (HIGH for inverted AXS15231B boost) and hold state
+  if (hwVersion == 2) {
+    pinMode(PIN_BL_V2, OUTPUT);
+    digitalWrite(PIN_BL_V2, HIGH);
+    gpio_hold_en((gpio_num_t)PIN_BL_V2);
+  } else {
+    pinMode(PIN_BL_V1, OUTPUT);
+    digitalWrite(PIN_BL_V1, HIGH);
+    gpio_hold_en((gpio_num_t)PIN_BL_V1);
+  }
   
   esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_PWR_BTN, 0); 
   DBG_PRINTLN(F("Entering Deep Sleep..."));
@@ -229,7 +283,9 @@ void checkSerialConsole() {
 }
 
 void setup() {
-  gpio_hold_dis((gpio_num_t)PIN_BL);
+  // Release pad holds on both potential backlight pins
+  gpio_hold_dis((gpio_num_t)PIN_BL_V1);
+  gpio_hold_dis((gpio_num_t)PIN_BL_V2);
   gpio_deep_sleep_hold_dis();
 
   Serial.setRxBufferSize(2048);
@@ -253,14 +309,35 @@ void setup() {
   Wire.begin(I2C_SDA, I2C_SCL);
   rtc.begin(Wire, I2C_SDA, I2C_SCL);
   restoreTimeFromRTC();
+
+  // Configure TCA9554 IO Expander for both V1 and V2:
+  // Direction (Reg 0x03): 0 = output, 1 = input.
+  // Outputs: EXIO1 (BL_EN), EXIO5 (LCD_RST), EXIO6 (SYS_EN), EXIO7 (NS_MODE).
+  // Inputs: EXIO0 (TOUCH_INT), EXIO2 (IMU_INT1), EXIO3 (IMU_INT2), EXIO4 (RTC_INT).
+  // Direction mask: ~(EXIO_PIN_BL_EN | EXIO_PIN_LCD_RST | EXIO_PIN_SYS_EN | EXIO_PIN_NS_MODE) = ~(0x02 | 0x20 | 0x40 | 0x80) = ~0xE2 = 0x1D
   Wire.beginTransmission(TCA9554_ADDR);
-  Wire.write(0x03); 
-  Wire.write(0x3F); 
+  Wire.write(0x03); // Configuration Register
+  Wire.write(0x1D); // Set P1, P5, P6, P7 as Outputs; P0, P2, P3, P4 as Inputs
   Wire.endTransmission();
+
+  // Output State (Reg 0x01):
+  // Assert EXIO1=1 (BL_EN), EXIO5=1 (LCD_RST active high), EXIO6=1 (SYS_EN power hold), EXIO7=1 (NS_MODE audio)
+  // Mask = 0x02 | 0x20 | 0x40 | 0x80 = 0xE2
   Wire.beginTransmission(TCA9554_ADDR);
-  Wire.write(0x01); 
-  Wire.write(0xC0);
+  Wire.write(0x01); // Output Port Register
+  Wire.write(0xE2);
   Wire.endTransmission();
+
+  // Filesystem & Cache (Initialize early to read config options)
+  if (!LittleFS.begin(true, "/littlefs", 10, "ffat")) {
+    DBG_PRINTLN("FS Mount Failed!");
+  }
+  loadConfig();
+  configTime(gmtOffset_sec, daylightOffset_sec, "");
+
+  // Probe hardware revision (uses config override if specified, otherwise auto-detected)
+  detectHardwareVersion();
+  DBG_PRINTF("Hardware Revision: V%d (config: %s)\n", hwVersion, hwVersionConfig.c_str());
 
   // Audio Codec
   initAudioCodec();
@@ -279,13 +356,9 @@ void setup() {
   char batMsg[40];
   snprintf(batMsg, sizeof(batMsg), "Battery: %.2fV (%d%%)", currentBatteryVoltage, currentBatteryPct);
 
-  // Filesystem & Cache
-  logBoot("Initializing FS...");
-  if (!LittleFS.begin(true, "/littlefs", 10, "ffat")) {
-    logBoot("FS Mount Failed!");
-  }
-  loadConfig();
-  configTime(gmtOffset_sec, daylightOffset_sec, "");
+  char hwMsg[40];
+  snprintf(hwMsg, sizeof(hwMsg), "Hardware: V%d (%s)", hwVersion, hwVersionConfig.c_str());
+  logBoot(hwMsg);
 
   logBoot("Loading Cache...");
   loadHistoryFromCache();
@@ -481,7 +554,7 @@ void loop() {
   pollIMU();
 
   static unsigned long lastBatCheck = 0;
-  if (millis() - lastBatCheck >= 60000 || lastBatCheck == 0) {
+  if (millis() - lastBatCheck >= 5000 || lastBatCheck == 0) {
     lastBatCheck = millis();
     updateBattery();
   }
@@ -519,7 +592,7 @@ void loop() {
       isFetching = false;
       fetchStartTime = 0;
       if (!isConfigMode && WiFi.getMode() != WIFI_OFF) {
-        WiFi.disconnect(true);
+        WiFi.disconnect(false, false);
         WiFi.mode(WIFI_OFF);
       }
       updateUI();
@@ -539,7 +612,7 @@ void loop() {
   bool bleDataStale = (SugarotaBLE::getInstance().getLastPacketTime() == 0) || (millis() - SugarotaBLE::getInstance().getLastPacketTime() > 600000);
   bool canFetchWifi = (connectionMode != "BLE_ONLY") && (!isBleConnected || bleDataStale);
   
-  if (canFetchWifi && !isConfigMode && (millis() - lastDataFetch >= getFetchIntervalMs())) {
+  if (canFetchWifi && !isConfigMode && (millis() - lastDataFetch >= nextFetchIntervalMs)) {
     fetchData();
   }
 

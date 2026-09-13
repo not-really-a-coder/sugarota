@@ -50,7 +50,7 @@
 
         /* Container & Layout */
         .wrapper {
-            max-width: 1280px;
+            max-width: 1540px;
             margin: 0 auto;
         }
 
@@ -516,7 +516,7 @@
             padding: 16px;
             overflow-y: auto;
             font-family: 'Fira Code', monospace;
-            font-size: 0.75rem;
+            font-size: 0.68rem;
             line-height: 1.45;
             color: var(--terminal-green);
             text-shadow: 0 0 6px var(--terminal-glow);
@@ -546,6 +546,13 @@
             border-color: var(--accent-blue);
             color: var(--accent-blue);
             box-shadow: 0 0 8px var(--accent-blue-glow);
+        }
+
+        .btn-icon-micro.active {
+            background: rgba(255, 204, 0, 0.2);
+            border-color: var(--accent-yellow);
+            color: var(--accent-yellow);
+            box-shadow: 0 0 8px rgba(255, 204, 0, 0.4);
         }
 
         .btn-icon-micro.danger:hover {
@@ -714,7 +721,7 @@
     <div class="wrapper">
         <header>
             <h1 class="logo-title">SUGAROTA CONTROL CENTER</h1>
-            <div><span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.09.10.3</span></div>
+            <div><span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.09.13.11</span></div>
         </header>
 
         <!-- Global Connection Status Banner -->
@@ -772,6 +779,20 @@
                     <div class="terminal-header-row">
                         <label>Console & Log Output</label>
                         <div class="terminal-actions-right">
+                            <button class="btn-icon-micro" id="quick-btn-copy" title="Copy log to clipboard">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                            </button>
+                            <button class="btn-icon-micro" id="quick-btn-pause" title="Pause log output">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="6" y="4" width="4" height="16"></rect>
+                                    <rect x="14" y="4" width="4" height="16"></rect>
+                                </svg>
+                            </button>
                             <button class="btn-icon-micro danger" id="quick-btn-reboot" disabled
                                 title="Soft Reboot Device">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1089,7 +1110,7 @@
     </div>
 
     <script>
-        const INSTALLER_VERSION = "v0.09.10.3";
+        const INSTALLER_VERSION = "v0.09.13.11";
 
         // Toggle Password Visibility Reveal Icon Logic
         function togglePasswordVisibility(inputId, btn) {
@@ -1163,6 +1184,8 @@
         let keepReading = false;
         let readBuffer = "";
         let isBrandNewDevice = false;
+        let isLogPaused = false;
+        let pendingLogBuffer = "";
 
         // Tab Navigation Switcher
         function switchTab(tabName) {
@@ -1198,6 +1221,8 @@
         const progressState = document.getElementById("progress-state-text");
 
         // Interactive Command elements
+        const quickCopyBtn = document.getElementById("quick-btn-copy");
+        const quickPauseBtn = document.getElementById("quick-btn-pause");
         const quickRebootBtn = document.getElementById("quick-btn-reboot");
         const quickClearBtn = document.getElementById("quick-btn-clear");
 
@@ -1213,8 +1238,15 @@
             if (color) {
                 displayMessage = `<span style="color: ${color};">${message}</span>`;
             }
+            const logEntry = `[${time}] ${displayMessage}\n`;
+
+            if (isLogPaused) {
+                pendingLogBuffer += logEntry;
+                return;
+            }
+
             const isNearBottom = (terminalEl.scrollHeight - terminalEl.scrollTop - terminalEl.clientHeight) <= 45;
-            terminalEl.innerHTML += `[${time}] ${displayMessage}\n`;
+            terminalEl.innerHTML += logEntry;
             if (isNearBottom) {
                 terminalEl.scrollTop = terminalEl.scrollHeight;
             }
@@ -1222,6 +1254,7 @@
 
         function clearLog() {
             terminalEl.innerHTML = "";
+            pendingLogBuffer = "";
         }
 
 
@@ -1412,11 +1445,18 @@
                                 continue;
                             }
 
-                            // Print standard debug lines cleanly, preserving scroll if user scrolled up
-                            const isNearBottom = (terminalEl.scrollHeight - terminalEl.scrollTop - terminalEl.clientHeight) <= 45;
-                            terminalEl.innerHTML += line.replace(/\r/g, "");
-                            if (isNearBottom) {
-                                terminalEl.scrollTop = terminalEl.scrollHeight;
+                            // Print standard debug lines with timestamp, preserving scroll if user scrolled up
+                            const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
+                            const logEntry = `[${time}] ${line.replace(/\r/g, "")}`;
+
+                            if (isLogPaused) {
+                                pendingLogBuffer += logEntry;
+                            } else {
+                                const isNearBottom = (terminalEl.scrollHeight - terminalEl.scrollTop - terminalEl.clientHeight) <= 45;
+                                terminalEl.innerHTML += logEntry;
+                                if (isNearBottom) {
+                                    terminalEl.scrollTop = terminalEl.scrollHeight;
+                                }
                             }
                         }
 
@@ -1695,6 +1735,58 @@
             writer.releaseLock();
         }
 
+        quickCopyBtn.addEventListener("click", async () => {
+            SoundEffects.click();
+            try {
+                // Strip HTML tags for clean clipboard text
+                const textToCopy = terminalEl.innerText || terminalEl.textContent;
+                await navigator.clipboard.writeText(textToCopy);
+                const originalTitle = quickCopyBtn.getAttribute("title");
+                quickCopyBtn.setAttribute("title", "Copied!");
+                quickCopyBtn.style.color = "var(--accent-green)";
+                setTimeout(() => {
+                    quickCopyBtn.setAttribute("title", originalTitle);
+                    quickCopyBtn.style.color = "";
+                }, 1500);
+            } catch (err) {
+                console.error("Failed to copy logs:", err);
+            }
+        });
+
+        quickPauseBtn.addEventListener("click", () => {
+            SoundEffects.click();
+            isLogPaused = !isLogPaused;
+            if (isLogPaused) {
+                quickPauseBtn.classList.add("active");
+                quickPauseBtn.setAttribute("title", "Resume log output (Paused)");
+                quickPauseBtn.innerHTML = `
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                `;
+            } else {
+                quickPauseBtn.classList.remove("active");
+                quickPauseBtn.setAttribute("title", "Pause log output");
+                quickPauseBtn.innerHTML = `
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="6" y="4" width="4" height="16"></rect>
+                        <rect x="14" y="4" width="4" height="16"></rect>
+                    </svg>
+                `;
+                // Flush retrospectively buffered log items
+                if (pendingLogBuffer.length > 0) {
+                    const isNearBottom = (terminalEl.scrollHeight - terminalEl.scrollTop - terminalEl.clientHeight) <= 45;
+                    terminalEl.innerHTML += pendingLogBuffer;
+                    pendingLogBuffer = "";
+                    if (isNearBottom) {
+                        terminalEl.scrollTop = terminalEl.scrollHeight;
+                    }
+                }
+            }
+        });
+
         quickClearBtn.addEventListener("click", () => {
             SoundEffects.click();
             clearLog();
@@ -1831,10 +1923,16 @@
                         clearLog();
                     },
                     writeLine: (data) => {
-                        log(data);
+                        if (!data) return;
+                        const trimmed = data.toString().trim();
+                        if (trimmed === "" || trimmed === "Changed") return;
+                        log(trimmed);
                     },
                     write: (data) => {
-                        log(data);
+                        if (!data) return;
+                        const trimmed = data.toString().trim();
+                        if (trimmed === "" || trimmed === "Changed") return;
+                        log(trimmed);
                     }
                 };
 
@@ -1861,10 +1959,14 @@
                 progressState.innerText = "Initializing bootloader handshake...";
 
                 log("Connecting to ROM bootloader... Press BOOT button if handshake stalls...", "var(--accent-yellow)");
-                // Use main() instead of connect() to fully initialize connection, detect chip, and load standard RAM flashing stub
-                await esploader.main();
-                log(`Successfully connected! Chip detected: ${esploader.chipName}`, "var(--accent-green)");
-                metricChip.innerText = esploader.chipName;
+                // Use main() to fully initialize connection, detect chip, and load standard RAM flashing stub
+                const detectedChip = await esploader.main();
+                const chipDisplayName = (esploader.chip && (esploader.chip.CHIP_NAME || esploader.chip.chipName)) || 
+                                        detectedChip || 
+                                        esploader.chipName || 
+                                        "ESP32-S3";
+                log(`Successfully connected! Chip detected: ${chipDisplayName}`, "var(--accent-green)");
+                metricChip.innerText = chipDisplayName;
 
                 // Prepare files array
                 const files = filesToFlash;

@@ -2,6 +2,35 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.13.16] — Dual Hardware V1/V2 Support, Smart Sync & Web Console Suite (2026-09-13)
+
+This release introduces dual hardware support with automatic V1/V2 display and backlight detection, implements smart timestamp-aligned data synchronization across Wi-Fi and BLE companion, optimizes battery sampling, resolves Wi-Fi teardown timeouts, and significantly upgrades the web installer console with layout adjustments, copying, pausing, and formatted timestamps.
+
+### Firmware & Hardware Support
+
+- Added hardware auto-detection distinguishing Waveshare V1 and V2 displays via GPIO 8 and GPIO 42 impedance and pull sensing
+- Added persistent hardware version configuration option (`hw_version`: `auto`, `v1`, `v2`) in LittleFS configuration
+- Configured TCA9554 IO expander supporting both V1 and V2 pin mappings (`EXIO1` backlight enable, `EXIO5` display reset, `EXIO6` system power hold, `EXIO7` audio mode)
+- Implemented inverted backlight boost control on GPIO 42 for V2 hardware alongside GPIO 8 control for V1
+- Optimized battery monitoring loop polling every 5 seconds with exponential moving average smoothing
+- Eliminated redundant '+' USB charging glyph indicator from status bar
+- Resolved ESP-IDF Wi-Fi un-init timeout error by cleanly disabling stations with `WiFi.disconnect(false, false)` prior to `WiFi.mode(WIFI_OFF)`
+- Added seconds precision to glucose fetch success log output (`at HH:MM:SS`)
+
+### Data Synchronization & Scheduling
+
+- Implemented smart fetch interval scheduling aligning subsequent data queries to provider glucose reading timestamps
+- Re-aligned Android BLE bridge periodic service using reading timestamps to minimize stale fetches and synchronize companion and direct Wi-Fi updates
+- Avoided redundant BLE transmissions when remote server data has not updated
+
+### Web Installer
+
+- Decreased side margins by 20% on desktop screens by expanding wrapper container max width to 1540px
+- Reduced serial output console font size for cleaner, high-density log inspection
+- Added Copy Log to Clipboard button in the terminal header for fast diagnostics copying
+- Added Pause and Resume button buffering incoming serial logs retrospectively while reading or selecting text
+- Added local 24-hour timestamps (`[HH:MM:SS]`) to all incoming device serial log lines
+
 ## [v0.09.10.3] — Unified CalVer, Web Installer Suite & Hardware Refinements (2026-09-10)
 
 This release implements an automated multi-target CalVer versioning workflow, redesigns the web installer with interactive serial terminal controls and live binary version inspection, refines battery and power management, enhances glucose typography alignment, and improves Android companion connectivity and onboarding.

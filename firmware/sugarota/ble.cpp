@@ -92,7 +92,6 @@ public:
             if (m_ble->m_glucoseCallback) {
                 m_ble->m_glucoseCallback(doc);
             }
-            BLE_DBG_PRINTLN("[BLE] Received valid glucose payload from bridge");
         } else {
             BLE_DBG_PRINTF("[BLE] Glucose JSON error: %s\n", err.c_str());
         }

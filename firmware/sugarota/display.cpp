@@ -1,10 +1,12 @@
 #include "display.h"
+#include "config.h"
 
 // Forward declaration
 void updateUI();
 
+// Reset pin is handled via hardware or TCA9554 EXIO5 on V2; pass -1 to driver so GPIO 21 (LCD_TE on V2) is not driven
 static Arduino_DataBus *bus = new Arduino_ESP32QSPI(LCD_CS, LCD_PCLK, LCD_D0, LCD_D1, LCD_D2, LCD_D3);
-static Arduino_GFX *physical_gfx = new Arduino_AXS15231B(bus, LCD_RST, 0, false, 172, 640);
+static Arduino_GFX *physical_gfx = new Arduino_AXS15231B(bus, -1, 0, false, 172, 640);
 Arduino_GFX *gfx = new Arduino_Canvas(172, 640, physical_gfx, 0, 0, 1);
 
 void initDisplay() {
@@ -23,11 +25,38 @@ void setScreenRotation(uint8_t r) {
   }
 }
 
+#include <Wire.h>
+
+void updateBacklightPower(bool enable) {
+  // On V2 hardware, EXIO_PIN_BL_EN (Bit 1 of TCA9554) enables the AP3032 boost converter.
+  // We read the current TCA9554 output register (0x01), modify bit 1, and write it back.
+  Wire.beginTransmission(TCA9554_ADDR);
+  Wire.write(0x01); // Output port register
+  if (Wire.endTransmission(false) == 0 && Wire.requestFrom((uint16_t)TCA9554_ADDR, (uint8_t)1) == 1) {
+    uint8_t currentOut = Wire.read();
+    if (enable) {
+      currentOut |= EXIO_PIN_BL_EN;
+    } else {
+      currentOut &= ~EXIO_PIN_BL_EN;
+    }
+    Wire.beginTransmission(TCA9554_ADDR);
+    Wire.write(0x01);
+    Wire.write(currentOut);
+    Wire.endTransmission();
+  }
+}
+
 void setBrightness(int level) {
   brightnessLevel = level;
   // AXS15231B backlight is inverted (0 = max, 255 = off)
   int val = 255 - level;
-  analogWrite(PIN_BL, val);
+
+  // Dual-drive backlight PWM across both V1 (GPIO 8) and V2 (GPIO 42)
+  analogWrite(PIN_BL_V1, val);
+  analogWrite(PIN_BL_V2, val);
+
+  // Enable boost converter on V2 when screen is on
+  updateBacklightPower(level > 0);
   
   if (level == 0) {
     gfx->displayOff();

@@ -12,13 +12,13 @@ void saveHistoryToCache() {
   DBG_PRINTF("Cache: Saved %d readings to flash\n", historyCount);
 }
 
-void loadHistoryFromCache() {
+bool loadHistoryFromCache() {
   if (!LittleFS.exists("/history.dat")) {
     DBG_PRINTLN("Cache: No history file");
-    return;
+    return false;
   }
   File f = LittleFS.open("/history.dat", "r");
-  if (!f) return;
+  if (!f) return false;
   f.read((uint8_t*)&historyCount, sizeof(historyCount));
   if (historyCount > MAX_HISTORY) historyCount = MAX_HISTORY;
   f.read((uint8_t*)bgHistory, sizeof(BGReading) * historyCount);
@@ -26,6 +26,7 @@ void loadHistoryFromCache() {
   historyDirty = false;
   lastHistorySaveTime = millis();
   DBG_PRINTF("Cache: Loaded %d readings\n", historyCount);
+  return (historyCount > 0);
 }
 
 void loadConfig() {

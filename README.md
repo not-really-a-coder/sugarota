@@ -18,10 +18,19 @@ See [CHANGELOG](CHANGELOG.md) for latest builds updates.
 2. Go to the installation page: https://not-really-a-coder.github.io/sugarota/installer.html
 3. Connect the device to your computer using USB-C cable, click "Connect USB device", and select the port.
 4. The installer will automatically detect a blank device and prepare a **Full Install**. Click "Start Flashing Firmware".
-5. Once flashed, the device will boot. Shake the device vigorously to enter **Config Mode**.
-6. Scan the QR code displayed on the screen (or navigate to `http://sugarota.local` / the displayed IP) from your smartphone to securely configure your Wi-Fi and CGM credentials wirelessly!
 
 All entered credentials and settings are saved ONLY on the device. Nothing is being saved or stored on the local or remote host by the author of this software.
+
+### Initial configuration
+
+After flashing the firmware, configure your Wi-Fi credentials and CGM provider settings using any of the following options:
+
+1. **Via Web-Installer (The Easiest)**:
+   Immediately after flashing (or anytime you connect via USB-C), configure your primary and backup Wi-Fi networks, CGM provider (Dexcom Share or Nightscout), and unit preferences directly from the web installer interface.
+2. **Via Android App**:
+   Compile or download and install the companion app directly: [sugarota-app-debug.apk](android-app/sugarota-app-debug.apk). Once paired over Bluetooth Low Energy (BLE), the app seamlessly synchronizes device settings, Wi-Fi configuration, and bridges real-time CGM data directly from your phone.
+3. **Via Shaking and accessing `http://sugarota.local`**:
+   Shake the device vigorously at any time to enter wireless **Config Mode**. Scan the displayed QR code with your smartphone camera or navigate to [http://sugarota.local](http://sugarota.local) (especially convenient for Apple / iOS and macOS users) while connected to the same local Wi-Fi network.
 
 ### Local installation
 
@@ -37,32 +46,24 @@ The local setup center requires **zero external python packages** (no `requireme
 3.  **Flash & Configure**:
     *   Connect your ESP32-S3 screen via USB-C.
     *   The installer will auto-detect a new device and select **Full Install**. Click **Start Flashing Firmware**.
-    *   Once flashed, shake the device to enter wireless Config Mode and scan the QR code to set up Wi-Fi and CGM credentials.
+    *   Configure settings directly via the web dashboard or shake the device into Config Mode.
 
 ---
 
-## 🌐 Remote Cloud & VPS Deployment
+## ✨ Key Features & Hardware Specs
 
-If you want to host the installer server on a remote machine (such as an Oracle Cloud VPS, AWS EC2, or Linux server), keep the following in mind:
-
-### 1. Run in Headless Mode
-Start the script with the `--no-browser` or `--headless` flag to prevent Python from attempting to open a GUI browser on the host server:
-```bash
-python utils/run_web_installer.py --no-browser
-```
-
-### 2. Browser HTTPS Secure Context Requirement (CRITICAL)
-Modern browsers (Chrome, Edge, Opera) restrict the **WebSerial API** strictly to **Secure Contexts (HTTPS)** when accessed over a network. If you access the server remotely via an insecure HTTP address (e.g., `http://your-vps-ip:8123/installer.html`), the **Connect/Flash buttons will be disabled** by your browser.
-
-You can solve this elegantly in two ways:
-*   **Method A: SSH Tunneling (Recommended & Easiest)**
-    Instead of dealing with domains and SSL certificates for a private setup utility, tunnel the port securely to your local machine:
-    ```bash
-    ssh -L 8123:localhost:8123 user@your-vps-ip
-    ```
-    Once connected, navigate to **`http://localhost:8123/installer.html`** in your local browser. Because it is mapped to `localhost`, the browser grants full WebSerial access natively!
-*   **Method B: Reverse Proxy**
-    Put the server behind Nginx/Apache and secure it with a free SSL certificate from **Let's Encrypt** (Certbot).
+- **Long Battery Autonomy**: Up to **18 hours of autonomous operation** without recharging on a single battery charge when using Bluetooth Low Energy (BLE) connection with the companion app.
+- **Dual Hardware Compatibility**: Automatically detects and drives both Waveshare ESP32-S3-Touch-LCD-3.49 Hardware V1 and V2 (Rev1.1) revisions with dynamic backlight boost control.
+- **Real-Time CGM Monitoring**: Native support for Dexcom Share and Nightscout REST APIs with delta display and direction trend arrows.
+- **Smart Timestamp-Aligned Fetching**: Subsequent data polls align precisely to your CGM reading timestamps, minimizing radio airtime and stale fetches.
+- **Display & Touch Controls**:
+  - **Double-Press (PWR Button)**: Instantly toggles display and touchscreen ON/OFF while preserving current brightness level.
+  - **Single-Press (PWR Button)**: Cycles through active brightness levels (`76 -> 153 -> 204 -> 255`) without turning off, or wakes the screen if off.
+  - **Long-Press (PWR Button)**: Cleanly powers down the device.
+  - **Theme Toggle (BOOT Button)**: Switches between high-contrast pixelated dark console and soft flashlight light theme.
+- **High-DPI Interactive Historical Chart**: 4-hour historical CGM graph with touch scrubber for inspecting past readings.
+- **Orientation & Gesture Sensing**: QMI8658 6-axis IMU enables shake-to-refresh, face-down auto-sleep gesture, and automatic 180° rotation into injection-to-meal stopwatch timer mode.
+- **Privacy & Security**: Link-encrypted BLE pairing with numeric passkey verification; credentials are saved purely on-device in encrypted LittleFS flash with zero cloud reliance.
 
 ---
 
@@ -95,6 +96,9 @@ Refer to the [Manufacturer's GitHub Repository](https://github.com/waveshareteam
 
 The Android Companion App provides direct Bluetooth Low Energy (BLE) background bridging, syncing glucose telemetry and history packets from Dexcom Share or Nightscout directly to the Sugarota display without requiring the device to wake its Wi-Fi radio.
 
+Download the pre-built APK directly from the repository:
+- **[sugarota-app-debug.apk](android-app/sugarota-app-debug.apk)**
+
 To build, install, and run the Android companion app directly on a connected device (over USB or Wireless ADB):
 ```powershell
 .\utils\run_android_app.ps1
@@ -104,27 +108,6 @@ To build, install, and run the Android companion app directly on a connected dev
 * `.\utils\run_android_app.ps1 -Logs`: Stream filtered real-time Logcat output (`SugarotaBleService`, `MainActivity`).
 
 See [Build & Toolchain Requirements](docs/build_requirements.md) for zero-setup environment details.
-
----
-
-## 🔢 Calendar Versioning (CalVer)
-
-Sugarota uses unified Calendar Versioning across all deliverables: `v{YearOffset}.{Month:02d}.{Day:02d}.{Build}` (e.g. `v0.09.10.3`).
-
-Each target (Firmware, Web Installer, and Android Companion) maintains its own independent daily build revision counter in `data/version_state.json`. You can manage or auto-bump versions using the unified version utility:
-
-```powershell
-# Bump revision for a specific deliverable
-python utils/watch_version.py --target firmware --bump
-python utils/watch_version.py --target installer --bump
-python utils/watch_version.py --target android --bump
-
-# Synchronize state without incrementing
-python utils/watch_version.py --sync
-
-# Start background file system watcher to auto-bump upon code modifications
-python utils/watch_version.py --watch
-```
 
 ---
 

@@ -36,6 +36,11 @@ void initInputs() {
   }
 }
 
+static unsigned long lastPwrReleaseTime = 0;
+static int pwrClickCount = 0;
+static int lastActiveBrightness = 76;
+const unsigned long doubleClickWindowMs = 350;
+
 void checkButton(ButtonState &btn, const char* name) {
   bool isPressed = (digitalRead(btn.pin) == LOW);
   
@@ -43,15 +48,6 @@ void checkButton(ButtonState &btn, const char* name) {
     btn.pressed = true;
     btn.pressTime = millis();
     btn.handled = false;
-    
-    if (btn.pin == PIN_PWR_BTN && screenManuallyOff) {
-      Serial.printf("%s Button: WAKE Press detected\n", name);
-      screenManuallyOff = false;
-      brightnessLevel = 76;
-      setBrightness(brightnessLevel);
-      updateUI();
-      btn.handled = true;
-    }
   } else if (isPressed && btn.pressed) {
     if (!btn.handled) {
       unsigned long duration = millis() - btn.pressTime;
@@ -59,6 +55,7 @@ void checkButton(ButtonState &btn, const char* name) {
         if (duration >= 2000) {
           Serial.printf("%s Button: LONG Press detected (Hold >= 2s)\n", name);
           btn.handled = true;
+          pwrClickCount = 0; // Reset any pending double-click
           deviceOn = false;
         }
       } else if (btn.pin == PIN_BOOT_BTN) {
@@ -77,20 +74,29 @@ void checkButton(ButtonState &btn, const char* name) {
     if (!btn.handled) {
       if (btn.pin == PIN_PWR_BTN) {
         if (duration > 50 && duration < 2000) {
-          Serial.printf("%s Button: SHORT Press detected (Release)\n", name);
-          
-          if (brightnessLevel == 0) brightnessLevel = 76;
-          else if (brightnessLevel < 76) brightnessLevel = 76;
-          else if (brightnessLevel < 153) brightnessLevel = 153;
-          else if (brightnessLevel < 204) brightnessLevel = 204;
-          else if (brightnessLevel < 255) brightnessLevel = 255;
-          else {
-            brightnessLevel = 0;
-            screenManuallyOff = true;
+          pwrClickCount++;
+          lastPwrReleaseTime = millis();
+
+          if (pwrClickCount == 2) {
+            pwrClickCount = 0;
+            Serial.println("PWR Button: DOUBLE Press detected -> Toggle Display & Touch");
+
+            if (brightnessLevel > 0) {
+              // Screen is currently ON -> turn OFF
+              lastActiveBrightness = brightnessLevel;
+              brightnessLevel = 0;
+              screenManuallyOff = true;
+              setBrightness(0);
+              Serial.printf("Screen & Touch -> OFF (Saved brightness: %d)\n", lastActiveBrightness);
+            } else {
+              // Screen is currently OFF -> turn ON
+              screenManuallyOff = false;
+              brightnessLevel = (lastActiveBrightness > 0) ? lastActiveBrightness : 76;
+              setBrightness(brightnessLevel);
+              updateUI();
+              Serial.printf("Screen & Touch -> ON (Restored brightness: %d)\n", brightnessLevel);
+            }
           }
-          
-          setBrightness(brightnessLevel);
-          Serial.printf("Brightness: %d, ManualOff: %d\n", brightnessLevel, screenManuallyOff);
         }
       } else if (btn.pin == PIN_BOOT_BTN) {
         if (duration > 50 && duration < 1500) {
@@ -116,6 +122,30 @@ void checkButton(ButtonState &btn, const char* name) {
 void checkButtons() {
   checkButton(pwrBtn, "PWR");
   checkButton(bootBtn, "BOOT");
+
+  // Check if a single short press timed out without a second click
+  if (pwrClickCount == 1 && (millis() - lastPwrReleaseTime > doubleClickWindowMs)) {
+    pwrClickCount = 0;
+    Serial.println("PWR Button: SINGLE Press detected");
+
+    if (brightnessLevel <= 0) {
+      // Waking screen from off via single press
+      screenManuallyOff = false;
+      brightnessLevel = (lastActiveBrightness > 0) ? lastActiveBrightness : 76;
+      setBrightness(brightnessLevel);
+      updateUI();
+    } else {
+      // Cycle through non-zero brightness levels: 76 -> 153 -> 204 -> 255 -> 76
+      if (brightnessLevel < 153) brightnessLevel = 153;
+      else if (brightnessLevel < 204) brightnessLevel = 204;
+      else if (brightnessLevel < 255) brightnessLevel = 255;
+      else brightnessLevel = 76;
+
+      lastActiveBrightness = brightnessLevel;
+      setBrightness(brightnessLevel);
+    }
+    Serial.printf("Brightness: %d, ManualOff: %d\n", brightnessLevel, screenManuallyOff);
+  }
 }
 
 bool readTouch(int &tx, int &ty) {

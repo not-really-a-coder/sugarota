@@ -624,7 +624,7 @@ void drawStatusBar() {
       } else {
         batColor = RED;
       }
-      if ((millis() / 500) % 2 != 0) {
+      if ((millis() / 1000) % 2 != 0) {
         showBat = false;
       }
     }
@@ -679,59 +679,60 @@ void drawStatusBar() {
           gfx->fillRect(cursorX + 2 + i * 5, batY + 2, 4, 10, batColor);
         }
       }
-      
-      int currentLeftX = cursorX;
+      gfx->setTextColor(textColor);
+    }
+    
+    int currentLeftX = cursorX;
 
-      if (SugarotaBLE::getInstance().isConnected()) {
-        currentLeftX -= 18;
-        uint16_t btColor = isDarkTheme ? CYAN : BLUE;
-        drawBluetoothIcon(currentLeftX + 3, 7, btColor);
-      }
+    if (SugarotaBLE::getInstance().isConnected()) {
+      currentLeftX -= 18;
+      uint16_t btColor = isDarkTheme ? CYAN : BLUE;
+      drawBluetoothIcon(currentLeftX + 3, 7, btColor);
+    }
+    
+    if (isWifiActive) {
+      currentLeftX -= 18;
+      uint16_t wifiColor = (WiFi.status() == WL_CONNECTED) ? (isDarkTheme ? GREEN : 0x03E0) : ORANGE;
+      drawWiFiIcon(currentLeftX + 2, 9, wifiColor);
+    }
+    
+    if (isConfigMode) {
+      currentLeftX -= 15;
+      gfx->setTextColor(ORANGE);
+      gfx->setCursor(currentLeftX, 7);
+      gfx->print("*");
       
-      if (isWifiActive) {
-        currentLeftX -= 18;
-        uint16_t wifiColor = (WiFi.status() == WL_CONNECTED) ? (isDarkTheme ? GREEN : 0x03E0) : ORANGE;
-        drawWiFiIcon(currentLeftX + 2, 9, wifiColor);
+      String ipMsg;
+      if (WiFi.status() == WL_CONNECTED) {
+        ipMsg = "IP: " + WiFi.localIP().toString();
+      } else {
+        ipMsg = "IP: Connecting...";
       }
+      int16_t x1, y1;
+      uint16_t w, h;
+      gfx->getTextBounds(ipMsg.c_str(), 0, 0, &x1, &y1, &w, &h);
       
-      if (isConfigMode) {
-        currentLeftX -= 15;
-        gfx->setTextColor(ORANGE);
-        gfx->setCursor(currentLeftX, 7);
-        gfx->print("*");
+      int textX = (640 - w) / 2;
+      gfx->setCursor(textX, 7);
+      gfx->print(ipMsg);
+      
+      if (WiFi.status() == WL_CONNECTED) {
+        String url = "http://" + WiFi.localIP().toString();
         
-        String ipMsg;
-        if (WiFi.status() == WL_CONNECTED) {
-          ipMsg = "IP: " + WiFi.localIP().toString();
-        } else {
-          ipMsg = "IP: Connecting...";
-        }
-        int16_t x1, y1;
-        uint16_t w, h;
-        gfx->getTextBounds(ipMsg.c_str(), 0, 0, &x1, &y1, &w, &h);
+        QRCode qrcode;
+        uint8_t qrcodeData[qrcode_getBufferSize(2)];
+        qrcode_initText(&qrcode, qrcodeData, 2, 0, url.c_str());
         
-        int textX = (640 - w) / 2;
-        gfx->setCursor(textX, 7);
-        gfx->print(ipMsg);
+        int qrSize = qrcode.size;
+        int qrX = textX + w + 10;
+        int qrY = 2;
         
-        if (WiFi.status() == WL_CONNECTED) {
-          String url = "http://" + WiFi.localIP().toString();
-          
-          QRCode qrcode;
-          uint8_t qrcodeData[qrcode_getBufferSize(2)];
-          qrcode_initText(&qrcode, qrcodeData, 2, 0, url.c_str());
-          
-          int qrSize = qrcode.size;
-          int qrX = textX + w + 10;
-          int qrY = 2;
-          
-          gfx->fillRect(qrX - 2, qrY - 2, qrSize + 4, qrSize + 4, WHITE);
-          
-          for (uint8_t y = 0; y < qrSize; y++) {
-            for (uint8_t x = 0; x < qrSize; x++) {
-              if (qrcode_getModule(&qrcode, x, y)) {
-                gfx->drawPixel(qrX + x, qrY + y, BLACK);
-              }
+        gfx->fillRect(qrX - 2, qrY - 2, qrSize + 4, qrSize + 4, WHITE);
+        
+        for (uint8_t y = 0; y < qrSize; y++) {
+          for (uint8_t x = 0; x < qrSize; x++) {
+            if (qrcode_getModule(&qrcode, x, y)) {
+              gfx->drawPixel(qrX + x, qrY + y, BLACK);
             }
           }
         }

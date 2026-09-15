@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.13.16"
+#define SUGAROTA_VERSION "v0.09.15.2"
 
 #include "config.h"
 #include "storage.h"
@@ -110,7 +110,7 @@ void logBoot(const String& msg) {
     if (bootLog[i] == '\n') newlineCount++;
   }
   
-  while (newlineCount > 5) {
+  while (newlineCount > 7) {
     int firstNewline = bootLog.indexOf('\n');
     bootLog = bootLog.substring(firstNewline + 1);
     newlineCount--;
@@ -119,11 +119,11 @@ void logBoot(const String& msg) {
   gfx->fillScreen(BLACK);
   gfx->setTextColor(GREEN);
   gfx->setTextSize(2);
-  gfx->setCursor(20, 20);
+  gfx->setCursor(20, 10);
   gfx->println("--- Sugarota " SUGAROTA_VERSION " Booting ---");
   
   gfx->setTextSize(2); 
-  int logY = 50;
+  int logY = 34;
   int startIdx = 0;
   for (int i = 0; i < bootLog.length(); i++) {
     if (bootLog[i] == '\n') {
@@ -135,7 +135,7 @@ void logBoot(const String& msg) {
         gfx->setTextColor(GREEN);
       }
       gfx->print(line);
-      logY += 20;
+      logY += 19;
       startIdx = i + 1;
     }
   }
@@ -360,8 +360,13 @@ void setup() {
   snprintf(hwMsg, sizeof(hwMsg), "Hardware: V%d (%s)", hwVersion, hwVersionConfig.c_str());
   logBoot(hwMsg);
 
-  logBoot("Loading Cache...");
-  loadHistoryFromCache();
+  if (loadHistoryFromCache()) {
+    char cacheMsg[40];
+    snprintf(cacheMsg, sizeof(cacheMsg), "Loaded %d reading%s from cache", historyCount, historyCount == 1 ? "" : "s");
+    logBoot(cacheMsg);
+  } else {
+    logBoot("No cache available");
+  }
   logBoot(batMsg);
 
   // BLE Peripheral
@@ -447,7 +452,29 @@ void setup() {
       logBoot("No Wi-Fi SSIDs configured.");
     }
       
-    if (WiFi.status() == WL_CONNECTED) {
+    if (SugarotaBLE::getInstance().isConnected()) {
+      logBoot("BLE Active. Wi-Fi sleeping...");
+      offlineMode = false;
+      WiFi.disconnect(true);
+      WiFi.mode(WIFI_OFF);
+
+      logBoot("Waiting for BLE Data Sync...");
+      bleGlucoseReceived = false;
+      unsigned long syncWaitStart = millis();
+      while (millis() - syncWaitStart < 5000) {
+        SugarotaBLE::getInstance().update();
+        if (bleGlucoseReceived) {
+          logBoot("BLE Glucose & Time Synced!");
+          delay(800);
+          break;
+        }
+        delay(50);
+      }
+      if (!bleGlucoseReceived) {
+        logBoot("Sync pending. Loading Dashboard...");
+        delay(500);
+      }
+    } else if (WiFi.status() == WL_CONNECTED) {
       offlineMode = false;
       logBoot("WiFi Connected!");
       logBoot("Syncing NTP Time...");

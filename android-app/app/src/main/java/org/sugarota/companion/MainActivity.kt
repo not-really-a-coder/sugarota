@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import org.sugarota.companion.model.SugarotaDevice
+import org.sugarota.companion.service.SugarotaBleScanReceiver
 import org.sugarota.companion.service.SugarotaBleService
 import org.sugarota.companion.ui.components.*
 import org.sugarota.companion.ui.theme.*
@@ -67,6 +68,7 @@ class MainActivity : ComponentActivity() {
             val binder = service as SugarotaBleService.LocalBinder
             bleService = binder.getService()
             isBound = true
+            handleIncomingIntent(intent)
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -148,6 +150,18 @@ class MainActivity : ComponentActivity() {
         } else {
             permissionLauncher.launch(required.toTypedArray())
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
+        val address = intent?.getStringExtra(SugarotaBleScanReceiver.EXTRA_DEVICE_ADDRESS) ?: return
+        SugarotaBleScanReceiver.clearNotificationForDevice(this, address)
+        bleService?.connectDevice(address)
     }
 
     override fun onDestroy() {

@@ -115,6 +115,7 @@ class SugarotaBleService : Service() {
         reconnectBondedDevices()
 
         startScanning()
+        startBackgroundPendingIntentScan()
         startPeriodicBridge()
     }
 
@@ -130,6 +131,7 @@ class SugarotaBleService : Service() {
             // Receiver might not be registered
         }
         stopScanning()
+        stopBackgroundPendingIntentScan()
         serviceScope.cancel()
         connectedGatts.values.forEach { it.close() }
         connectedGatts.clear()
@@ -289,6 +291,7 @@ class SugarotaBleService : Service() {
                         connectedGatts[addr] = gatt
                         val bonded = gatt.device.bondState == BluetoothDevice.BOND_BONDED
                         updateDeviceState(addr, isConnected = true, isBonded = bonded)
+                        SugarotaBleScanReceiver.clearNotificationForDevice(this@SugarotaBleService, addr)
                         gatt.requestMtu(517)
                         gatt.discoverServices()
                         updateNotification("Connected to ${connectedGatts.size} device(s)")
@@ -862,18 +865,80 @@ class SugarotaBleService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+            val bridgeChannel = NotificationChannel(
                 CHANNEL_ID,
                 "Sugarota BLE Bridge",
                 NotificationManager.IMPORTANCE_LOW
             )
+            val alertChannel = NotificationChannel(
+                ALERT_CHANNEL_ID,
+                "Sugarota Device Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "High-priority notifications when Sugarota displays are detected nearby"
+                enableVibration(true)
+                enableLights(true)
+            }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(channel)
+            manager.createNotificationChannel(bridgeChannel)
+            manager.createNotificationChannel(alertChannel)
+        }
+    }
+
+    private var backgroundScanPendingIntent: PendingIntent? = null
+
+    private fun getOrCreateBackgroundScanPendingIntent(): PendingIntent {
+        if (backgroundScanPendingIntent != null) return backgroundScanPendingIntent!!
+        val intent = Intent(this, SugarotaBleScanReceiver::class.java)
+        backgroundScanPendingIntent = PendingIntent.getBroadcast(
+            this,
+            201,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        )
+        return backgroundScanPendingIntent!!
+    }
+
+    fun startBackgroundPendingIntentScan() {
+        try {
+            val scanner = bluetoothAdapter?.bluetoothLeScanner ?: return
+            val pendingIntent = getOrCreateBackgroundScanPendingIntent()
+            val filters = listOf(
+                ScanFilter.Builder()
+                    .setServiceUuid(android.os.ParcelUuid(BleUuids.SUGAROTA_SERVICE))
+                    .build()
+            )
+            val settings = ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
+                .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
+                .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
+                .build()
+
+            scanner.startScan(filters, settings, pendingIntent)
+            Log.i("SugarotaBleService", "Registered background PendingIntent BLE scanner for Sugarota UUID")
+        } catch (e: SecurityException) {
+            Log.w("SugarotaBleService", "startBackgroundPendingIntentScan SecurityException", e)
+        } catch (e: Exception) {
+            Log.e("SugarotaBleService", "startBackgroundPendingIntentScan error", e)
+        }
+    }
+
+    fun stopBackgroundPendingIntentScan() {
+        try {
+            val scanner = bluetoothAdapter?.bluetoothLeScanner ?: return
+            val pendingIntent = backgroundScanPendingIntent ?: return
+            scanner.stopScan(pendingIntent)
+            Log.i("SugarotaBleService", "Stopped background PendingIntent BLE scanner")
+        } catch (e: SecurityException) {
+            Log.w("SugarotaBleService", "stopBackgroundPendingIntentScan SecurityException", e)
+        } catch (e: Exception) {
+            Log.e("SugarotaBleService", "stopBackgroundPendingIntentScan error", e)
         }
     }
 
     companion object {
-        private const val CHANNEL_ID = "sugarota_ble_channel"
+        const val CHANNEL_ID = "sugarota_ble_channel"
+        const val ALERT_CHANNEL_ID = "sugarota_alerts_channel"
         private const val NOTIFICATION_ID = 101
     }
 }

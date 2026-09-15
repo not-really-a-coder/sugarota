@@ -38,7 +38,10 @@ if ($Install -or (-not $Install -and -not $Launch -and -not $Logs)) {
     finally {
         Pop-Location
     }
-    $ApkPath = Join-Path $AppDir "app\build\outputs\apk\debug\app-debug.apk"
+    $ApkPath = Join-Path $AppDir "sugarota-app-debug.apk"
+    if (-not (Test-Path $ApkPath)) {
+        $ApkPath = Join-Path $AppDir "app\build\outputs\apk\debug\app-debug.apk"
+    }
     if (-not (Test-Path $ApkPath)) {
         Write-Error "Built APK not found at $ApkPath"
         exit 1

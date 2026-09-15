@@ -6,7 +6,7 @@
 
 void loadConfig();
 void saveConfig();
-void loadHistoryFromCache();
+bool loadHistoryFromCache();
 void saveHistoryToCache();
 
 #endif // SUGAROTA_STORAGE_H

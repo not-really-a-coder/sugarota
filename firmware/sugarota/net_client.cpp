@@ -1,6 +1,7 @@
 #include "net_client.h"
 #include "audio.h"
 #include "storage.h"
+#include "ble.h"
 
 SensorPCF85063 rtc;
 
@@ -108,6 +109,22 @@ void connectWiFi() {
       WiFi.disconnect();
     }
     
+    // BLE scan step at the end of each Wi-Fi loop
+    if (SugarotaBLE::getInstance().isConnected()) {
+      logBoot("BLE Companion Connected!");
+      return;
+    }
+    logBoot("Checking BLE...");
+    unsigned long bleScanStart = millis();
+    while (millis() - bleScanStart < 1500) {
+      SugarotaBLE::getInstance().update();
+      if (SugarotaBLE::getInstance().isConnected()) {
+        logBoot("BLE Companion Connected!");
+        return;
+      }
+      delay(50);
+    }
+
     wifiRetryLoop++;
     spinnerDelay(1000);
   }

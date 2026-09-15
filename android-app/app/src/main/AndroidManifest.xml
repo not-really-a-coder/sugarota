@@ -42,6 +42,11 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
+        <receiver
+            android:name=".service.SugarotaBleScanReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
     </application>
 
 </manifest>

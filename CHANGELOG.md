@@ -2,6 +2,25 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.15.2] — Low Battery Blink Fix, Double-Press Display Toggle & Companion APK Delivery (2026-09-15)
+
+This release fixes the low battery indicator blinking cadence, adds double-press power button display and touch toggling with non-zero brightness cycling, and introduces automatic Gradle post-build copying of the Android companion APK into the project repository.
+
+### Firmware & Display
+
+- Synchronized low battery indicator blinking frequency to 1000ms cadence to align with the main UI clock tick
+- Eliminated irregular battery blinking and disappearing caused by intermediate BLE status and glucose packet updates
+- Added double-press power button gesture to toggle display and touchscreen on and off
+- Preserved and restored previous active brightness level when toggling screen on and off via double press
+- Removed 0 (off) brightness level from single short press loop, cycling exclusively across active brightness levels (76 -> 153 -> 204 -> 255 -> 76)
+- Kept single press wake functionality when screen is turned off
+
+### Android Companion & Build Tools
+
+- Added automatic Gradle post-build copy task outputting sugarota-app-debug.apk directly to android-app repository directory on every assembleDebug build
+- Tracked standalone debug APK in repository while maintaining build folder exclusions in .gitignore
+- Updated companion run automation script (run_android_app.ps1) to target the newly maintained root APK file
+
 ## [v0.09.13.16] — Dual Hardware V1/V2 Support, Smart Sync & Web Console Suite (2026-09-13)
 
 This release introduces dual hardware support with automatic V1/V2 display and backlight detection, implements smart timestamp-aligned data synchronization across Wi-Fi and BLE companion, optimizes battery sampling, resolves Wi-Fi teardown timeouts, and significantly upgrades the web installer console with layout adjustments, copying, pausing, and formatted timestamps.

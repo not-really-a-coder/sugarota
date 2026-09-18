@@ -19,9 +19,9 @@ public:
         NimBLEDevice::stopAdvertising();
 
         // Negotiate power-efficient BLE connection parameters:
-        // minInterval = 80 (100ms), maxInterval = 120 (150ms), latency = 4 intervals, timeout = 600 (6s)
+        // minInterval = 80 (100ms), maxInterval = 120 (150ms), latency = 4 intervals, timeout = 350 (3.5s)
         // This allows the radio to sleep between readings while remaining responsive.
-        pServer->updateConnParams(connInfo.getConnHandle(), 80, 120, 4, 600);
+        pServer->updateConnParams(connInfo.getConnHandle(), 80, 120, 4, 350);
     }
 
     void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
@@ -384,13 +384,19 @@ void SugarotaBLE::confirmPairing(bool accept) {
     }
 }
 
-void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* version) {
+void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness, int darkTheme) {
     if (!m_pStatusChar) return;
 
     JsonDocument doc;
     doc["battery"] = batteryPct;
     doc["charging"] = isCharging;
     doc["version"] = version;
+    if (brightness >= 0) {
+        doc["brightness"] = brightness;
+    }
+    if (darkTheme >= 0) {
+        doc["dark_theme"] = (darkTheme == 1);
+    }
 
     String payload;
     serializeJson(doc, payload);
@@ -399,3 +405,13 @@ void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* vers
         m_pStatusChar->notify();
     }
 }
+
+void SugarotaBLE::disconnect() {
+    if (m_pServer && isConnected()) {
+        std::vector<uint16_t> connIds = m_pServer->getPeerDevices();
+        for (uint16_t connId : connIds) {
+            m_pServer->disconnect(connId);
+        }
+    }
+}
+

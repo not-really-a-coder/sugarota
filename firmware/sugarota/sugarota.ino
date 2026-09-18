@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.15.2"
+#define SUGAROTA_VERSION "v0.09.18.35"
 
 #include "config.h"
 #include "storage.h"
@@ -53,6 +53,8 @@ bool isBooting = true;
 String bootLog = "";
 bool isFetching = false;
 unsigned long fetchStartTime = 0;
+bool pendingReboot = false;
+unsigned long pendingRebootTime = 0;
 
 bool isDarkTheme = true;
 int brightnessLevel = 76;
@@ -73,8 +75,6 @@ uint32_t blePairingPin = 0;
 volatile bool bleUIUpdatePending = false;
 volatile bool blePairingUpdatePending = false;
 volatile bool bleGlucoseReceived = false;
-
-bool isShowingUnitDialog = false;
 
 bool isTimerMode = false;
 unsigned long timerStartTime = 0;
@@ -99,11 +99,15 @@ void checkSerialConsole();
 void powerOffDevice();
 
 void logBoot(const String& msg) {
-  DBG_PRINTLN(msg);
+  if (msg.length() > 0) {
+    DBG_PRINTLN(msg);
+  }
   if (!isBooting) return;
 
-  bootLog += msg;
-  bootLog += '\n';
+  if (msg.length() > 0) {
+    bootLog += msg;
+    bootLog += '\n';
+  }
   
   int newlineCount = 0;
   for (int i = 0; i < bootLog.length(); i++) {
@@ -374,7 +378,7 @@ void setup() {
   SugarotaBLE::getInstance().setConfigCallback(handleBLEConfig);
   SugarotaBLE::getInstance().setPairingCallback(handleBLEPairingDisplay);
   SugarotaBLE::getInstance().begin("Sugarota");
-  SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION);
+  SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
 
   bool bleConnectedEarly = false;
 
@@ -384,6 +388,8 @@ void setup() {
     unsigned long bleWaitStart = millis();
     while (millis() - bleWaitStart < 3000) {
       SugarotaBLE::getInstance().update();
+      checkBootButtons();
+      if (!deviceOn) return;
       if (SugarotaBLE::getInstance().isConnected()) {
         bleConnectedEarly = true;
         logBoot("BLE Companion Connected!");
@@ -403,7 +409,7 @@ void setup() {
       bool hasWifiConfigured = (primarySSID.length() > 0 || secondarySSID.length() > 0);
       bool isFirstLaunch = (!hasWifiConfigured && NimBLEDevice::getNumBonds() == 0);
       
-      unsigned long bleCheckDuration = isFirstLaunch ? 15000 : 7000;
+      unsigned long bleCheckDuration = isFirstLaunch ? 15000 : 8000;
       if (isFirstLaunch) {
         logBoot("First Launch: Pairing Mode");
         logBoot("Open App & Tap Scan to Pair");
@@ -412,6 +418,8 @@ void setup() {
       unsigned long bleCheckStart = millis();
       while (millis() - bleCheckStart < bleCheckDuration) {
         SugarotaBLE::getInstance().update();
+        checkBootButtons();
+        if (!deviceOn) return;
         if (SugarotaBLE::getInstance().isConnected()) {
           bleConnectedEarly = true;
           logBoot("BLE Companion Connected!");
@@ -433,6 +441,8 @@ void setup() {
     unsigned long syncWaitStart = millis();
     while (millis() - syncWaitStart < 5000) {
       SugarotaBLE::getInstance().update();
+      checkBootButtons();
+      if (!deviceOn) return;
       if (bleGlucoseReceived) {
         logBoot("BLE Glucose & Time Synced!");
         delay(800);
@@ -463,6 +473,8 @@ void setup() {
       unsigned long syncWaitStart = millis();
       while (millis() - syncWaitStart < 5000) {
         SugarotaBLE::getInstance().update();
+        checkBootButtons();
+        if (!deviceOn) return;
         if (bleGlucoseReceived) {
           logBoot("BLE Glucose & Time Synced!");
           delay(800);
@@ -515,17 +527,6 @@ void setup() {
       delay(1500);
     }
   }
-
-  if (digitalRead(PIN_PWR_BTN) == LOW) {
-    pwrBtn.pressed = true;
-    pwrBtn.handled = true;
-    pwrBtn.pressTime = millis();
-  }
-  if (digitalRead(PIN_BOOT_BTN) == LOW) {
-    bootBtn.pressed = true;
-    bootBtn.handled = true;
-    bootBtn.pressTime = millis();
-  }
   
   setupWebPortal();
   if (MDNS.begin("sugarota")) {
@@ -551,7 +552,16 @@ void loop() {
   
   checkButtons();
   if (!deviceOn) {
+    SugarotaBLE::getInstance().disconnect();
     powerOffDevice();
+    return;
+  }
+  if (pendingReboot) {
+    if (millis() - pendingRebootTime >= 300) {
+      SugarotaBLE::getInstance().disconnect();
+      delay(100);
+      ESP.restart();
+    }
     return;
   }
 
@@ -578,6 +588,7 @@ void loop() {
     updateUI(); 
   }
   
+  updateFindDevice();
   pollIMU();
 
   static unsigned long lastBatCheck = 0;
@@ -596,7 +607,7 @@ void loop() {
       lastBleStatus = millis();
       lastNotifiedBattery = currentBatteryPct;
       lastNotifiedCharging = wasUSBPlugged;
-      SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION);
+      SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
     }
   }
 

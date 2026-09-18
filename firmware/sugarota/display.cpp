@@ -65,6 +65,15 @@ void setBrightness(int level) {
   }
 }
 
+void cycleBrightness() {
+  if (brightnessLevel < 153) brightnessLevel = 153;
+  else if (brightnessLevel < 204) brightnessLevel = 204;
+  else if (brightnessLevel < 255) brightnessLevel = 255;
+  else brightnessLevel = 76;
+
+  setBrightness(brightnessLevel);
+}
+
 void toggleTheme() {
   isDarkTheme = !isDarkTheme;
   DBG_PRINTF("Theme changed: %s\n", isDarkTheme ? "DARK" : "LIGHT");

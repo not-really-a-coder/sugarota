@@ -38,45 +38,7 @@ void updateUI() {
     drawHistoryChart();
   }
   
-  if (isShowingUnitDialog) {
-    int w = 150; int h = 120;
-    int dx = (640 - w) / 2;
-    int dy = (172 - h) / 2;
-    
-    gfx->fillRoundRect(dx, dy, w, h, 8, GRAY);
-    gfx->drawRoundRect(dx, dy, w, h, 8, WHITE);
-    
-    gfx->setTextColor(WHITE);
-    gfx->setTextSize(2);
-    gfx->setCursor(dx + 10, dy + 10);
-    if (bgUnits == UNIT_MGDL) {
-      gfx->println("Switch to");
-      gfx->setCursor(dx + 10, dy + 30);
-      gfx->println("mmol/L?");
-    } else {
-      gfx->println("Switch to");
-      gfx->setCursor(dx + 10, dy + 30);
-      gfx->println("mg/dL?");
-    }
-    
-    gfx->setCursor(dx + 10, dy + 55);
-    gfx->setTextSize(1);
-    gfx->println("System will reboot");
-    
-    // YES Button
-    gfx->fillRoundRect(dx + 10, dy + 80, 60, 30, 4, GREEN);
-    gfx->setTextColor(BLACK);
-    gfx->setTextSize(2);
-    gfx->setCursor(dx + 20, dy + 87);
-    gfx->print("YES");
-    
-    // NO Button
-    gfx->fillRoundRect(dx + 80, dy + 80, 60, 30, 4, LIGHT_PINK);
-    gfx->setTextColor(DARK_RED);
-    gfx->setTextSize(2);
-    gfx->setCursor(dx + 95, dy + 87);
-    gfx->print("NO");
-  } else if (isShowingPairingDialog) {
+  if (isShowingPairingDialog) {
     int w = 220; int h = 130;
     int dx = (640 - w) / 2;
     int dy = (172 - h) / 2;

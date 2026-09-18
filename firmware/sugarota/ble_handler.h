@@ -5,6 +5,7 @@
 
 void insertOrUpdateReading(long long tsVal, int sgvVal, const char* dirVal, int deltaVal);
 void handleBLEGlucose(const JsonDocument& doc);
+void handleBLECommand(const JsonDocument& doc);
 void handleBLEConfig();
 void handleBLEPairingDisplay(uint32_t pin, bool active);
 

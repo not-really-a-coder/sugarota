@@ -20,8 +20,8 @@ data class ShadcnColors(
     val cardForeground: Color = Color(0xFFFAFAFA),
     val popover: Color = Color(0xFF18181B),
     val popoverForeground: Color = Color(0xFFFAFAFA),
-    val primary: Color = Color(0xFF00E676),       // Emerald green accent
-    val primaryForeground: Color = Color(0xFF000000),
+    val primary: Color = Color(0xFF00E676),       // Emerald green accent for buttons & highlights
+    val primaryForeground: Color = Color(0xFF000000), // Black text on green buttons
     val secondary: Color = Color(0xFF27272A),     // zinc-800
     val secondaryForeground: Color = Color(0xFFFAFAFA),
     val muted: Color = Color(0xFF27272A),
@@ -32,7 +32,7 @@ data class ShadcnColors(
     val destructiveForeground: Color = Color(0xFFFAFAFA),
     val border: Color = Color(0xFF27272A),        // zinc-800
     val inputBorder: Color = Color(0xFF3F3F46),   // zinc-700
-    val ring: Color = Color(0xFF00E676)
+    val ring: Color = Color(0xFFA1A1AA)
 )
 
 data class ShadcnTypography(

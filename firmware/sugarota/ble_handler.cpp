@@ -1,5 +1,9 @@
 #include "ble_handler.h"
 #include "net_client.h"
+#include "audio.h"
+#include "display.h"
+#include "ui.h"
+#include "ble.h"
 #include <time.h>
 
 void insertOrUpdateReading(long long tsVal, int sgvVal, const char* dirVal, int deltaVal) {
@@ -65,6 +69,12 @@ void handleBLEGlucose(const JsonDocument& doc) {
   const char* pType = doc["type"] | "";
   if (strcmp(pType, "time_sync") == 0) {
     bleUIUpdatePending = true;
+    return;
+  }
+
+  // Handle remote device commands (brightness, theme, reboot, power_off, find_device)
+  if (doc.containsKey("cmd")) {
+    handleBLECommand(doc);
     return;
   }
 
@@ -160,3 +170,43 @@ void handleBLEPairingDisplay(uint32_t pin, bool active) {
   DBG_PRINTF("BLE Pairing Display: pin=%06u, active=%d\n", pin, active);
   blePairingUpdatePending = true;
 }
+
+// Forward declarations
+void handleBLECommand(const JsonDocument& doc) {
+  const char* cmd = doc["cmd"] | "";
+  DBG_PRINTF("BLE: Received remote command '%s'\n", cmd);
+
+  if (strcmp(cmd, "set_brightness") == 0) {
+    int val = doc["val"] | 76;
+    // Bounded between preset minimum (76) and max (255) so screen never turns completely off
+    if (val < 76) val = 76;
+    if (val > 255) val = 255;
+    screenManuallyOff = false;
+    setBrightness(val);
+    DBG_PRINTF("BLE: Updated brightness to %d\n", val);
+    SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
+  } else if (strcmp(cmd, "set_theme") == 0) {
+    const char* themeStr = doc["val"] | "";
+    if (strcmp(themeStr, "dark") == 0) {
+      isDarkTheme = true;
+    } else if (strcmp(themeStr, "light") == 0) {
+      isDarkTheme = false;
+    } else {
+      isDarkTheme = !isDarkTheme;
+    }
+    DBG_PRINTF("BLE: Updated theme to %s\n", isDarkTheme ? "DARK" : "LIGHT");
+    bleUIUpdatePending = true;
+    SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
+  } else if (strcmp(cmd, "find_device") == 0) {
+    DBG_PRINTLN("BLE: Triggering Find Device alert...");
+    startFindDeviceAlert();
+  } else if (strcmp(cmd, "reboot") == 0) {
+    DBG_PRINTLN("BLE: Remote reboot requested, queuing reboot...");
+    pendingReboot = true;
+    pendingRebootTime = millis();
+  } else if (strcmp(cmd, "power_off") == 0) {
+    DBG_PRINTLN("BLE: Remote power off requested...");
+    deviceOn = false;
+  }
+}
+

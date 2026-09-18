@@ -9,6 +9,7 @@ extern bool imuReady;
 
 void initInputs();
 void checkButtons();
+void checkBootButtons();
 void checkButton(ButtonState &btn, const char* name);
 bool readTouch(int &tx, int &ty);
 void checkTouch();

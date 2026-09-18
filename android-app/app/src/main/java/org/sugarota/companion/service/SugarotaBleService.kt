@@ -120,6 +120,14 @@ class SugarotaBleService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val action = intent?.action
+        if (action == ACTION_CONNECT_DEVICE) {
+            val address = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
+            if (!address.isNullOrBlank()) {
+                Log.i("SugarotaBleService", "onStartCommand: Auto-connecting requested device: $address")
+                connectDevice(address)
+            }
+        }
         return START_STICKY
     }
 
@@ -172,10 +180,23 @@ class SugarotaBleService : Service() {
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val device = result.device
-            val name = try { device.name } catch (e: SecurityException) { null } ?: ""
-            if (name.startsWith("SUGAROTA", ignoreCase = true)) {
+            val advertisedName = result.scanRecord?.deviceName
+            val rawName = try { device.name } catch (e: SecurityException) { null }
+            val effectiveName = advertisedName?.takeIf { it.isNotBlank() } ?: rawName ?: ""
+            val isSugarotaName = effectiveName.startsWith("SUGAROTA", ignoreCase = true)
+            // If the device broadcasts a name that is NOT Sugarota (e.g. unrelated nearby gadgets like ATL-D0C...), ignore immediately
+            if (effectiveName.isNotBlank() && !isSugarotaName) {
+                return
+            }
+
+            val hasSugarotaUuid = result.scanRecord?.serviceUuids?.any {
+                it.uuid == BleUuids.SUGAROTA_SERVICE
+            } == true
+
+            // Only accept if name starts with SUGAROTA, or if unnamed but explicitly carries the Sugarota service UUID
+            if (isSugarotaName || hasSugarotaUuid) {
                 val addr = device.address
-                val resolvedName = getDeviceDisplayName(addr, name)
+                val resolvedName = getDeviceDisplayName(addr, effectiveName)
                 val current = _devices.value.toMutableMap()
                 val existing = current[addr]
                 val isBonded = device.bondState == BluetoothDevice.BOND_BONDED
@@ -459,6 +480,99 @@ class SugarotaBleService : Service() {
         updateNotification("Waiting for Sugarota connection...")
     }
 
+    // Send a remote JSON command packet to the device over CHAR_GLUCOSE
+    fun sendDeviceCommand(address: String, cmdObj: org.json.JSONObject, onComplete: ((Boolean) -> Unit)? = null) {
+        val gatt = connectedGatts[address]
+        if (gatt == null) {
+            onComplete?.invoke(false)
+            return
+        }
+        val service = gatt.getService(BleUuids.SUGAROTA_SERVICE)
+        val glucoseChar = service?.getCharacteristic(BleUuids.CHAR_GLUCOSE)
+        if (glucoseChar == null) {
+            onComplete?.invoke(false)
+            return
+        }
+        val bytes = cmdObj.toString().toByteArray(Charsets.UTF_8)
+        val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val res = gatt.writeCharacteristic(glucoseChar, bytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+            res == BluetoothStatusCodes.SUCCESS
+        } else {
+            @Suppress("DEPRECATION")
+            glucoseChar.value = bytes
+            @Suppress("DEPRECATION")
+            glucoseChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            @Suppress("DEPRECATION")
+            gatt.writeCharacteristic(glucoseChar)
+        }
+        Log.i("SugarotaBleService", "sendDeviceCommand to $address: cmd=${cmdObj.optString("cmd")}, write initiated=$success")
+        onComplete?.invoke(success)
+    }
+
+    fun setDeviceBrightness(address: String, level: Int) {
+        val clamped = level.coerceIn(76, 255)
+        val cmd = org.json.JSONObject().apply {
+            put("cmd", "set_brightness")
+            put("val", clamped)
+        }
+        sendDeviceCommand(address, cmd)
+        // Optimistically update device model state in app
+        val current = _devices.value.toMutableMap()
+        val dev = current[address]
+        if (dev != null) {
+            current[address] = dev.copy(status = dev.status.copy(brightness = clamped))
+            _devices.value = current
+        }
+    }
+
+    fun setDeviceTheme(address: String, isDark: Boolean) {
+        val cmd = org.json.JSONObject().apply {
+            put("cmd", "set_theme")
+            put("val", if (isDark) "dark" else "light")
+        }
+        sendDeviceCommand(address, cmd)
+        // Optimistically update device model state in app
+        val current = _devices.value.toMutableMap()
+        val dev = current[address]
+        if (dev != null) {
+            current[address] = dev.copy(status = dev.status.copy(isDarkTheme = isDark))
+            _devices.value = current
+        }
+    }
+
+    fun findDevice(address: String, onComplete: ((Boolean) -> Unit)? = null) {
+        val cmd = org.json.JSONObject().apply {
+            put("cmd", "find_device")
+        }
+        sendDeviceCommand(address, cmd, onComplete)
+    }
+
+    fun rebootDevice(address: String, onComplete: ((Boolean) -> Unit)? = null) {
+        val cmd = org.json.JSONObject().apply {
+            put("cmd", "reboot")
+        }
+        sendDeviceCommand(address, cmd) { success ->
+            serviceScope.launch {
+                delay(150) // Allow characteristic write buffer to flush
+                disconnectDevice(address)
+                onComplete?.invoke(success)
+            }
+        }
+    }
+
+    fun powerOffDevice(address: String, onComplete: ((Boolean) -> Unit)? = null) {
+        val cmd = org.json.JSONObject().apply {
+            put("cmd", "power_off")
+        }
+        sendDeviceCommand(address, cmd) { success ->
+            serviceScope.launch {
+                delay(150) // Allow characteristic write buffer to flush
+                disconnectDevice(address)
+                onComplete?.invoke(success)
+            }
+        }
+    }
+
     // Push immediate time synchronization packet to device upon connection
     fun pushTimeSyncToDevice(address: String) {
         val gatt = connectedGatts[address] ?: return
@@ -480,11 +594,13 @@ class SugarotaBleService : Service() {
         Log.i("SugarotaBleService", "pushTimeSyncToDevice to $address: write initiated=$success")
     }
 
+
+
     // Push glucose to a specific connected Sugarota device.
-    // Sends the primary packet immediately, then enqueues follow-up history_chunk packets
-    // in pendingWriteQueues. onCharacteristicWrite dequeues and sends the next chunk
-    // only after the previous write is acknowledged — the proper BLE GATT pattern.
-    fun pushGlucoseToDevice(address: String, glucose: GlucoseData) {
+    // When isFullSync is true (initial connection, device reconnect, or force refresh),
+    // full history chunks and time synchronization are sent.
+    // On ordinary routine fetches, only the latest 5 readings are sent without time sync.
+    fun pushGlucoseToDevice(address: String, glucose: GlucoseData, isFullSync: Boolean = false) {
         val gatt = connectedGatts[address] ?: return
         val service = gatt.getService(BleUuids.SUGAROTA_SERVICE)
         val glucoseChar = service?.getCharacteristic(BleUuids.CHAR_GLUCOSE) ?: return
@@ -492,37 +608,40 @@ class SugarotaBleService : Service() {
         val deviceMtu = currentMtu[address] ?: 517
         val maxPayloadSize = (deviceMtu - 3).coerceAtLeast(20)
 
-        // Build primary packet (root reading + first HISTORY_PER_PACKET items)
-        var primaryJson = glucose.toJson()
+        val historyLimit = if (isFullSync) GlucoseData.historyItemsPerPacket() else 5
+        var primaryJson = glucose.toJson(maxHistory = historyLimit, includeTimeSync = isFullSync)
         var primaryBytes = primaryJson.toByteArray(Charsets.UTF_8)
         if (primaryBytes.size > maxPayloadSize) {
             Log.w("SugarotaBleService", "Primary payload (${primaryBytes.size}) exceeds MTU ($maxPayloadSize). Sending root only.")
-            primaryJson = glucose.copy(history = emptyList()).toJson()
+            primaryJson = glucose.copy(history = emptyList()).toJson(maxHistory = 0, includeTimeSync = isFullSync)
             primaryBytes = primaryJson.toByteArray(Charsets.UTF_8)
         }
 
-        // Build and enqueue follow-up history chunks BEFORE sending the primary packet,
-        // because onCharacteristicWrite may fire very quickly on some devices.
-        val itemsPerPacket = GlucoseData.historyItemsPerPacket()
-        val remainingHistory = glucose.history.drop(itemsPerPacket)
-        if (remainingHistory.isNotEmpty()) {
-            val queue = ArrayDeque<ByteArray>()
-            var offset = 0
-            while (offset < remainingHistory.size) {
-                val chunk = remainingHistory.subList(offset, minOf(offset + itemsPerPacket, remainingHistory.size))
-                val chunkBytes = GlucoseData.createHistoryChunkJson(chunk).toByteArray(Charsets.UTF_8)
-                queue.addLast(chunkBytes)
-                Log.i("SugarotaBleService", "Enqueued history_chunk offset=$offset size=${chunk.size} bytes=${chunkBytes.size}")
-                offset += itemsPerPacket
+        if (isFullSync) {
+            // Build and enqueue follow-up history chunks only during full sync / force refresh
+            val itemsPerPacket = GlucoseData.historyItemsPerPacket()
+            val remainingHistory = glucose.history.drop(itemsPerPacket)
+            if (remainingHistory.isNotEmpty()) {
+                val queue = ArrayDeque<ByteArray>()
+                var offset = 0
+                while (offset < remainingHistory.size) {
+                    val chunk = remainingHistory.subList(offset, minOf(offset + itemsPerPacket, remainingHistory.size))
+                    val chunkBytes = GlucoseData.createHistoryChunkJson(chunk).toByteArray(Charsets.UTF_8)
+                    queue.addLast(chunkBytes)
+                    Log.i("SugarotaBleService", "Enqueued history_chunk offset=$offset size=${chunk.size} bytes=${chunkBytes.size}")
+                    offset += itemsPerPacket
+                }
+                pendingWriteQueues[address] = queue
+                Log.i("SugarotaBleService", "Write queue ready: ${queue.size} chunks after primary for $address")
+            } else {
+                pendingWriteQueues.remove(address)
             }
-            pendingWriteQueues[address] = queue
-            Log.i("SugarotaBleService", "Write queue ready: ${queue.size} chunks after primary for $address")
         } else {
             pendingWriteQueues.remove(address)
         }
 
-        // Send primary — subsequent chunks are triggered by onCharacteristicWrite
-        writeCharacteristicSafe(gatt, glucoseChar, primaryBytes, "primary sgv=${glucose.sgv}")
+        // Send primary — subsequent chunks (if any) are triggered by onCharacteristicWrite
+        writeCharacteristicSafe(gatt, glucoseChar, primaryBytes, "primary sgv=${glucose.sgv} (fullSync=$isFullSync)")
     }
 
     private fun writeCharacteristicSafe(
@@ -604,7 +723,7 @@ class SugarotaBleService : Service() {
                 val deviceMtu = currentMtu[address] ?: 517
                 val maxChunkSize = (deviceMtu - 3).coerceAtLeast(20)
 
-                var overallSuccess: Boolean = false
+                val overallSuccess: Boolean
 
                 if (allBytes.size <= maxChunkSize) {
                     // Fits in a single packet directly
@@ -737,7 +856,7 @@ class SugarotaBleService : Service() {
                 }
 
                 lastPushedTimestamps[address] = reading.timestamp
-                pushGlucoseToDevice(address, reading)
+                pushGlucoseToDevice(address, reading, isFullSync = forcePush)
                 _bridgeStatus.value = "Synced $summary"
                 updateNotification("Glucose: $summary")
                 return true
@@ -789,6 +908,9 @@ class SugarotaBleService : Service() {
             while (isActive) {
                 if (connectedGatts.isNotEmpty()) {
                     for (address in connectedGatts.keys) {
+                        if (!deviceConfigs.containsKey(address) || deviceConfigs[address].isNullOrBlank()) {
+                            readConfig(address) { /* handleConfigReceived takes care of caching and trigger */ }
+                        }
                         fetchAndPushForDevice(address)
                     }
                 } else {
@@ -819,22 +941,45 @@ class SugarotaBleService : Service() {
     }
 
     private fun parseDeviceStatus(address: String, json: String) {
+        val trimmed = json.trim()
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+            Log.w("SugarotaBleService", "parseDeviceStatus: Incomplete JSON received from $address (len=${trimmed.length}): $trimmed")
+            return
+        }
         try {
-            val obj = org.json.JSONObject(json)
+            val obj = org.json.JSONObject(trimmed)
             val bat = obj.optInt("battery", 0)
             val chg = obj.optBoolean("charging", false)
             val ver = obj.optString("version", "Unknown")
             val current = _devices.value.toMutableMap()
             val existing = current[address] ?: SugarotaDevice(name = getDeviceDisplayName(address), address = address)
-            current[address] = existing.copy(status = DeviceStatus(bat, chg, ver))
+            val brightness = if (obj.has("brightness")) obj.optInt("brightness", existing.status.brightness) else existing.status.brightness
+            val isDark = if (obj.has("dark_theme")) obj.optBoolean("dark_theme", existing.status.isDarkTheme) else existing.status.isDarkTheme
+            current[address] = existing.copy(status = DeviceStatus(bat, chg, ver, brightness, isDark))
             _devices.value = current
 
-            // When device notifies status (e.g. on connect or on BOOT button press), trigger sync
+            // When device notifies status:
+            // 1. If we don't have its config yet, attempt to read config now
+            if (!deviceConfigs.containsKey(address) || deviceConfigs[address].isNullOrBlank()) {
+                val gatt = connectedGatts[address]
+                if (gatt != null) {
+                    val service = gatt.getService(BleUuids.SUGAROTA_SERVICE)
+                    val configChar = service?.getCharacteristic(BleUuids.CHAR_CONFIG)
+                    if (configChar != null) {
+                        Log.i("SugarotaBleService", "Config missing on status notify; reading config for $address")
+                        gatt.readCharacteristic(configChar)
+                    }
+                }
+            }
+
+            // 2. Only trigger a full sync if we haven't synced with this device yet (initial connect).
+            // Routine periodic battery updates (every 60s) should NOT trigger a full 48-reading forcePush.
             serviceScope.launch {
-                fetchAndPushForDevice(address, forcePush = true)
+                val isInitial = !lastPushedTimestamps.containsKey(address)
+                fetchAndPushForDevice(address, forcePush = isInitial)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("SugarotaBleService", "parseDeviceStatus error parsing: $trimmed", e)
         }
     }
 
@@ -940,5 +1085,8 @@ class SugarotaBleService : Service() {
         const val CHANNEL_ID = "sugarota_ble_channel"
         const val ALERT_CHANNEL_ID = "sugarota_alerts_channel"
         private const val NOTIFICATION_ID = 101
+
+        const val ACTION_CONNECT_DEVICE = "org.sugarota.companion.ACTION_CONNECT_DEVICE"
+        const val EXTRA_DEVICE_ADDRESS = "extra_device_address"
     }
 }

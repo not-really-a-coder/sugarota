@@ -2,6 +2,36 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.18.35] — Remote Companion Device Control, Acoustic Finder, Reconnection Resilience & Visual Identity (2026-09-18)
+
+This release introduces comprehensive remote device controls from the Android companion app, an acoustic device locator alarm, boot button responsiveness, automatic BLE reconnection with exponential backoff, HTTPS retry logic, and new visual branding across installer and mobile companion.
+
+### Firmware & Hardware Controls
+
+- Added remote BLE commands for real-time display brightness adjustment, dark/light theme switching, device reboot, clean power off, and locator alarm
+- Added acoustic Find Device feature with high-pitch tone burst pattern (5 beeps repeated 3 times) at maximum volume, cancellable via hardware button
+- Implemented button responsiveness during boot delays and network sync, enabling early power off and brightness cycling before UI setup completes
+- Expanded BLE device status payload to broadcast current brightness level and active dark theme state
+- Removed delta area long-tap touch gesture to prevent accidental unit toggle dialog triggers during screen interaction
+- Added HTTP retry mechanism with secure client reconnection on connection drops or SSL handshake failures
+- Refined Wi-Fi disconnect and teardown timing to eliminate radio shutdown exceptions
+
+### Android Companion App
+
+- Added dedicated Device Detail screen with tabbed layout for interactive glucose history charts, remote device controls, and full hardware configuration
+- Added remote control panel for display brightness slider, instant dark/light theme toggle, Find Device alarm trigger, soft reboot, and remote power off
+- Added native high-DPI custom Canvas glucose history chart component with target range bounds, dynamic gridlines, trend color coding, and reading scrubber
+- Added automatic BLE reconnection loop using exponential backoff with Bluetooth adapter state monitoring and scan callback receivers
+- Added custom device renaming stored locally per MAC address with live title updates
+- Updated companion app iconography and launcher mipmaps with branded pixel-art Sugarota emblem
+- Prevented redundant 48-reading historical force pushes on routine battery status updates, synchronizing only on initial connection or new glucose readings
+- Configured local JDK path discovery in Gradle wrapper script for reliable terminal builds
+
+### Web Installer
+
+- Updated installer branding with high-resolution pixel-art Sugarota logo and favicon
+- Updated WebSerial loader to display accurate chip identification and current release version
+
 ## [v0.09.15.2] — Low Battery Blink Fix, Double-Press Display Toggle & Companion APK Delivery (2026-09-15)
 
 This release fixes the low battery indicator blinking cadence, adds double-press power button display and touch toggling with non-zero brightness cycling, and introduces automatic Gradle post-build copying of the Android companion APK into the project repository.

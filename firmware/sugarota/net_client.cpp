@@ -87,6 +87,12 @@ void connectWiFi() {
       }
       
       if (WiFi.status() == WL_CONNECTED) {
+        unsigned long ipWait = millis();
+        while (WiFi.localIP() == IPAddress(0, 0, 0, 0) && millis() - ipWait < 4000) {
+          delay(50);
+        }
+        delay(200); // Allow DNS & TCP/IP stack to stabilize
+        DBG_PRINTF("WiFi: Connected! IP: %s\n", WiFi.localIP().toString().c_str());
         return;
       }
       WiFi.disconnect();
@@ -102,6 +108,12 @@ void connectWiFi() {
       }
       
       if (WiFi.status() == WL_CONNECTED) {
+        unsigned long ipWait = millis();
+        while (WiFi.localIP() == IPAddress(0, 0, 0, 0) && millis() - ipWait < 4000) {
+          delay(50);
+        }
+        delay(200); // Allow DNS & TCP/IP stack to stabilize
+        DBG_PRINTF("WiFi: Connected! IP: %s\n", WiFi.localIP().toString().c_str());
         useSecondaryFirst = !useSecondaryFirst;
         saveConfig();
         return;
@@ -309,7 +321,8 @@ void parseResponse(const String& payload) {
   }
   
   if (!isConfigMode) {
-    WiFi.disconnect(false, false);
+    WiFi.disconnect(true, false);
+    delay(50);
     WiFi.mode(WIFI_OFF);
     DBG_PRINTLN("Power Saving: WiFi Radio OFF");
   }
@@ -363,6 +376,10 @@ void fetchData() {
     url += MAX_HISTORY;
   }
 
+  DBG_PRINTF("HTTP: Connecting to %s (Provider=%s)...\n", 
+             (currentProvider == PROVIDER_NIGHTSCOUT ? nsUrl.c_str() : dexServer.c_str()),
+             (currentProvider == PROVIDER_NIGHTSCOUT ? "NIGHTSCOUT" : "DEXCOM"));
+
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
@@ -377,16 +394,40 @@ void fetchData() {
   http.addHeader("Accept", "application/json");
   
   int httpCode = http.GET();
+  if (httpCode < 0) {
+    DBG_PRINTF("HTTP GET failed (%d), retrying once...\n", httpCode);
+    http.end();
+    client.stop();
+    delay(1000);
+    client.setInsecure();
+    http.begin(client, url);
+    http.setUserAgent(F("Dexcom Share/3.0.2.11 CFNetwork/672.0.2 Darwin/14.0.0"));
+    if (currentProvider == PROVIDER_NIGHTSCOUT && nsSecret.length() > 0) {
+      http.addHeader("api-secret", nsSecret);
+    }
+    http.addHeader("Accept", "application/json");
+    httpCode = http.GET();
+  }
+
   if (httpCode == HTTP_CODE_OK) {
-    parseResponse(http.getString());
+    String payload = http.getString();
+    http.end();
+    client.stop();
+    parseResponse(payload);
   } else {
     DBG_PRINTF("HTTP Error: %d\n", httpCode);
-    if (currentProvider == PROVIDER_DEXCOM && (httpCode == 401 || httpCode == 500 || httpCode == 405)) {
-      dexSessionId = "";
+    http.end();
+    client.stop();
+    if (currentProvider == PROVIDER_DEXCOM) {
+      // Invalidate session on authorization failure, server error, or connection refusal
+      if (httpCode == 401 || httpCode == 500 || httpCode == 405 || httpCode < 0) {
+        dexSessionId = "";
+      }
     }
     nextFetchIntervalMs = getFetchIntervalMs();
     if (!isConfigMode) {
-      WiFi.disconnect(false, false);
+      WiFi.disconnect(true, false);
+      delay(50);
       WiFi.mode(WIFI_OFF);
       DBG_PRINTLN("Power Saving: WiFi Radio OFF after HTTP error");
     }
@@ -394,5 +435,4 @@ void fetchData() {
     fetchStartTime = 0;
     updateUI();
   }
-  http.end();
 }

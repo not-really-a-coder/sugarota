@@ -58,9 +58,11 @@ The local setup center requires **zero external python packages** (no `requireme
 - **Smart Timestamp-Aligned Fetching**: Subsequent data polls align precisely to your CGM reading timestamps, minimizing radio airtime and stale fetches.
 - **Display & Touch Controls**:
   - **Double-Press (PWR Button)**: Instantly toggles display and touchscreen ON/OFF while preserving current brightness level.
-  - **Single-Press (PWR Button)**: Cycles through active brightness levels (`76 -> 153 -> 204 -> 255`) without turning off, or wakes the screen if off.
-  - **Long-Press (PWR Button)**: Cleanly powers down the device.
+  - **Single-Press (PWR Button)**: Cycles through active brightness levels (`76 -> 153 -> 204 -> 255`) without turning off, or wakes the screen if off. Also operates during boot sequences.
+  - **Long-Press (PWR Button)**: Cleanly powers down the device (supported during normal operation and boot).
   - **Theme Toggle (BOOT Button)**: Switches between high-contrast pixelated dark console and soft flashlight light theme.
+  - **Unit Configuration**: Configurable via Web Installer or Android Companion App settings.
+- **Companion App Remote Control & Find Device**: Control brightness, toggle dark/light theme, trigger acoustic Find Device locator alarm with loud distinct beeps, or remotely reboot and power off the device directly over BLE.
 - **High-DPI Interactive Historical Chart**: 4-hour historical CGM graph with touch scrubber for inspecting past readings.
 - **Orientation & Gesture Sensing**: QMI8658 6-axis IMU enables shake-to-refresh, face-down auto-sleep gesture, and automatic 180° rotation into injection-to-meal stopwatch timer mode.
 - **Privacy & Security**: Link-encrypted BLE pairing with numeric passkey verification; credentials are saved purely on-device in encrypted LittleFS flash with zero cloud reliance.

@@ -22,6 +22,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
@@ -55,6 +56,7 @@ import kotlinx.coroutines.launch
 import org.sugarota.companion.model.SugarotaDevice
 import org.sugarota.companion.service.SugarotaBleScanReceiver
 import org.sugarota.companion.service.SugarotaBleService
+import org.sugarota.companion.ui.*
 import org.sugarota.companion.ui.components.*
 import org.sugarota.companion.ui.theme.*
 
@@ -182,7 +184,8 @@ fun CompanionAppContent(service: SugarotaBleService?) {
     val serviceScanning by service?.isScanning?.collectAsState() ?: remember { mutableStateOf(false) }
     val isScanning = serviceScanning
 
-    var showConfigDialog by remember { mutableStateOf<String?>(null) }
+    var selectedDeviceAddress by remember { mutableStateOf<String?>(null) }
+    var targetDeviceTab by remember { mutableStateOf(DeviceScreenTab.CHART) }
     val bridgeStatusText by service?.bridgeStatus?.collectAsState() ?: remember { mutableStateOf("Idle") }
     val lastReading by service?.lastReading?.collectAsState() ?: remember { mutableStateOf(null) }
 
@@ -451,9 +454,12 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                                 device = device,
                                 bridgeStatusText = bridgeStatusText,
                                 lastReading = lastReading,
+                                onClick = {
+                                    targetDeviceTab = DeviceScreenTab.CHART
+                                    selectedDeviceAddress = device.address
+                                },
                                 onConnect = { service?.connectDevice(device.address) },
                                 onSync = { service?.triggerManualSync() },
-                                onConfigure = { showConfigDialog = device.address },
                                 onDisconnect = { service?.disconnectDevice(device.address) }
                             )
                         }
@@ -481,19 +487,18 @@ fun CompanionAppContent(service: SugarotaBleService?) {
             }
         }
 
-    // Device Configuration Screen (animated full screen overlay)
+    // Device Detail Screen (animated full screen overlay with Chart & Config tabs)
     AnimatedVisibility(
-        visible = showConfigDialog != null,
+        visible = selectedDeviceAddress != null,
         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
         exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
     ) {
-        showConfigDialog?.let { targetAddress ->
-            val targetDeviceName = deviceList.find { it.address == targetAddress }?.name ?: "Sugarota Device"
-            DeviceConfigScreen(
+        selectedDeviceAddress?.let { targetAddress ->
+            DeviceDetailScreen(
                 deviceAddress = targetAddress,
-                deviceName = targetDeviceName,
+                initialTab = targetDeviceTab,
                 service = service,
-                onDismiss = { showConfigDialog = null }
+                onDismiss = { selectedDeviceAddress = null }
             )
         }
     }
@@ -505,6 +510,7 @@ fun DeviceConfigScreen(
     deviceAddress: String,
     deviceName: String,
     service: SugarotaBleService?,
+    showHeader: Boolean = true,
     onDismiss: () -> Unit
 ) {
     BackHandler(onBack = onDismiss)
@@ -514,6 +520,7 @@ fun DeviceConfigScreen(
     var isSaving by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var showRawJson by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     val colors = ShadcnTheme.colors
     val typography = ShadcnTheme.typography
@@ -672,76 +679,70 @@ fun DeviceConfigScreen(
     Scaffold(
         containerColor = colors.background,
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = customName.ifBlank { deviceName },
-                                style = typography.h2,
-                                color = colors.foreground
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            IconButton(
-                                onClick = {
-                                    editNameText = customName.ifBlank { deviceName }
-                                    showRenameDialog = true
-                                },
-                                modifier = Modifier.size(28.dp)
+            if (showHeader) {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = "Rename Device",
-                                    tint = colors.mutedForeground,
-                                    modifier = Modifier.size(17.dp)
+                                Text(
+                                    text = customName.ifBlank { deviceName },
+                                    style = typography.h2,
+                                    color = colors.foreground
                                 )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                IconButton(
+                                    onClick = {
+                                        editNameText = customName.ifBlank { deviceName }
+                                        showRenameDialog = true
+                                    },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Rename Device",
+                                        tint = colors.mutedForeground,
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
                             }
+                            Text(
+                                text = deviceAddress,
+                                style = typography.caption,
+                                color = colors.mutedForeground
+                            )
                         }
-                        Text(
-                            text = deviceAddress,
-                            style = typography.caption,
-                            color = colors.mutedForeground
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = colors.foreground
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = colors.card,
-                    titleContentColor = colors.foreground,
-                    navigationIconContentColor = colors.foreground
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = colors.foreground
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = colors.card,
+                        titleContentColor = colors.foreground,
+                        navigationIconContentColor = colors.foreground
+                    )
                 )
-            )
+            }
         },
         bottomBar = {
             Surface(
-                color = colors.card,
-                tonalElevation = 6.dp,
-                shadowElevation = 8.dp
+                color = colors.background,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        .background(colors.background)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
-                    ShadcnButton(
-                        onClick = onDismiss,
-                        variant = ShadcnButtonVariant.GHOST,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Cancel", style = typography.body, color = colors.mutedForeground)
-                    }
-
                     ShadcnButton(
                         onClick = {
                             isSaving = true
@@ -795,6 +796,10 @@ fun DeviceConfigScreen(
                                      isSaving = false
                                      if (success) {
                                          statusMessage = "Saved! Device rebooting..."
+                                         scope.launch {
+                                             kotlinx.coroutines.delay(400)
+                                             onDismiss()
+                                         }
                                      } else {
                                          statusMessage = "Failed to write configuration"
                                      }
@@ -807,7 +812,7 @@ fun DeviceConfigScreen(
                         variant = ShadcnButtonVariant.DEFAULT,
                         enabled = !isLoading && !isSaving,
                         isLoading = isSaving,
-                        modifier = Modifier.weight(1.4f)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             text = "Save & Reboot",
@@ -1297,21 +1302,25 @@ fun TrendArrowIcon(
         else -> 0f // flat or unknown
     }
 
+    // Keep within 22.dp bounding box in all orientations so vertical and diagonal arrows don't exceed font height
+    val canvasWidth = if (isDouble) 22.dp else 20.dp
+    val canvasHeight = if (isDouble) 20.dp else 16.dp
+
     androidx.compose.foundation.Canvas(
         modifier = modifier
-            .size(width = if (isDouble) 32.dp else 26.dp, height = 22.dp)
+            .size(width = canvasWidth, height = canvasHeight)
             .graphicsLayer { rotationZ = rotation }
     ) {
-        val strokeW = 4.5.dp.toPx()
+        val strokeW = 3.5.dp.toPx()
         val cap = androidx.compose.ui.graphics.StrokeCap.Round
         val join = androidx.compose.ui.graphics.StrokeJoin.Round
 
         if (isDouble) {
             // Draw two parallel arrows
-            val spacing = 7.dp.toPx()
+            val spacing = 5.dp.toPx()
             for (offsetY in listOf(-spacing / 2, spacing / 2)) {
-                val shaftStart = androidx.compose.ui.geometry.Offset(x = 2.dp.toPx(), y = size.height / 2 + offsetY)
-                val shaftEnd = androidx.compose.ui.geometry.Offset(x = size.width - 7.dp.toPx(), y = size.height / 2 + offsetY)
+                val shaftStart = androidx.compose.ui.geometry.Offset(x = 1.dp.toPx(), y = size.height / 2 + offsetY)
+                val shaftEnd = androidx.compose.ui.geometry.Offset(x = size.width - 5.dp.toPx(), y = size.height / 2 + offsetY)
                 drawLine(
                     color = tint,
                     start = shaftStart,
@@ -1320,9 +1329,9 @@ fun TrendArrowIcon(
                     cap = cap
                 )
                 val headPath = androidx.compose.ui.graphics.Path().apply {
-                    moveTo(shaftEnd.x - 5.dp.toPx(), shaftEnd.y - 5.dp.toPx())
+                    moveTo(shaftEnd.x - 4.dp.toPx(), shaftEnd.y - 4.dp.toPx())
                     lineTo(shaftEnd.x, shaftEnd.y)
-                    lineTo(shaftEnd.x - 5.dp.toPx(), shaftEnd.y + 5.dp.toPx())
+                    lineTo(shaftEnd.x - 4.dp.toPx(), shaftEnd.y + 4.dp.toPx())
                 }
                 drawPath(
                     path = headPath,
@@ -1331,10 +1340,10 @@ fun TrendArrowIcon(
                 )
             }
         } else {
-            // Single arrow matching bold firmware arrow style (as on screenshot)
+            // Single arrow matching bold firmware arrow style
             val centerY = size.height / 2
-            val shaftStart = androidx.compose.ui.geometry.Offset(x = 3.dp.toPx(), y = centerY)
-            val shaftEnd = androidx.compose.ui.geometry.Offset(x = size.width - 5.dp.toPx(), y = centerY)
+            val shaftStart = androidx.compose.ui.geometry.Offset(x = 2.dp.toPx(), y = centerY)
+            val shaftEnd = androidx.compose.ui.geometry.Offset(x = size.width - 4.dp.toPx(), y = centerY)
             
             // Shaft
             drawLine(
@@ -1345,7 +1354,7 @@ fun TrendArrowIcon(
                 cap = cap
             )
             // Arrowhead chevron
-            val headSize = 7.dp.toPx()
+            val headSize = 5.5.dp.toPx()
             val headPath = androidx.compose.ui.graphics.Path().apply {
                 moveTo(shaftEnd.x - headSize, centerY - headSize)
                 lineTo(shaftEnd.x, centerY)
@@ -1365,9 +1374,9 @@ fun DeviceCard(
     device: SugarotaDevice,
     bridgeStatusText: String = "Idle",
     lastReading: org.sugarota.companion.model.GlucoseData? = null,
+    onClick: () -> Unit = {},
     onConnect: () -> Unit,
     onSync: () -> Unit,
-    onConfigure: () -> Unit,
     onDisconnect: () -> Unit
 ) {
     val colors = ShadcnTheme.colors
@@ -1377,10 +1386,18 @@ fun DeviceCard(
     val syncScope = rememberCoroutineScope()
 
     ShadcnCard(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (device.isConnected) {
+                    Modifier.clickable(onClick = onClick)
+                } else {
+                    Modifier
+                }
+            )
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Header Row: Device Name + Green/Red light icon indicator & Action icons (Sync, Gear, Disconnect or Connect)
+            // Header Row: Device Name + Green/Red light icon indicator & Action icons (Sync, Disconnect or Connect)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1409,7 +1426,7 @@ fun DeviceCard(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (device.isConnected) {
-                        // Sync Now icon button placed next to gear icon
+                        // Sync Now icon button
                         IconButton(
                             onClick = {
                                 syncScope.launch {
@@ -1432,17 +1449,6 @@ fun DeviceCard(
                                     .graphicsLayer {
                                         rotationZ = syncRotation.value
                                     }
-                            )
-                        }
-                        IconButton(
-                            onClick = onConfigure,
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Settings",
-                                tint = colors.foreground,
-                                modifier = Modifier.size(20.dp)
                             )
                         }
                         IconButton(
@@ -1553,16 +1559,26 @@ fun DeviceCard(
                         color = if (bridgeStatusText.startsWith("Synced")) colors.primary else colors.mutedForeground
                     )
                 }
+            } else {
+                // Disconnected state message
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Device is offline. Connect to proceed",
+                    style = typography.caption,
+                    color = colors.mutedForeground
+                )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            if (device.isConnected) {
+                Spacer(modifier = Modifier.height(10.dp))
 
-            // Battery and version at the bottom of the card
-            Text(
-                text = "Battery: ${device.status.batteryPct}% ${if (device.status.isCharging) "(+)" else ""} · ${device.status.version}",
-                style = typography.caption,
-                color = colors.mutedForeground
-            )
+                // Battery and version at the bottom of the card
+                Text(
+                    text = "Battery: ${device.status.batteryPct}% ${if (device.status.isCharging) "(+)" else ""} · ${device.status.version}",
+                    style = typography.caption,
+                    color = colors.mutedForeground
+                )
+            }
         }
     }
 }
@@ -1605,7 +1621,6 @@ fun CompanionAppPreview() {
                 ),
                 onConnect = {},
                 onSync = {},
-                onConfigure = {},
                 onDisconnect = {}
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -1620,7 +1635,6 @@ fun CompanionAppPreview() {
                 lastReading = null,
                 onConnect = {},
                 onSync = {},
-                onConfigure = {},
                 onDisconnect = {}
             )
         }

@@ -106,15 +106,36 @@ Sugarota accepts both verbose and compact format. The compact schema is recommen
 }
 ```
 
-### 3.2 Device Telemetry Notification (Characteristic `0x0004`)
-Broadcast by Sugarota to connected smartphones every 10s or when battery/charging state shifts:
+### 3.2 Remote Control Commands (Characteristic `0x0002`)
+Written by the companion app to trigger hardware and UI state changes:
+
+```json
+// Set display brightness (76 - 255)
+{ "cmd": "set_brightness", "val": 204 }
+
+// Set display theme ("dark" or "light")
+{ "cmd": "set_theme", "val": "dark" }
+
+// Trigger acoustic device finder alert (5 beeps x 3 reps at max volume)
+{ "cmd": "find_device" }
+
+// Soft reboot device
+{ "cmd": "reboot" }
+
+// Clean power off device
+{ "cmd": "power_off" }
+```
+
+### 3.3 Device Telemetry Notification (Characteristic `0x0004`)
+Broadcast by Sugarota upon connection, state change, or heartbeat:
 
 ```json
 {
   "battery": 85,
   "charging": true,
-  "voltage": 4.12,
-  "version": "v0.09.08.24"
+  "version": "v0.09.18.35",
+  "brightness": 204,
+  "dark_theme": true
 }
 ```
 

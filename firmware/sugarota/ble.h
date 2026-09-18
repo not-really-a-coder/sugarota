@@ -45,7 +45,8 @@ public:
     uint32_t getPairingPin() const { return m_pairingPin; }
     void confirmPairing(bool accept);
 
-    void notifyStatus(int batteryPct, bool isCharging, const char* version);
+    void notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness = -1, int darkTheme = -1);
+    void disconnect();
 
 private:
     SugarotaBLE();

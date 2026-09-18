@@ -11,8 +11,8 @@ android {
         applicationId = "org.sugarota.companion"
         minSdk = 26
         targetSdk = 34
-        versionCode = 26091411
-        versionName = "v0.09.14.11"
+        versionCode = 26091821
+        versionName = "v0.09.18.21"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -76,13 +76,4 @@ dependencies {
     implementation("org.json:json:20231013")
 }
 
-afterEvaluate {
-    tasks.findByName("assembleDebug")?.doLast {
-        val srcFile = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk").get().asFile
-        if (srcFile.exists()) {
-            val destFile = File(rootProject.projectDir, "sugarota-app-debug.apk")
-            srcFile.copyTo(destFile, overwrite = true)
-            println("[OK] Copied debug APK to ${destFile.absolutePath}")
-        }
-    }
-}
+

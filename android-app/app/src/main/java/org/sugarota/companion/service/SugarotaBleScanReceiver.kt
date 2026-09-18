@@ -52,15 +52,41 @@ class SugarotaBleScanReceiver : BroadcastReceiver() {
         }
         val address = device.address ?: return
 
-        // Strictly match Sugarota devices only (must start with SUGAROTA)
-        val isSugarota = effectiveName.startsWith("SUGAROTA", ignoreCase = true)
+        val isSugarotaName = effectiveName.startsWith("SUGAROTA", ignoreCase = true)
+        // If the device has a name that does not start with SUGAROTA, ignore immediately
+        if (effectiveName.isNotBlank() && !isSugarotaName) {
+            return
+        }
+
+        // Match Sugarota devices by name or by Sugarota Service UUID
+        val hasSugarotaUuid = result.scanRecord?.serviceUuids?.any {
+            it.uuid == org.sugarota.companion.model.BleUuids.SUGAROTA_SERVICE
+        } == true
+        val isSugarota = isSugarotaName || hasSugarotaUuid
 
         if (!isSugarota) {
             // Ignore non-Sugarota devices (e.g. other BLE gadgets nearby)
             return
         }
 
-        Log.i(TAG, "Nearby Sugarota device detected: $effectiveName ($address, RSSI: ${result.rssi} dBm)")
+        val displayName = if (effectiveName.isNotBlank()) effectiveName else {
+            val clean = address.replace(":", "").replace("-", "")
+            val suffix = if (clean.length >= 4) clean.takeLast(4).uppercase() else clean.uppercase()
+            "Sugarota-$suffix"
+        }
+
+        Log.i(TAG, "Nearby Sugarota device detected: $displayName ($address, RSSI: ${result.rssi} dBm)")
+
+        // Tell SugarotaBleService to auto-connect to this device
+        try {
+            val connectIntent = Intent(context, SugarotaBleService::class.java).apply {
+                action = SugarotaBleService.ACTION_CONNECT_DEVICE
+                putExtra(SugarotaBleService.EXTRA_DEVICE_ADDRESS, address)
+            }
+            context.startService(connectIntent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to startService for auto-connect: ${e.message}")
+        }
 
         val now = System.currentTimeMillis()
         val lastNotified = lastNotificationTime[address] ?: 0L
@@ -70,7 +96,7 @@ class SugarotaBleScanReceiver : BroadcastReceiver() {
         }
         lastNotificationTime[address] = now
 
-        postNearbyNotification(context, address, effectiveName.ifBlank { "Sugarota Display" })
+        postNearbyNotification(context, address, displayName)
     }
 
     private fun postNearbyNotification(context: Context, address: String, displayName: String) {

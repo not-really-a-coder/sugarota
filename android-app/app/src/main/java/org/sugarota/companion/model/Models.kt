@@ -40,29 +40,27 @@ data class GlucoseData(
             else -> direction
         }
 
-    fun toJson(): String {
+    fun toJson(maxHistory: Int = HISTORY_PER_PACKET, includeTimeSync: Boolean = true): String {
         val obj = JSONObject()
         obj.put("sgv", sgv)
         obj.put("direction", direction)
         obj.put("delta", delta)
         obj.put("timestamp", timestamp)
         obj.put("units", units)
-        obj.put("time", System.currentTimeMillis() / 1000) // Current wall clock for BLE time sync
 
-        // Include phone's timezone offset in seconds so Sugarota can configure local time immediately
-        val tz = java.util.TimeZone.getDefault()
-        val nowMs = System.currentTimeMillis()
-        val rawOffsetSec = tz.rawOffset / 1000
-        val dstOffsetSec = if (tz.inDaylightTime(java.util.Date(nowMs))) (tz.dstSavings / 1000) else 0
-        obj.put("tz_offset", rawOffsetSec)
-        obj.put("dst_offset", dstOffsetSec)
+        if (includeTimeSync) {
+            obj.put("time", System.currentTimeMillis() / 1000) // Current wall clock for BLE time sync
+            val tz = java.util.TimeZone.getDefault()
+            val nowMs = System.currentTimeMillis()
+            val rawOffsetSec = tz.rawOffset / 1000
+            val dstOffsetSec = if (tz.inDaylightTime(java.util.Date(nowMs))) (tz.dstSavings / 1000) else 0
+            obj.put("tz_offset", rawOffsetSec)
+            obj.put("dst_offset", dstOffsetSec)
+        }
 
-        // Only include the first HISTORY_PER_PACKET entries in the primary packet.
-        // The remaining readings are sent as follow-up history_chunk packets by
-        // SugarotaBleService.pushGlucoseToDevice() to fill gaps without exceeding MTU.
-        if (history.isNotEmpty()) {
+        if (maxHistory > 0 && history.isNotEmpty()) {
             val arr = org.json.JSONArray()
-            for (item in history.take(HISTORY_PER_PACKET)) {
+            for (item in history.take(maxHistory)) {
                 val hObj = JSONObject()
                 hObj.put("v", item.sgv)
                 hObj.put("d", item.direction)
@@ -119,7 +117,9 @@ data class GlucoseData(
 data class DeviceStatus(
     val batteryPct: Int = 0,
     val isCharging: Boolean = false,
-    val version: String = "Unknown"
+    val version: String = "Unknown",
+    val brightness: Int = 76,
+    val isDarkTheme: Boolean = true
 )
 
 data class SugarotaDevice(

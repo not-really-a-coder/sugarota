@@ -15,9 +15,9 @@ This document defines the Bluetooth Low Energy (BLE) interface for Sugarota on t
 
 | Characteristic | UUID | Properties | Format / Payload Description |
 | :--- | :--- | :--- | :--- |
-| **Glucose Data Stream** | `6E400002-B5A3-F393-E0A9-E50E24DCCA9E` | `WRITE`, `WRITE_NR`, `WRITE_ENC`, `NOTIFY` | JSON format. Protected via authenticated BLE encryption. Pushes latest glucose reading or batch history.<br>Payload: `{"sgv": 115, "direction": "Flat", "delta": -2, "timestamp": 1725450000}` |
+| **Glucose Data & Command Stream** | `6E400002-B5A3-F393-E0A9-E50E24DCCA9E` | `WRITE`, `WRITE_NR`, `WRITE_ENC`, `NOTIFY` | JSON format. Protected via authenticated BLE encryption.<br>• Glucose: `{"sgv": 115, "direction": "Flat", "delta": -2, "timestamp": 1725450000}`<br>• Remote Commands: `{"cmd": "set_brightness", "val": 204}`, `{"cmd": "set_theme", "val": "dark"|"light"}`, `{"cmd": "find_device"}`, `{"cmd": "reboot"}`, `{"cmd": "power_off"}` |
 | **Device Config** | `6E400003-B5A3-F393-E0A9-E50E24DCCA9E` | `READ`, `READ_ENC`, `WRITE`, `WRITE_ENC`, `NOTIFY` | Protected via authenticated BLE encryption. Reads or writes the full device `/config.json`. Single JSON write or chunked `[START]...[END]` writes. Writing valid JSON commits to LittleFS and reboots device in 1s. |
-| **Device Status** | `6E400004-B5A3-F393-E0A9-E50E24DCCA9E` | `READ`, `NOTIFY` | Device telemetry notification broadcast every 10s or upon state changes.<br>Payload: `{"battery": 85, "charging": true, "version": "v0.09.04.10"}` |
+| **Device Status** | `6E400004-B5A3-F393-E0A9-E50E24DCCA9E` | `READ`, `NOTIFY` | Device telemetry notification broadcast upon connection, state changes, or routine heartbeat.<br>Payload: `{"battery": 85, "charging": true, "version": "v0.09.18.35", "brightness": 204, "dark_theme": true}` |
 | **OTA Stream & Control** | `6E400005-B5A3-F393-E0A9-E50E24DCCA9E` | `WRITE`, `WRITE_NR`, `WRITE_ENC`, `NOTIFY` | Protected via authenticated BLE encryption. Dual-partition rollback safe firmware stream. Commands: `OTA_BEGIN` $\to$ binary chunks $\to$ `OTA_END` (reboots into new partition). |
 
 ### Security & Pairing (Option A: Numeric Comparison)

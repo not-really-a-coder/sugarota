@@ -40,6 +40,7 @@ set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
 
 @rem Find java.exe
 if defined JAVA_HOME goto findJavaFromJavaHome
+if exist "%USERPROFILE%\.jdks\jbr-21.0.11\bin\java.exe" set "JAVA_HOME=%USERPROFILE%\.jdks\jbr-21.0.11" & goto findJavaFromJavaHome
 
 set JAVA_EXE=java.exe
 %JAVA_EXE% -version >NUL 2>&1

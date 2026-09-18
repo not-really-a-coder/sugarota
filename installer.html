@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sugarota Master Web Center</title>
+    <link rel="icon" type="image/png" href="pix/sugarota_icon.png">
+    <link rel="apple-touch-icon" href="pix/sugarota_icon.png">
     <!-- Premium Fonts & CSS Imports -->
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&family=Fira+Code:wght@400;500&display=swap"
@@ -720,8 +722,12 @@
 
     <div class="wrapper">
         <header>
-            <h1 class="logo-title">SUGAROTA CONTROL CENTER</h1>
-            <div><span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.09.13.11</span></div>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 8px;">
+                <img src="pix/sugarota_icon.png" alt="Sugarota Logo"
+                    style="width: 58px; height: 58px; image-rendering: pixelated; filter: drop-shadow(0 4px 16px rgba(0, 240, 255, 0.4));">
+                <h1 class="logo-title" style="margin: 0;">SUGAROTA CONTROL CENTER</h1>
+            </div>
+            <div><span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.09.18.3</span></div>
         </header>
 
         <!-- Global Connection Status Banner -->
@@ -1110,7 +1116,7 @@
     </div>
 
     <script>
-        const INSTALLER_VERSION = "v0.09.13.11";
+        const INSTALLER_VERSION = "v0.09.18.3";
 
         // Toggle Password Visibility Reveal Icon Logic
         function togglePasswordVisibility(inputId, btn) {
@@ -1825,9 +1831,9 @@
                         const decoder = new TextDecoder("ascii");
                         const decodedStr = decoder.decode(appData);
                         // Specifically look for Sugarota CalVer (vX.MM.DD.B) or Sugarota version tag
-                        const match = decodedStr.match(/Sugarota\s+(v\d+\.\d{2}\.\d{2}\.\d+)/) || 
-                                      decodedStr.match(/(v\d+\.\d{2}\.\d{2}\.\d+)/) ||
-                                      decodedStr.match(/v\d+\.\d+\.\d+\.\d+/);
+                        const match = decodedStr.match(/Sugarota\s+(v\d+\.\d{2}\.\d{2}\.\d+)/) ||
+                            decodedStr.match(/(v\d+\.\d{2}\.\d{2}\.\d+)/) ||
+                            decodedStr.match(/v\d+\.\d+\.\d+\.\d+/);
                         if (match) {
                             detectedVersion = match[1] || match[0];
                         }
@@ -1881,9 +1887,9 @@
                 try {
                     const decoder = new TextDecoder("ascii");
                     const decodedStr = decoder.decode(customFirmwareData);
-                    const match = decodedStr.match(/Sugarota\s+(v\d+\.\d{2}\.\d{2}\.\d+)/) || 
-                                  decodedStr.match(/(v\d+\.\d{2}\.\d{2}\.\d+)/) ||
-                                  decodedStr.match(/v\d+\.\d+\.\d+\.\d+/);
+                    const match = decodedStr.match(/Sugarota\s+(v\d+\.\d{2}\.\d{2}\.\d+)/) ||
+                        decodedStr.match(/(v\d+\.\d{2}\.\d{2}\.\d+)/) ||
+                        decodedStr.match(/v\d+\.\d+\.\d+\.\d+/);
                     if (match) {
                         customVersion = match[1] || match[0];
                     }
@@ -1961,10 +1967,10 @@
                 log("Connecting to ROM bootloader... Press BOOT button if handshake stalls...", "var(--accent-yellow)");
                 // Use main() to fully initialize connection, detect chip, and load standard RAM flashing stub
                 const detectedChip = await esploader.main();
-                const chipDisplayName = (esploader.chip && (esploader.chip.CHIP_NAME || esploader.chip.chipName)) || 
-                                        detectedChip || 
-                                        esploader.chipName || 
-                                        "ESP32-S3";
+                const chipDisplayName = (esploader.chip && (esploader.chip.CHIP_NAME || esploader.chip.chipName)) ||
+                    detectedChip ||
+                    esploader.chipName ||
+                    "ESP32-S3";
                 log(`Successfully connected! Chip detected: ${chipDisplayName}`, "var(--accent-green)");
                 metricChip.innerText = chipDisplayName;
 

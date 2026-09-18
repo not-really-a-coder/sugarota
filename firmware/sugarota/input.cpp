@@ -1,7 +1,6 @@
 #include "input.h"
 #include "display.h"
 #include "ui.h"
-#include "storage.h"
 #include "net_client.h"
 #include "audio.h"
 #include "ble.h"
@@ -13,12 +12,11 @@ bool imuReady = false;
 
 // Forward declarations
 void powerOffDevice();
+extern void logBoot(const String& msg);
 
 static int lastRawX = -1;
 static int lastRawY = -1;
 static int touchConfidence = 0;
-static unsigned long lastTouchStartTime = 0;
-static bool isLongTapping = false;
 
 void initInputs() {
   pinMode(PIN_PWR_BTN, INPUT_PULLUP);
@@ -45,6 +43,9 @@ void checkButton(ButtonState &btn, const char* name) {
   bool isPressed = (digitalRead(btn.pin) == LOW);
   
   if (isPressed && !btn.pressed) {
+    if (isFindDeviceActive()) {
+      stopFindDeviceAlert();
+    }
     btn.pressed = true;
     btn.pressTime = millis();
     btn.handled = false;
@@ -106,7 +107,7 @@ void checkButton(ButtonState &btn, const char* name) {
             isFetching = true;
             fetchStartTime = millis();
             updateUI();
-            SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION);
+            SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
           } else if (connectionMode != "BLE_ONLY") {
             DBG_PRINTLN("ACTION: Force Data Refresh via Wi-Fi");
             fetchData();
@@ -114,6 +115,37 @@ void checkButton(ButtonState &btn, const char* name) {
             DBG_PRINTLN("ACTION: Force Data Refresh (Disabled in BLE_ONLY Mode)");
           }
         }
+      }
+    }
+  }
+}
+
+void checkBootButtons() {
+  bool isPressed = (digitalRead(pwrBtn.pin) == LOW);
+  if (isPressed && !pwrBtn.pressed) {
+    pwrBtn.pressed = true;
+    pwrBtn.pressTime = millis();
+    pwrBtn.handled = false;
+  } else if (isPressed && pwrBtn.pressed) {
+    if (!pwrBtn.handled) {
+      if (millis() - pwrBtn.pressTime >= 2000) {
+        Serial.println("PWR Button: Boot LONG Press -> Power Off");
+        pwrBtn.handled = true;
+        pwrClickCount = 0;
+        deviceOn = false;
+        powerOffDevice();
+        return;
+      }
+    }
+  } else if (!isPressed && pwrBtn.pressed) {
+    pwrBtn.pressed = false;
+    unsigned long duration = millis() - pwrBtn.pressTime;
+    if (!pwrBtn.handled) {
+      if (duration > 50 && duration < 2000) {
+        pwrBtn.handled = true;
+        Serial.println("PWR Button: Boot SHORT Press -> Cycle Brightness");
+        cycleBrightness();
+        lastActiveBrightness = brightnessLevel;
       }
     }
   }
@@ -135,14 +167,8 @@ void checkButtons() {
       setBrightness(brightnessLevel);
       updateUI();
     } else {
-      // Cycle through non-zero brightness levels: 76 -> 153 -> 204 -> 255 -> 76
-      if (brightnessLevel < 153) brightnessLevel = 153;
-      else if (brightnessLevel < 204) brightnessLevel = 204;
-      else if (brightnessLevel < 255) brightnessLevel = 255;
-      else brightnessLevel = 76;
-
+      cycleBrightness();
       lastActiveBrightness = brightnessLevel;
-      setBrightness(brightnessLevel);
     }
     Serial.printf("Brightness: %d, ManualOff: %d\n", brightnessLevel, screenManuallyOff);
   }
@@ -216,25 +242,6 @@ void checkTouch() {
     touchY = ty;
     isTouching = true;
 
-    if (isShowingUnitDialog) {
-      int w = 150; int h = 120;
-      int dx = (640 - w) / 2;
-      int dy = (172 - h) / 2;
-      
-      if (touchX > dx+10 && touchX < dx+70 && touchY > dy+80 && touchY < dy+110) {
-        bgUnits = (bgUnits == UNIT_MGDL) ? UNIT_MMOLL : UNIT_MGDL;
-        saveConfig();
-        ESP.restart();
-      }
-      if (touchX > dx+80 && touchX < dx+140 && touchY > dy+80 && touchY < dy+110) {
-        isShowingUnitDialog = false;
-        isTouching = false; 
-        waitForRelease = true;
-        updateUI();
-      }
-      return;
-    }
-
     if (isShowingPairingDialog) {
       int w = 220; int h = 130;
       int dx = (640 - w) / 2;
@@ -263,27 +270,6 @@ void checkTouch() {
       updateUI(); 
     }
 
-    if (touchX > 20 && touchX < 280 && touchY > 100 && touchY < 172) {
-      if (!isLongTapping) {
-        lastTouchStartTime = millis();
-        isLongTapping = true;
-        Serial.println("Touch: Delta area pressed, starting long-tap timer...");
-      } else {
-        unsigned long duration = millis() - lastTouchStartTime;
-        if (duration > 1000) {
-          Serial.println("Touch: Long-tap TRIGGERED on Delta area!");
-          isShowingUnitDialog = true;
-          isLongTapping = false;
-          updateUI();
-        }
-      }
-    } else {
-      if (isLongTapping) {
-        isLongTapping = false;
-        Serial.println("Touch: Long-tap cancelled (finger moved out of area)");
-      }
-    }
-
     if (touchX >= 300 && touchX <= 640 && touchY > 40) {
       lastScrubberX = touchX;
       lastScrubberTouchTime = millis();
@@ -292,12 +278,6 @@ void checkTouch() {
   } else {
     touchConfidence = 0;
     lastRawX = -1; lastRawY = -1;
-    if (isLongTapping && (millis() - lastTouchStartTime > 100) && (millis() - lastTouchStartTime < 1000)) {
-       if (millis() % 500 < 50) {
-         isLongTapping = false;
-         Serial.println("Touch: Release detected, long-tap timer reset.");
-       }
-    }
     
     if (isTouching) {
       isTouching = false;

@@ -8,6 +8,7 @@ extern Arduino_GFX *gfx;
 
 void initDisplay();
 void setBrightness(int level);
+void cycleBrightness();
 void updateBacklightPower(bool enable);
 void setScreenRotation(uint8_t r);
 void toggleTheme();

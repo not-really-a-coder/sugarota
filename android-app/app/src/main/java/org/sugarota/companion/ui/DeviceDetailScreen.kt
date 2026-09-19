@@ -23,6 +23,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import kotlinx.coroutines.launch
 import org.sugarota.companion.DeviceConfigScreen
 import org.sugarota.companion.TrendArrowIcon
@@ -34,7 +38,8 @@ import org.sugarota.companion.ui.theme.ShadcnTheme
 
 enum class DeviceScreenTab {
     CHART,
-    CONFIG
+    CONFIG,
+    LOGS
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -283,6 +288,35 @@ fun DeviceDetailScreen(
                                     )
                                 }
                             }
+
+                            // Logs Tab Button (Terminal / Verbose debug logs)
+                            val isLogsSelected = currentTab == DeviceScreenTab.LOGS
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isLogsSelected) colors.secondary else Color.Transparent)
+                                    .clickable { currentTab = DeviceScreenTab.LOGS },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Code,
+                                        contentDescription = null,
+                                        tint = if (isLogsSelected) colors.foreground else colors.mutedForeground,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Logs",
+                                        style = typography.caption.copy(
+                                            fontWeight = if (isLogsSelected) FontWeight.SemiBold else FontWeight.Normal
+                                        ),
+                                        color = if (isLogsSelected) colors.foreground else colors.mutedForeground
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -309,6 +343,12 @@ fun DeviceDetailScreen(
                         service = service,
                         showHeader = false,
                         onDismiss = onDismiss
+                    )
+                }
+                DeviceScreenTab.LOGS -> {
+                    DeviceLogsScreen(
+                        device = device,
+                        service = service
                     )
                 }
             }
@@ -847,4 +887,211 @@ fun DeviceChartContent(
         }
     }
 }
+
+@Composable
+fun DeviceLogsScreen(
+    device: SugarotaDevice,
+    service: SugarotaBleService?
+) {
+    val colors = ShadcnTheme.colors
+    val typography = ShadcnTheme.typography
+    val clipboardManager = LocalClipboardManager.current
+    val logsMap by service?.deviceLogs?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
+    val logs = logsMap[device.address] ?: emptyList()
+
+    // Local debugMode state synced with device status
+    var isDebugEnabled by remember(device.status.isDebugMode) {
+        mutableStateOf(device.status.isDebugMode)
+    }
+
+    val scrollState = rememberScrollState()
+
+    // Auto scroll to bottom when new logs arrive
+    LaunchedEffect(logs.size) {
+        if (logs.isNotEmpty()) {
+            scrollState.animateScrollTo(scrollState.maxValue)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        // Debug Mode Switch Header Card
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(ShadcnTheme.shapes.radiusMedium),
+            color = colors.card,
+            border = BorderStroke(1.dp, colors.border)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Debug Mode",
+                        style = typography.body,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.foreground
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = if (isDebugEnabled) "Verbose device output active" else "Enable verbose live logs from device",
+                        style = typography.caption,
+                        color = colors.mutedForeground
+                    )
+                }
+                Switch(
+                    checked = isDebugEnabled,
+                    onCheckedChange = { checked ->
+                        isDebugEnabled = checked
+                        service?.setDeviceDebugMode(device.address, checked)
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = colors.primaryForeground,
+                        checkedTrackColor = colors.primary,
+                        uncheckedThumbColor = colors.mutedForeground,
+                        uncheckedTrackColor = colors.secondary
+                    )
+                )
+            }
+        }
+
+        // When switcher is ON, window with logs appears below it, taking rest of visible area
+        AnimatedVisibility(
+            visible = isDebugEnabled,
+            modifier = Modifier.weight(1f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 12.dp)
+            ) {
+                // Terminal Container Window
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    shape = RoundedCornerShape(ShadcnTheme.shapes.radiusMedium),
+                    color = Color(0xFF040407), // Deep terminal black
+                    border = BorderStroke(1.dp, colors.border)
+                ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Terminal Title Bar & Action Buttons
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF0C0D12))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xFF22C55E))
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "TERMINAL OUTPUT (${logs.size})",
+                                    style = typography.caption.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.5.sp
+                                    ),
+                                    color = Color(0xFF94A3B8)
+                                )
+                            }
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                // Copy All Logs Button
+                                IconButton(
+                                    onClick = {
+                                        val fullText = logs.joinToString("\n")
+                                        clipboardManager.setText(AnnotatedString(fullText))
+                                    },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentCopy,
+                                        contentDescription = "Copy Logs",
+                                        tint = Color(0xFF94A3B8),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+
+                                // Clear Logs Button
+                                IconButton(
+                                    onClick = {
+                                        service?.clearDeviceLogs(device.address)
+                                    },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = "Clear Logs",
+                                        tint = Color(0xFF94A3B8),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Terminal Log Content Area (Wrapped in SelectionContainer so user can select text)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(12.dp)
+                        ) {
+                            SelectionContainer {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(scrollState)
+                                ) {
+                                    if (logs.isEmpty()) {
+                                        Text(
+                                            text = "> Debug mode active. Waiting for device log output...",
+                                            style = typography.caption.copy(
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 12.sp,
+                                                lineHeight = 18.sp
+                                            ),
+                                            color = Color(0xFF64748B)
+                                        )
+                                    } else {
+                                        logs.forEach { line ->
+                                            Text(
+                                                text = line,
+                                                style = typography.caption.copy(
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontSize = 11.5.sp,
+                                                    lineHeight = 16.sp
+                                                ),
+                                                color = when {
+                                                    line.contains("error", ignoreCase = true) || line.contains("failed", ignoreCase = true) -> Color(0xFFF87171)
+                                                    line.contains("Connected", ignoreCase = true) -> Color(0xFF4ADE80)
+                                                    line.contains("write", ignoreCase = true) -> Color(0xFF38BDF8)
+                                                    line.contains("Status", ignoreCase = true) -> Color(0xFFFBBF24)
+                                                    else -> Color(0xFFCBD5E1)
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 

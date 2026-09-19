@@ -399,7 +399,7 @@ void SugarotaBLE::confirmPairing(bool accept) {
     }
 }
 
-void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness, int darkTheme, bool requestRefresh) {
+void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness, int darkTheme, bool requestRefresh, int debug) {
     if (!m_pStatusChar) return;
 
     JsonDocument doc;
@@ -414,6 +414,11 @@ void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* vers
     }
     if (requestRefresh) {
         doc["request_refresh"] = true;
+    }
+    if (debug >= 0) {
+        doc["debug"] = (debug == 1);
+    } else {
+        doc["debug"] = debugMode;
     }
 
     String payload;

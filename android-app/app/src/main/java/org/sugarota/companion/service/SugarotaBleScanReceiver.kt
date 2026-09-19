@@ -88,6 +88,12 @@ class SugarotaBleScanReceiver : BroadcastReceiver() {
             Log.w(TAG, "Failed to startService for auto-connect: ${e.message}")
         }
 
+        // Requirement 5: Do not show "Sugarota Detected Nearby" notification if the device is already connected
+        if (SugarotaBleService.isDeviceConnected(address)) {
+            Log.d(TAG, "Suppressing nearby notification: $address is already connected")
+            return
+        }
+
         val now = System.currentTimeMillis()
         val lastNotified = lastNotificationTime[address] ?: 0L
         if (now - lastNotified < NOTIFICATION_THROTTLE_MS) {

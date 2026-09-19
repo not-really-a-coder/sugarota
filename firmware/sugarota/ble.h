@@ -48,7 +48,7 @@ public:
     void confirmPairing(bool accept);
     void updateAdvertising();
 
-    void notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness = -1, int darkTheme = -1, bool requestRefresh = false);
+    void notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness = -1, int darkTheme = -1, bool requestRefresh = false, int debug = -1);
     void disconnect();
 
     static const int MAX_BLE_CLIENTS = 2;

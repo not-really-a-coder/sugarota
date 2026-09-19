@@ -1147,44 +1147,7 @@ fun DeviceConfigScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Debug Mode Switch
-                Text(
-                    text = "DEVICE OPTIONS",
-                    style = typography.caption,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.foreground
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Debug Mode",
-                            style = typography.body,
-                            color = colors.foreground
-                        )
-                        Text(
-                            text = "Enable verbose logging to Serial port on device",
-                            style = typography.caption,
-                            color = colors.mutedForeground
-                        )
-                    }
-                    Switch(
-                        checked = debugMode,
-                        onCheckedChange = { debugMode = it },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = colors.primaryForeground,
-                            checkedTrackColor = colors.primary,
-                            uncheckedThumbColor = colors.mutedForeground,
-                            uncheckedTrackColor = colors.secondary
-                        )
-                    )
-                }
 
-                Spacer(modifier = Modifier.height(16.dp))
 
                 // Toggle Raw JSON
                 ShadcnButton(

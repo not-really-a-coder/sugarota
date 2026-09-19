@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.19.18"
+#define SUGAROTA_VERSION "v0.09.20.3"
 
 #include "config.h"
 #include "storage.h"

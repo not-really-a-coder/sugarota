@@ -3,6 +3,7 @@
 #include "audio.h"
 #include "display.h"
 #include "ble.h"
+#include "storage.h"
 #include <time.h>
 
 void insertOrUpdateReading(long long tsVal, int sgvVal, const char* dirVal, int deltaVal) {
@@ -225,6 +226,12 @@ void handleBLECommand(const JsonDocument& doc) {
   } else if (strcmp(cmd, "find_device") == 0) {
     DBG_PRINTLN("BLE: Triggering Find Device alert...");
     startFindDeviceAlert();
+  } else if (strcmp(cmd, "set_debug") == 0) {
+    debugMode = doc["val"] | false;
+    DBG_PRINTF("BLE: Dynamic debug mode updated to %s (no reboot)\n", debugMode ? "ON" : "OFF");
+    saveConfig();
+    bleUIUpdatePending = true;
+    SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0, false, debugMode ? 1 : 0);
   } else if (strcmp(cmd, "reboot") == 0) {
     DBG_PRINTLN("BLE: Remote reboot requested, queuing reboot...");
     pendingReboot = true;

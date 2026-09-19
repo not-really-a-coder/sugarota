@@ -2,6 +2,20 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.20.3] — Historical Gap Backfill Recovery & 64-bit Timestamp Ingestion (2026-09-20)
+
+This release implements automatic historical data gap detection and multi-packet chunk recovery over BLE, non-destructive Wi-Fi history merging, and 64-bit UTC epoch timestamp parsing for Dexcom Share.
+
+### Connectivity & Synchronization
+
+- Automatic gap detection in Android companion evaluating incoming readings and triggering full multi-packet history chunk sync when gaps exceed 6 minutes
+- Bypassed routine deduplication suppression when historical gaps exist to ensure missing intervals are backfilled immediately
+- Full 64-bit epoch parsing using atoll with millisecond-to-second conversion for Dexcom Share WT and ST fields in firmware Wi-Fi client
+- Switched firmware Wi-Fi response parser to non-destructive insertOrUpdateReading merging to preserve cached history across reconnects
+- Increased routine BLE glucose packet capacity to maximum single-packet budget (6 readings)
+
+---
+
 ## [v0.09.19.18] — BLE Pairing Protection, Multi-Client Duty Cycling & Data Refresh Synchronization (2026-09-19)
 
 This release implements time-bounded BLE pairing protection, dynamic multi-client advertising intervals, bi-directional BLE refresh scheduling with Wi-Fi fallback, and dedicated project security documentation.

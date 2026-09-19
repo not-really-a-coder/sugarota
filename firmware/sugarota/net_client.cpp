@@ -2,6 +2,7 @@
 #include "audio.h"
 #include "storage.h"
 #include "ble.h"
+#include "ble_handler.h"
 
 SensorPCF85063 rtc;
 
@@ -264,38 +265,72 @@ void parseResponse(const String& payload) {
   }
 
   JsonArray arr = doc.as<JsonArray>();
-  historyCount = 0;
   
   for (int i = 0; i < arr.size() && i < MAX_HISTORY; i++) {
     JsonObject obj = arr[i];
+    int sgvVal = 0;
+    long long tsVal = 0;
+    String dirStr = "Flat";
+    int deltaVal = 0;
     
     if (currentProvider == PROVIDER_NIGHTSCOUT) {
-      bgHistory[i].sgv = obj["sgv"];
-      bgHistory[i].timestamp = obj["date"].as<long long>() / 1000;
-      strncpy(bgHistory[i].direction, parseTrend(obj).c_str(), 15);
-      bgHistory[i].direction[15] = '\0';
+      sgvVal = obj["sgv"] | 0;
+      tsVal = obj["date"].as<long long>() / 1000;
+      dirStr = parseTrend(obj);
       if (i < arr.size() - 1) {
-        bgHistory[i].delta = bgHistory[i].sgv - (int)arr[i+1]["sgv"];
+        deltaVal = sgvVal - (int)arr[i+1]["sgv"];
       } else {
-        bgHistory[i].delta = 0;
+        deltaVal = 0;
       }
     } else {
-      bgHistory[i].sgv = obj["Value"];
-      String dateStr = obj["ST"].as<String>();
+      sgvVal = obj["Value"] | 0;
+      String dateStr = "";
+      if (obj.containsKey("WT") && obj["WT"].as<String>().length() > 0) {
+        dateStr = obj["WT"].as<String>();
+      } else if (obj.containsKey("ST")) {
+        dateStr = obj["ST"].as<String>();
+      }
       int start = dateStr.indexOf('(') + 1;
       int end = dateStr.indexOf(')');
       if (start > 0 && end > start) {
-        bgHistory[i].timestamp = dateStr.substring(start, end).substring(0, 10).toInt();
+        // Strip timezone suffix if present (e.g. 1725776000000-0700)
+        String rawEpochStr = dateStr.substring(start, end);
+        int dashIdx = rawEpochStr.indexOf('-');
+        int plusIdx = rawEpochStr.indexOf('+');
+        int cutIdx = -1;
+        if (dashIdx > 0) cutIdx = dashIdx;
+        else if (plusIdx > 0) cutIdx = plusIdx;
+        if (cutIdx > 0) rawEpochStr = rawEpochStr.substring(0, cutIdx);
+        
+        long long rawEpoch = atoll(rawEpochStr.c_str());
+        if (rawEpoch > 1000000000000LL) {
+          tsVal = rawEpoch / 1000LL;
+        } else {
+          tsVal = rawEpoch;
+        }
       }
-      strncpy(bgHistory[i].direction, parseTrend(obj).c_str(), 15);
-      bgHistory[i].direction[15] = '\0';
+      dirStr = parseTrend(obj);
       if (i < arr.size() - 1) {
-        bgHistory[i].delta = bgHistory[i].sgv - (int)arr[i+1]["Value"];
+        deltaVal = sgvVal - (int)arr[i+1]["Value"];
       } else {
-        bgHistory[i].delta = 0;
+        deltaVal = 0;
       }
     }
-    historyCount++;
+    
+    if (tsVal > 0 && sgvVal > 0) {
+      insertOrUpdateReading(tsVal, sgvVal, dirStr.c_str(), deltaVal);
+    }
+  }
+  
+  // Keep history sorted descending (newest first)
+  for (int i = 0; i < historyCount - 1; i++) {
+    for (int j = i + 1; j < historyCount; j++) {
+      if (bgHistory[j].timestamp > bgHistory[i].timestamp) {
+        BGReading temp = bgHistory[i];
+        bgHistory[i] = bgHistory[j];
+        bgHistory[j] = temp;
+      }
+    }
   }
   
   if (historyCount > 0) {

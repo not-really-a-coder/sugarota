@@ -53,6 +53,29 @@ class SugarotaBleService : Service() {
     private val _devices = MutableStateFlow<Map<String, SugarotaDevice>>(emptyMap())
     val devices: StateFlow<Map<String, SugarotaDevice>> = _devices.asStateFlow()
 
+    // Logs per device address (max 500 lines per device)
+    private val _deviceLogs = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    val deviceLogs: StateFlow<Map<String, List<String>>> = _deviceLogs.asStateFlow()
+
+    fun appendDeviceLog(address: String, message: String) {
+        val timestamp = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date())
+        val logLine = "[$timestamp] $message"
+        val currentMap = _deviceLogs.value.toMutableMap()
+        val currentList = currentMap[address]?.toMutableList() ?: mutableListOf()
+        currentList.add(logLine)
+        if (currentList.size > 500) {
+            currentList.removeAt(0)
+        }
+        currentMap[address] = currentList
+        _deviceLogs.value = currentMap
+    }
+
+    fun clearDeviceLogs(address: String) {
+        val currentMap = _deviceLogs.value.toMutableMap()
+        currentMap[address] = emptyList()
+        _deviceLogs.value = currentMap
+    }
+
     private val bridgeClient = GlucoseBridgeClient()
     private val bridgePrefs by lazy { org.sugarota.companion.data.BridgePreferences(this) }
     private var bridgeJob: Job? = null
@@ -324,9 +347,11 @@ class SugarotaBleService : Service() {
                     if (newState == BluetoothProfile.STATE_CONNECTED) {
                         connectingDevices.remove(addr)
                         connectedGatts[addr] = gatt
+                        markDeviceConnected(addr, true)
                         val bonded = gatt.device.bondState == BluetoothDevice.BOND_BONDED
                         updateDeviceState(addr, isConnected = true, isBonded = bonded)
                         SugarotaBleScanReceiver.clearNotificationForDevice(this@SugarotaBleService, addr)
+                        appendDeviceLog(addr, "Connected over BLE (bonded=$bonded)")
                         gatt.requestMtu(517)
                         gatt.discoverServices()
                         updateNotification("Connected to ${connectedGatts.size} device(s)")
@@ -335,21 +360,25 @@ class SugarotaBleService : Service() {
                         syncingDevices.remove(addr)
                         lastDisconnectTime[addr] = System.currentTimeMillis()
                         connectedGatts.remove(addr)
+                        markDeviceConnected(addr, false)
                         deviceConfigs.remove(addr)
                         lastPushedTimestamps.remove(addr)
                         currentMtu.remove(addr)
                         pendingWriteQueues.remove(addr) // Clear any pending history chunks
                         val bonded = gatt.device.bondState == BluetoothDevice.BOND_BONDED
                         updateDeviceState(addr, isConnected = false, isBonded = bonded)
+                        appendDeviceLog(addr, "Disconnected from BLE (status=$status)")
                         gatt.close()
                         updateNotification("Waiting for Sugarota connection...")
                     }
                 }
 
                 override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-                    Log.i("SugarotaBleService", "BLE MTU changed to $mtu (status=$status) for ${gatt.device.address}")
+                    val addr = gatt.device.address
+                    Log.i("SugarotaBleService", "BLE MTU changed to $mtu (status=$status) for $addr")
+                    appendDeviceLog(addr, "MTU changed to $mtu (status=$status)")
                     if (status == BluetoothGatt.GATT_SUCCESS) {
-                        currentMtu[gatt.device.address] = mtu
+                        currentMtu[addr] = mtu
                     }
                 }
 
@@ -553,6 +582,22 @@ class SugarotaBleService : Service() {
         }
     }
 
+    fun setDeviceDebugMode(address: String, enabled: Boolean) {
+        val cmd = org.json.JSONObject().apply {
+            put("cmd", "set_debug")
+            put("val", enabled)
+        }
+        appendDeviceLog(address, "Sending set_debug: $enabled")
+        sendDeviceCommand(address, cmd)
+        // Optimistically update device model state in app
+        val current = _devices.value.toMutableMap()
+        val dev = current[address]
+        if (dev != null) {
+            current[address] = dev.copy(status = dev.status.copy(isDebugMode = enabled))
+            _devices.value = current
+        }
+    }
+
     fun findDevice(address: String, onComplete: ((Boolean) -> Unit)? = null) {
         val cmd = org.json.JSONObject().apply {
             put("cmd", "find_device")
@@ -632,7 +677,9 @@ class SugarotaBleService : Service() {
     // Push glucose to a specific connected Sugarota device.
     // When isFullSync is true (initial connection, device reconnect, or force refresh),
     // full history chunks and time synchronization are sent.
-    // On ordinary routine fetches, only the latest 5 readings are sent without time sync.
+    // Push glucose to a specific connected Sugarota device.
+    // When isFullSync is true (initial connection, device reconnect, force refresh, or detected data gap),
+    // full history chunks are enqueued and time synchronization is sent.
     fun pushGlucoseToDevice(address: String, glucose: GlucoseData, isFullSync: Boolean = false) {
         val gatt = connectedGatts[address] ?: return
         val service = gatt.getService(BleUuids.SUGAROTA_SERVICE)
@@ -641,8 +688,8 @@ class SugarotaBleService : Service() {
         val deviceMtu = currentMtu[address] ?: 517
         val maxPayloadSize = (deviceMtu - 3).coerceAtLeast(20)
 
-        val historyLimit = if (isFullSync) GlucoseData.historyItemsPerPacket() else 5
-        var primaryJson = glucose.toJson(maxHistory = historyLimit, includeTimeSync = isFullSync)
+        val itemsPerPacket = GlucoseData.historyItemsPerPacket()
+        var primaryJson = glucose.toJson(maxHistory = itemsPerPacket, includeTimeSync = isFullSync)
         var primaryBytes = primaryJson.toByteArray(Charsets.UTF_8)
         if (primaryBytes.size > maxPayloadSize) {
             Log.w("SugarotaBleService", "Primary payload (${primaryBytes.size}) exceeds MTU ($maxPayloadSize). Sending root only.")
@@ -651,8 +698,7 @@ class SugarotaBleService : Service() {
         }
 
         if (isFullSync) {
-            // Build and enqueue follow-up history chunks only during full sync / force refresh
-            val itemsPerPacket = GlucoseData.historyItemsPerPacket()
+            // Build and enqueue follow-up history chunks during full sync / gap recovery
             val remainingHistory = glucose.history.drop(itemsPerPacket)
             if (remainingHistory.isNotEmpty()) {
                 val queue = ArrayDeque<ByteArray>()
@@ -696,8 +742,10 @@ class SugarotaBleService : Service() {
                 gatt.writeCharacteristic(characteristic)
             }
             Log.i("SugarotaBleService", "writeCharacteristic [$label] bytes=${bytes.size}: success=$success")
+            appendDeviceLog(gatt.device.address, "BLE write [$label] (${bytes.size}B): success=$success")
         } catch (e: Exception) {
             Log.e("SugarotaBleService", "writeCharacteristic [$label] failed", e)
+            appendDeviceLog(gatt.device.address, "BLE write [$label] error: ${e.message}")
         }
     }
 
@@ -887,16 +935,37 @@ class SugarotaBleService : Service() {
                 val lastTs = lastPushedTimestamps[address]
                 val isNewData = (lastTs == null || reading.timestamp > lastTs)
 
-                if (!forcePush && !isNewData) {
-                    // Reading has not changed on the server yet and not a force push; do not push duplicate entry.
+                // Check for a data gap between the new reading and the last pushed reading (> 360 seconds / 6 minutes),
+                // or if there are any gaps within the recent readings list.
+                var hasGap = false
+                if (lastTs != null && (reading.timestamp - lastTs > 360)) {
+                    hasGap = true
+                } else if (reading.history.size >= 2) {
+                    val checkCount = minOf(10, reading.history.size - 1)
+                    for (k in 0 until checkCount) {
+                        if (reading.history[k].timestamp - reading.history[k + 1].timestamp > 360) {
+                            hasGap = true
+                            break
+                        }
+                    }
+                }
+
+                val shouldFullSync = forcePush || hasGap
+
+                if (!shouldFullSync && !isNewData) {
+                    // Reading has not changed on the server yet, not a force push, and no gaps detected.
                     // Notify device that remote API is OK so it resets fetch timer and clears spinner without Wi-Fi fallback.
                     pushApiOkToDevice(address)
                     _bridgeStatus.value = "Synced $summary (current)"
                     return true
                 }
 
+                if (hasGap) {
+                    Log.i("SugarotaBleService", "Detected data gap for $address (lastTs=$lastTs, newTs=${reading.timestamp}). Triggering full history backfill.")
+                }
+
                 lastPushedTimestamps[address] = reading.timestamp
-                pushGlucoseToDevice(address, reading, isFullSync = forcePush)
+                pushGlucoseToDevice(address, reading, isFullSync = shouldFullSync)
                 _bridgeStatus.value = "Synced $summary"
                 updateNotification("Glucose: $summary")
                 return true
@@ -1000,8 +1069,10 @@ class SugarotaBleService : Service() {
             val existing = current[address] ?: SugarotaDevice(name = getDeviceDisplayName(address), address = address)
             val brightness = if (obj.has("brightness")) obj.optInt("brightness", existing.status.brightness) else existing.status.brightness
             val isDark = if (obj.has("dark_theme")) obj.optBoolean("dark_theme", existing.status.isDarkTheme) else existing.status.isDarkTheme
-            current[address] = existing.copy(status = DeviceStatus(bat, chg, ver, brightness, isDark))
+            val isDebug = if (obj.has("debug")) obj.optBoolean("debug", existing.status.isDebugMode) else existing.status.isDebugMode
+            current[address] = existing.copy(status = DeviceStatus(bat, chg, ver, brightness, isDark, isDebug))
             _devices.value = current
+            appendDeviceLog(address, "Status received: bat=$bat% chg=$chg ver=$ver debug=$isDebug")
 
             // When device notifies status:
             // 1. If we don't have its config yet, attempt to read config now
@@ -1136,5 +1207,20 @@ class SugarotaBleService : Service() {
 
         const val ACTION_CONNECT_DEVICE = "org.sugarota.companion.ACTION_CONNECT_DEVICE"
         const val EXTRA_DEVICE_ADDRESS = "extra_device_address"
+
+        // Track active connections for fast checks across processes/receivers
+        private val activeConnectedAddresses = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+
+        fun isDeviceConnected(address: String): Boolean {
+            return activeConnectedAddresses.contains(address)
+        }
+
+        internal fun markDeviceConnected(address: String, connected: Boolean) {
+            if (connected) {
+                activeConnectedAddresses.add(address)
+            } else {
+                activeConnectedAddresses.remove(address)
+            }
+        }
     }
 }

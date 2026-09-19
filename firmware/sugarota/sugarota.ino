@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.18.35"
+#define SUGAROTA_VERSION "v0.09.19.18"
 
 #include "config.h"
 #include "storage.h"
@@ -379,6 +379,9 @@ void setup() {
   SugarotaBLE::getInstance().setPairingCallback(handleBLEPairingDisplay);
   SugarotaBLE::getInstance().begin("Sugarota");
   SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
+  
+  // Enable pairing mode during boot so any new or existing phone can pair/connect
+  SugarotaBLE::getInstance().enablePairingMode(true);
 
   bool bleConnectedEarly = false;
 
@@ -541,6 +544,14 @@ void loop() {
   SugarotaBLE::getInstance().update();
   checkSerialConsole();
 
+  // Auto-disable boot pairing mode after 60 seconds of uptime unless in config mode (shake)
+  static bool bootPairingEnded = false;
+  if (!bootPairingEnded && !isConfigMode && millis() > 60000) {
+    bootPairingEnded = true;
+    SugarotaBLE::getInstance().enablePairingMode(false);
+    DBG_PRINTLN("BLE: Boot pairing window closed. Subsequent connections require prior bonding or Config Mode (shake).");
+  }
+
   if (blePairingUpdatePending) {
     blePairingUpdatePending = false;
     updateUI();
@@ -568,6 +579,7 @@ void loop() {
   if (isConfigMode && (millis() - configModeStartTime > 300000)) {
     isConfigMode = false;
     DBG_PRINTLN("CONFIG MODE: AUTO OFF (5m Timeout)");
+    SugarotaBLE::getInstance().enablePairingMode(false);
     if (!isFetching) { WiFi.disconnect(true); WiFi.mode(WIFI_OFF); }
     updateUI();
   }
@@ -626,7 +638,7 @@ void loop() {
     }
     // Safety timeout: prevent spinner from freezing or staying active indefinitely
     if (fetchStartTime > 0 && (millis() - fetchStartTime > 15000)) {
-      DBG_PRINTLN("FETCH: Timed out after 15s, clearing isFetching");
+      DBG_PRINTLN("FETCH: Timed out after 15s");
       isFetching = false;
       fetchStartTime = 0;
       if (!isConfigMode && WiFi.getMode() != WIFI_OFF) {
@@ -634,6 +646,12 @@ void loop() {
         WiFi.mode(WIFI_OFF);
       }
       updateUI();
+
+      // If connected via BLE but companion didn't respond to refresh within 15s, fallback to Wi-Fi
+      if (SugarotaBLE::getInstance().isConnected() && connectionMode != "BLE_ONLY" && !isConfigMode) {
+        DBG_PRINTLN("BLE: Companion timed out. Falling back to Wi-Fi...");
+        fetchData();
+      }
     }
   }
 
@@ -646,11 +664,18 @@ void loop() {
   }
 
   bool isBleConnected = SugarotaBLE::getInstance().isConnected();
-  // Don't wake Wi-Fi if BLE is connected and we received data within the last 10 minutes
-  bool bleDataStale = (SugarotaBLE::getInstance().getLastPacketTime() == 0) || (millis() - SugarotaBLE::getInstance().getLastPacketTime() > 600000);
-  bool canFetchWifi = (connectionMode != "BLE_ONLY") && (!isBleConnected || bleDataStale);
   
-  if (canFetchWifi && !isConfigMode && (millis() - lastDataFetch >= nextFetchIntervalMs)) {
+  if (isBleConnected) {
+    // When connected via BLE, rely on BLE Companion for data instead of turning on Wi-Fi radio.
+    // If poll interval has elapsed and device isn't already waiting for a fetch, request a refresh via BLE.
+    if (!isFetching && !isConfigMode && (millis() - lastDataFetch >= nextFetchIntervalMs)) {
+      DBG_PRINTLN("BLE: Poll interval elapsed, requesting refresh from Companion");
+      isFetching = true;
+      fetchStartTime = millis();
+      updateUI();
+      SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0, true);
+    }
+  } else if (connectionMode != "BLE_ONLY" && !isConfigMode && (millis() - lastDataFetch >= nextFetchIntervalMs)) {
     fetchData();
   }
 

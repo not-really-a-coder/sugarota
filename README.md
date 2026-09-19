@@ -75,6 +75,7 @@ Detailed technical documentation, data models, and specifications are organized 
 * [System Architecture & State Flow](docs/architecture.md)
 * [Design System & Color Palette](docs/design_system.md)
 * [BLE GATT Protocol Specification](docs/ble_gatt_spec.md)
+* [Security Model & Threat Matrix](SECURITY.md)
 * [Data Schemas & Telemetry Formats](docs/data_schemas.md)
 * [Hardware Guide & Pinout Reference](docs/hardware_guide.md)
 * [Build & Toolchain Requirements](docs/build_requirements.md)
@@ -119,4 +120,6 @@ See [Build & Toolchain Requirements](docs/build_requirements.md) for zero-setup 
 
 Your local configuration containing passwords and API keys is protected by design:
 *   **`data/config.template.json`**: Standard configuration template containing generic placeholders for Wi-Fi and API servers.
-*   **`data/config.json`**: Your active credentials file that will be created after your first run. When you start `utils/run_web_installer.py`, the server automatically creates this file from the template if it is missing. Make sure that file creation permissions are enabled in the **`data/`** folder. 
+*   **`data/config.json`**: Your active credentials file that will be created after your first run. When you start `utils/run_web_installer.py`, the server automatically creates this file from the template if it is missing. Make sure that file creation permissions are enabled in the **`data/`** folder.
+
+For full architectural details, threat mitigations, and BLE pairing protocols, see the [Sugarota Security Model](SECURITY.md). 

@@ -40,13 +40,18 @@ public:
     void setConfigCallback(ConfigUpdatedCallback cb) { m_configCallback = cb; }
     void setPairingCallback(PairingDisplayCallback cb) { m_pairingCallback = cb; }
 
-    // Pairing dialog handling
+    // Pairing mode and security handling
+    void enablePairingMode(bool enable);
+    bool isPairingModeEnabled() const { return m_pairingModeEnabled; }
     bool isPairingActive() const { return m_pairingActive; }
     uint32_t getPairingPin() const { return m_pairingPin; }
     void confirmPairing(bool accept);
+    void updateAdvertising();
 
-    void notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness = -1, int darkTheme = -1);
+    void notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness = -1, int darkTheme = -1, bool requestRefresh = false);
     void disconnect();
+
+    static const int MAX_BLE_CLIENTS = 2;
 
 private:
     SugarotaBLE();
@@ -68,6 +73,7 @@ private:
     PairingDisplayCallback m_pairingCallback;
 
     // Pairing / Security state
+    bool m_pairingModeEnabled;
     bool m_pairingActive;
     uint32_t m_pairingPin;
     uint16_t m_pairingConnHandle;

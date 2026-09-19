@@ -2,6 +2,30 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.19.18] — BLE Pairing Protection, Multi-Client Duty Cycling & Data Refresh Synchronization (2026-09-19)
+
+This release implements time-bounded BLE pairing protection, dynamic multi-client advertising intervals, bi-directional BLE refresh scheduling with Wi-Fi fallback, and dedicated project security documentation.
+
+### Bluetooth & Security
+
+- Restricted BLE numeric pairing requests to designated 60-second boot and manual config mode windows to prevent unauthorized pairing in public
+- Implemented dynamic advertising intervals switching between fast advertising (100-150ms) when idle and low-duty advertising (1000-1280ms) when a client is connected
+- Added support for up to 2 concurrent connected central devices with whitelist-based connection handling
+- Migrated project security model, threat matrix, and pairing protocol specifications into dedicated SECURITY.md
+
+### Connectivity & Synchronization
+
+- Implemented periodic BLE data refresh triggers via status notification characteristic (`request_refresh`) when poll interval elapses
+- Added companion API OK (`api_ok`) and API error (`api_err`) signaling over BLE to confirm remote server queries or trigger timely Wi-Fi fallback
+- Added 15-second BLE refresh timeout with automatic fallback to Wi-Fi data fetching
+- Prevented concurrent duplicate fetches and race conditions in Android companion background service
+
+### Documentation & Assets
+
+- Linked SECURITY.md across root documentation and README reference guides
+- Updated BLE GATT specification and data schemas with new synchronization and error payloads
+- Updated vector and bitmap visual assets across Android mipmaps and project resources
+
 ## [v0.09.18.35] — Remote Companion Device Control, Acoustic Finder, Reconnection Resilience & Visual Identity (2026-09-18)
 
 This release introduces comprehensive remote device controls from the Android companion app, an acoustic device locator alarm, boot button responsiveness, automatic BLE reconnection with exponential backoff, HTTPS retry logic, and new visual branding across installer and mobile companion.

@@ -107,7 +107,7 @@ void checkButton(ButtonState &btn, const char* name) {
             isFetching = true;
             fetchStartTime = millis();
             updateUI();
-            SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
+            SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0, true);
           } else if (connectionMode != "BLE_ONLY") {
             DBG_PRINTLN("ACTION: Force Data Refresh via Wi-Fi");
             fetchData();
@@ -419,6 +419,8 @@ void pollIMU() {
           isConfigMode = true;
           configModeStartTime = millis();
           
+          SugarotaBLE::getInstance().enablePairingMode(true);
+
           WiFi.disconnect();
           WiFi.mode(WIFI_AP);
           WiFi.softAP("Sugarota-Setup");

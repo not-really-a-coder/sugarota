@@ -117,8 +117,11 @@ class SugarotaBleScanReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val largeIcon = android.graphics.BitmapFactory.decodeResource(context.resources, org.sugarota.companion.R.drawable.ic_sugarota_logo)
+
         val notification = NotificationCompat.Builder(context, SugarotaBleService.ALERT_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setLargeIcon(largeIcon)
             .setContentTitle("Sugarota Detected Nearby")
             .setContentText("$displayName is ready. Tap to open and sync.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)

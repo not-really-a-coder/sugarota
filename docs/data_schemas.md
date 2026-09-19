@@ -106,6 +106,17 @@ Sugarota accepts both verbose and compact format. The compact schema is recommen
 }
 ```
 
+#### API Status & Synchronization Signals:
+Written by the companion app when handling scheduled refresh requests:
+
+```json
+// Remote server successfully queried, but reading has not changed:
+{ "type": "api_ok" }
+
+// Remote server query failed; instructs device to initiate Wi-Fi fallback:
+{ "type": "api_err", "msg": "Network error" }
+```
+
 ### 3.2 Remote Control Commands (Characteristic `0x0002`)
 Written by the companion app to trigger hardware and UI state changes:
 
@@ -127,15 +138,16 @@ Written by the companion app to trigger hardware and UI state changes:
 ```
 
 ### 3.3 Device Telemetry Notification (Characteristic `0x0004`)
-Broadcast by Sugarota upon connection, state change, or heartbeat:
+Broadcast by Sugarota upon connection, state change, poll interval expiry, or heartbeat:
 
 ```json
 {
   "battery": 85,
   "charging": true,
-  "version": "v0.09.18.35",
+  "version": "v0.09.19.18",
   "brightness": 204,
-  "dark_theme": true
+  "dark_theme": true,
+  "request_refresh": true
 }
 ```
 

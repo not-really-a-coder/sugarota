@@ -111,6 +111,22 @@ data class GlucoseData(
             obj.put("dst_offset", dstOffsetSec)
             return obj.toString()
         }
+
+        fun createApiOkJson(): String {
+            val obj = JSONObject()
+            obj.put("type", "api_ok")
+            obj.put("time", System.currentTimeMillis() / 1000)
+            return obj.toString()
+        }
+
+        fun createApiErrJson(message: String = ""): String {
+            val obj = JSONObject()
+            obj.put("type", "api_err")
+            if (message.isNotBlank()) {
+                obj.put("msg", message)
+            }
+            return obj.toString()
+        }
     }
 }
 

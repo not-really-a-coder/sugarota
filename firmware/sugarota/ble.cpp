@@ -12,20 +12,19 @@ public:
     SugarotaServerCallbacks(SugarotaBLE* ble) : m_ble(ble) {}
 
     void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
-        m_ble->m_connectedCount++;
+        m_ble->m_connectedCount = pServer->getConnectedCount();
         BLE_DBG_PRINTF("[BLE] Central connected: %s (total clients: %d)\n", connInfo.getAddress().toString().c_str(), m_ble->m_connectedCount);
         
-        // Stop advertising while connected to save significant radio power
-        NimBLEDevice::stopAdvertising();
+        // Adjust advertising: switch to low-duty cycle if 1 slot remains, or stop if full
+        m_ble->updateAdvertising();
 
-        // Negotiate power-efficient BLE connection parameters:
-        // minInterval = 80 (100ms), maxInterval = 120 (150ms), latency = 4 intervals, timeout = 350 (3.5s)
-        // This allows the radio to sleep between readings while remaining responsive.
-        pServer->updateConnParams(connInfo.getConnHandle(), 80, 120, 4, 350);
+        // Negotiate reliable BLE connection parameters:
+        // minInterval = 80 (100ms), maxInterval = 120 (150ms), latency = 2 intervals, timeout = 600 (6.0s)
+        pServer->updateConnParams(connInfo.getConnHandle(), 80, 120, 2, 600);
     }
 
     void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
-        if (m_ble->m_connectedCount > 0) m_ble->m_connectedCount--;
+        m_ble->m_connectedCount = pServer->getConnectedCount();
         if (m_ble->m_connectedCount == 0) {
             m_ble->m_glucoseBridged = false;
         }
@@ -37,13 +36,28 @@ public:
         }
         BLE_DBG_PRINTF("[BLE] Central disconnected (reason %d). Remaining clients: %d\n", reason, m_ble->m_connectedCount);
         
-        // Immediately resume advertising so the phone (or a new phone) can auto-reconnect
-        NimBLEDevice::startAdvertising();
+        // Resume fast or low-duty advertising based on remaining slots
+        m_ble->updateAdvertising();
+    }
+
+    void onConnParamsUpdate(NimBLEConnInfo& connInfo) override {
+        BLE_DBG_PRINTF("[BLE] Conn params updated: interval=%.2fms, latency=%d, timeout=%dms\n",
+            connInfo.getConnInterval() * 1.25f,
+            connInfo.getConnLatency(),
+            connInfo.getConnTimeout() * 10);
     }
 
     void onConfirmPassKey(NimBLEConnInfo& connInfo, uint32_t pin) override {
         BLE_DBG_PRINTF("[BLE Security] Numeric Comparison Request: PIN=%06u from %s (conn %u)\n", 
             pin, connInfo.getAddress().toString().c_str(), connInfo.getConnHandle());
+
+        // Reject pairing from unknown devices if pairing mode is NOT active (requires Boot or Config mode)
+        if (!m_ble->m_pairingModeEnabled) {
+            BLE_DBG_PRINTLN("[BLE Security] Denied pairing request: Pairing mode not active (requires Boot or Config mode)");
+            NimBLEDevice::injectConfirmPasskey(connInfo, false);
+            return;
+        }
+
         m_ble->m_pairingActive = true;
         m_ble->m_pairingPin = pin;
         m_ble->m_pairingConnHandle = connInfo.getConnHandle();
@@ -288,6 +302,7 @@ SugarotaBLE::SugarotaBLE()
       m_glucoseCallback(nullptr),
       m_configCallback(nullptr),
       m_pairingCallback(nullptr),
+      m_pairingModeEnabled(false),
       m_pairingActive(false),
       m_pairingPin(0),
       m_pairingConnHandle(BLE_HS_CONN_HANDLE_NONE),
@@ -384,7 +399,7 @@ void SugarotaBLE::confirmPairing(bool accept) {
     }
 }
 
-void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness, int darkTheme) {
+void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness, int darkTheme, bool requestRefresh) {
     if (!m_pStatusChar) return;
 
     JsonDocument doc;
@@ -397,6 +412,9 @@ void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* vers
     if (darkTheme >= 0) {
         doc["dark_theme"] = (darkTheme == 1);
     }
+    if (requestRefresh) {
+        doc["request_refresh"] = true;
+    }
 
     String payload;
     serializeJson(doc, payload);
@@ -404,6 +422,44 @@ void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* vers
     if (isConnected()) {
         m_pStatusChar->notify();
     }
+}
+
+void SugarotaBLE::enablePairingMode(bool enable) {
+    if (m_pairingModeEnabled == enable) return;
+    m_pairingModeEnabled = enable;
+    BLE_DBG_PRINTF("[BLE Security] Pairing mode %s\n", enable ? "ENABLED" : "DISABLED");
+    updateAdvertising();
+}
+
+void SugarotaBLE::updateAdvertising() {
+    NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
+    if (!pAdvertising) return;
+
+    if (m_connectedCount >= MAX_BLE_CLIENTS) {
+        if (pAdvertising->isAdvertising()) {
+            NimBLEDevice::stopAdvertising();
+            BLE_DBG_PRINTLN("[BLE] Max clients reached. Advertising stopped.");
+        }
+        return;
+    }
+
+    // When 0 clients connected: fast advertising (100-150ms) for snappy first connection.
+    // When 1 client connected: slow low-duty cycle advertising (1000-1280ms).
+    // This allows a second bonded device to connect while avoiding spamming
+    // the already-connected phone's OS Nearby scanner with rapid beacons.
+    uint16_t minInt = (m_connectedCount == 0 || m_pairingModeEnabled) ? 0x00A0 : 0x0640; // 100ms vs 1000ms
+    uint16_t maxInt = (m_connectedCount == 0 || m_pairingModeEnabled) ? 0x00F0 : 0x0800; // 150ms vs 1280ms
+
+    // If currently advertising, stop briefly to apply updated interval
+    if (pAdvertising->isAdvertising()) {
+        NimBLEDevice::stopAdvertising();
+    }
+
+    pAdvertising->setMinInterval(minInt);
+    pAdvertising->setMaxInterval(maxInt);
+    pAdvertising->start();
+    BLE_DBG_PRINTF("[BLE] Advertising active (clients: %d/%d, interval: %s)\n",
+        m_connectedCount, MAX_BLE_CLIENTS, (m_connectedCount == 0 || m_pairingModeEnabled) ? "fast" : "low-duty");
 }
 
 void SugarotaBLE::disconnect() {
@@ -414,4 +470,5 @@ void SugarotaBLE::disconnect() {
         }
     }
 }
+
 

@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.21.3"
+#define SUGAROTA_VERSION "v0.09.21.12"
 
 #include "config.h"
 #include "storage.h"
@@ -56,6 +56,7 @@ bool isFetching = false;
 unsigned long fetchStartTime = 0;
 bool pendingReboot = false;
 unsigned long pendingRebootTime = 0;
+bool pendingStartWifiOta = false;
 
 bool isDarkTheme = true;
 int brightnessLevel = 76;
@@ -79,6 +80,7 @@ uint32_t blePairingPin = 0;
 volatile bool bleUIUpdatePending = false;
 volatile bool blePairingUpdatePending = false;
 volatile bool bleGlucoseReceived = false;
+volatile bool bleFallbackFetchPending = false;
 
 bool isTimerMode = false;
 unsigned long timerStartTime = 0;
@@ -605,6 +607,31 @@ void loop() {
       ESP.restart();
     }
     return;
+  }
+
+  if (pendingStartWifiOta) {
+    pendingStartWifiOta = false;
+    DBG_PRINTLN("OTA: Connecting Wi-Fi from main loop...");
+    connectWiFi();
+    if (WiFi.status() == WL_CONNECTED) {
+      if (!MDNS.begin("sugarota")) {
+        DBG_PRINTLN("[OTA] mDNS begin failed");
+      } else {
+        MDNS.addService("http", "tcp", 80);
+      }
+      String ipStr = WiFi.localIP().toString();
+      DBG_PRINTF("BLE: Wi-Fi connected for OTA at %s (sugarota.local)\n", ipStr.c_str());
+      SugarotaBLE::getInstance().notifyWifiOTAStatus("ready", ipStr.c_str(), "sugarota.local");
+    } else {
+      DBG_PRINTLN("BLE: Wi-Fi connection failed for OTA");
+      SugarotaBLE::getInstance().notifyWifiOTAStatus("wifi_failed", "", "");
+    }
+  }
+
+  if (bleFallbackFetchPending) {
+    bleFallbackFetchPending = false;
+    DBG_PRINTLN("BLE: Companion reported API failure, falling back to Wi-Fi fetch from main loop...");
+    fetchData();
   }
 
   if (isConfigMode && (millis() - configModeStartTime > 300000)) {

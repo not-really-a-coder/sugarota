@@ -85,11 +85,11 @@ void handleBLEGlucose(const JsonDocument& doc) {
 
   if (strcmp(pType, "api_err") == 0) {
     const char* errMsg = doc["msg"] | "Remote API unreachable";
-    DBG_PRINTF("BLE: Companion reported API failure (%s). Falling back to Wi-Fi...\n", errMsg);
+    DBG_PRINTF("BLE: Companion reported API failure (%s). Queuing Wi-Fi fallback...\n", errMsg);
     isFetching = false;
     fetchStartTime = 0;
     if (connectionMode != "BLE_ONLY" && !isConfigMode) {
-      fetchData();
+      bleFallbackFetchPending = true;
     } else {
       lastDataFetch = millis();
       nextFetchIntervalMs = getFetchIntervalMs();
@@ -241,21 +241,8 @@ void handleBLECommand(const JsonDocument& doc) {
     DBG_PRINTLN("BLE: Remote power off requested...");
     deviceOn = false;
   } else if (strcmp(cmd, "start_wifi_ota") == 0) {
-    DBG_PRINTLN("BLE: start_wifi_ota command received. Preparing Wi-Fi & WebServer...");
-    connectWiFi();
-    if (WiFi.status() == WL_CONNECTED) {
-      if (!MDNS.begin("sugarota")) {
-        DBG_PRINTLN("[OTA] mDNS begin failed");
-      } else {
-        MDNS.addService("http", "tcp", 80);
-      }
-      String ipStr = WiFi.localIP().toString();
-      DBG_PRINTF("BLE: Wi-Fi connected for OTA at %s (sugarota.local)\n", ipStr.c_str());
-      SugarotaBLE::getInstance().notifyWifiOTAStatus("ready", ipStr.c_str(), "sugarota.local");
-    } else {
-      DBG_PRINTLN("BLE: Wi-Fi connection failed for OTA");
-      SugarotaBLE::getInstance().notifyWifiOTAStatus("wifi_failed", "", "");
-    }
+    DBG_PRINTLN("BLE: start_wifi_ota command received. Queuing Wi-Fi connect from main loop...");
+    pendingStartWifiOta = true;
   }
 }
 

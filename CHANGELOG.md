@@ -2,7 +2,7 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
-## [v0.09.21.3] — Sustained Shake Config Toggle & Wi-Fi OTA Flashing (2026-09-21)
+## [v0.09.21.12] — Sustained Shake Config Toggle & Wi-Fi OTA Flashing (2026-09-21)
 
 This release implements sustained shake detection to toggle device configuration mode on and off, high-speed Wi-Fi OTA flashing via WebSerial installer and Android companion, and automatic crash log retrieval.
 
@@ -14,6 +14,7 @@ This release implements sustained shake detection to toggle device configuration
 
 ### Firmware & Installation
 
+- Decoupled Wi-Fi fallback fetching on companion `api_err` and OTA initialization from the NimBLE callback task to the main Arduino loop, resolving `Exception_Panic (4)` and BLE link supervision timeouts (`status=8`)
 - Added Wi-Fi OTA flashing endpoints supporting high-speed multipart and raw binary streams with MD5 verification
 - Added graphical full-screen flashing progress bar on device display during wireless firmware updates
 - Added API endpoint and WebSerial command to retrieve stored crash logs from persistent storage

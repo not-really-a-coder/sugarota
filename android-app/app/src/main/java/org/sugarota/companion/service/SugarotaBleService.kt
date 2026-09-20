@@ -526,29 +526,41 @@ class SugarotaBleService : Service() {
     fun sendDeviceCommand(address: String, cmdObj: org.json.JSONObject, onComplete: ((Boolean) -> Unit)? = null) {
         val gatt = connectedGatts[address]
         if (gatt == null) {
+            Log.w("SugarotaBleService", "sendDeviceCommand failed: $address not connected in GATT map")
+            appendDeviceLog(address, "sendDeviceCommand failed: not connected over BLE")
             onComplete?.invoke(false)
             return
         }
         val service = gatt.getService(BleUuids.SUGAROTA_SERVICE)
         val glucoseChar = service?.getCharacteristic(BleUuids.CHAR_GLUCOSE)
         if (glucoseChar == null) {
+            Log.w("SugarotaBleService", "sendDeviceCommand failed: CHAR_GLUCOSE not found for $address")
+            appendDeviceLog(address, "sendDeviceCommand failed: CHAR_GLUCOSE missing")
             onComplete?.invoke(false)
             return
         }
+        val cmdName = cmdObj.optString("cmd", "unknown")
         val bytes = cmdObj.toString().toByteArray(Charsets.UTF_8)
-        val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val res = gatt.writeCharacteristic(glucoseChar, bytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-            res == BluetoothStatusCodes.SUCCESS
-        } else {
-            @Suppress("DEPRECATION")
-            glucoseChar.value = bytes
-            @Suppress("DEPRECATION")
-            glucoseChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-            @Suppress("DEPRECATION")
-            gatt.writeCharacteristic(glucoseChar)
+        try {
+            val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val res = gatt.writeCharacteristic(glucoseChar, bytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                res == BluetoothStatusCodes.SUCCESS
+            } else {
+                @Suppress("DEPRECATION")
+                glucoseChar.value = bytes
+                @Suppress("DEPRECATION")
+                glucoseChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                @Suppress("DEPRECATION")
+                gatt.writeCharacteristic(glucoseChar)
+            }
+            Log.i("SugarotaBleService", "sendDeviceCommand to $address: cmd=$cmdName (${bytes.size}B), write accepted=$success")
+            appendDeviceLog(address, "BLE command [$cmdName] initiated: success=$success")
+            onComplete?.invoke(success)
+        } catch (e: Exception) {
+            Log.e("SugarotaBleService", "sendDeviceCommand to $address failed", e)
+            appendDeviceLog(address, "BLE command [$cmdName] error: ${e.message}")
+            onComplete?.invoke(false)
         }
-        Log.i("SugarotaBleService", "sendDeviceCommand to $address: cmd=${cmdObj.optString("cmd")}, write initiated=$success")
-        onComplete?.invoke(success)
     }
 
     fun setDeviceBrightness(address: String, level: Int) {

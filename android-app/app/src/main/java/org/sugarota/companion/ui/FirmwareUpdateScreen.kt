@@ -138,8 +138,23 @@ fun FirmwareUpdateScreen(
             return
         }
 
+        // Verify BLE connection is active before sending command
+        val currentDevState = service?.devices?.value?.get(device.address)
+        if (currentDevState == null || !currentDevState.isConnected) {
+            wifiErrorReason = "Sugarota is not connected over Bluetooth. Please ensure the device is powered on and within Bluetooth range."
+            screenState = UpdateScreenState.WIFI_MISMATCH
+            return
+        }
+
         // Request device to start Wi-Fi OTA server
-        service?.startWifiOta(device.address)
+        service.startWifiOta(device.address) { writeInitiated ->
+            if (!writeInitiated) {
+                scope.launch {
+                    wifiErrorReason = "Failed to send OTA activation command to Sugarota over Bluetooth. Please try again."
+                    screenState = UpdateScreenState.WIFI_MISMATCH
+                }
+            }
+        }
 
         // Poll for device OTA ready state or direct subnet response
         scope.launch {

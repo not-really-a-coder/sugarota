@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#define SUGAROTA_VERSION "v0.09.21.3"
+#define SUGAROTA_VERSION "v0.09.21.12"
 
 // --- Design System Colors (RGB565 matching Shadcn Zinc Dark & Telemetry Palette) ---
 #define BLACK   0x0841  // #09090B (OLED Zinc Dark Canvas)
@@ -148,6 +148,7 @@ extern bool isFetching;
 extern unsigned long fetchStartTime;
 extern bool pendingReboot;
 extern unsigned long pendingRebootTime;
+extern bool pendingStartWifiOta;
 
 extern bool isDarkTheme;
 extern int brightnessLevel;
@@ -172,6 +173,7 @@ extern uint32_t blePairingPin;
 extern volatile bool bleUIUpdatePending;
 extern volatile bool blePairingUpdatePending;
 extern volatile bool bleGlucoseReceived;
+extern volatile bool bleFallbackFetchPending;
 
 
 // Timer Mode states

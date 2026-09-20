@@ -66,11 +66,40 @@ Write-Host "Output Dir:     $outputDir" -ForegroundColor DarkGray
 Write-Host "Build Cache:    $buildPath`n" -ForegroundColor DarkGray
 
 if (-not $Yes) {
-    $Prompt = Read-Host "Proceed with compiling firmware $Version? (Y/n)"
-    if ($Prompt -and $Prompt.Trim() -notmatch "^(?i:y|yes)$") {
+    Write-Host "Proceed with compiling firmware $($Version)? (Y/Enter/n) [Auto-abort in 10s]: " -NoNewline
+
+    # Invoke a lightweight powershell sub-process to enforce strict 10s timeout
+    $TimedScript = @"
+        `$sw = [System.Diagnostics.Stopwatch]::StartNew()
+        while (`$sw.Elapsed.TotalSeconds -lt 10) {
+            if ([Console]::KeyAvailable) {
+                `$line = [Console]::ReadLine()
+                if ([string]::IsNullOrWhiteSpace(`$line)) { `$line = 'y' }
+                [Console]::Out.Write(`$line)
+                exit 0
+            }
+            [System.Threading.Thread]::Sleep(100)
+        }
+        exit 124
+"@
+    $Encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($TimedScript))
+    $psi = [System.Diagnostics.ProcessStartInfo]::new("powershell.exe", "-NoProfile -EncodedCommand $Encoded")
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $output = $proc.StandardOutput.ReadToEnd()
+    $proc.WaitForExit()
+
+    if ($proc.ExitCode -eq 124) {
+        Write-Host "`n[TIMEOUT] No response received within 10 seconds. Build aborted to avoid blocking." -ForegroundColor Yellow
+        Write-Host "Tip: Pass -Yes to run unattended without prompt." -ForegroundColor DarkGray
+        exit 0
+    } elseif ($output.Trim() -notmatch "^(?i:y|yes)$") {
+        Write-Host ""
         Write-Host "Build cancelled by user." -ForegroundColor Yellow
         exit 0
     }
+    Write-Host ""
 }
 
 

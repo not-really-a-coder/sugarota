@@ -40,8 +40,8 @@ Sugarota is an ultra-compact, low-power continuous glucose telemetry monitor pow
  │ │ Display Engine│     │ Power & Sensor │         │ Web Portal │  │
  │ │ - AXS15231B   │     │ - QMI8658 IMU  │         │ - AP Mode  │  │
  │ │ - QSPI Canvas │     │ - Calibrated   │         │ - mDNS     │  │
- │ │ - Trend Graph │     │   Battery ADC  │         │ - Captive  │  │
- │ │ - Harvey Ball │     │ - PCF85063 RTC │         │   Portal   │  │
+ │ │ - Trend Graph │     │   Battery ADC  │         │ - REST API │  │
+ │ │ - Harvey Ball │     │ - PCF85063 RTC │         │ - Wi-Fi OTA│  │
  │ └───────────────┘     └────────────────┘         └────────────┘  │
  └──────────────────────────────────────────────────────────────────┘
 ```
@@ -70,10 +70,17 @@ Sugarota supports three operating modes configured in `config.json`:
 ### 2.4 Power Management & Sensors
 - **Battery Monitoring**: High-accuracy ESP32-S3 internal ADC calibration scheme (`adc_oneshot` with curve fitting). Employs rolling median and slope detection to filter out USB charging noise.
 - **IMU & Gestures (`QMI8658`)**:
-  - **Shake Detection**: Vigorously shaking device enters Wi-Fi Access Point **Config Mode** (`Sugarota-Setup`).
+  - **Shake Detection**: Vigorously shaking device for ~1.5s toggles Wi-Fi Access Point **Config Mode** (`Sugarota-Setup`) and BLE pairing window on/off, accompanied by audible beep confirmation.
   - **Face Down**: Placing screen face down automatically dims backlight to `0` to conserve battery. Picking up instantly restores brightness.
   - **Timer Mode**: Rotating device 90° horizontally activates an integrated count-up timer with audible chime feedback.
 - **Hardware RTC (`PCF85063`)**: Backed by battery power to preserve UTC timestamps across deep sleep and hard reboots. Synchronized on every phone connect or NTP sync.
+
+### 2.5 Wireless Over-The-Air (OTA) Flashing Subsystem
+- **Dual Application Partitions**: Dual 3MB OTA slots (`ota_0` and `ota_1`) configured in `partitions.csv` with rollback protection.
+- **Local Network HTTP Streaming**: Ingests multipart or binary chunk streams over local Wi-Fi via `POST /api/ota` or `POST /update` at speeds exceeding 300–500 KB/s (~3–5s for 1MB binary).
+- **Integrity Verification**: Supports optional `x-MD5` headers checked via Arduino `Update.setMD5()`, ensuring corrupted transfers abort before writing boot flags.
+- **Live On-Screen Telemetry**: Bypasses routine UI and sensor updates during flashing (`isOTAUpdating`), rendering a dedicated full-screen graphical progress bar and percentage directly on the 3.49" LCD (`drawOTAProgress`).
+- **Automatic Reboot**: Validates partition completion via `Update.end(true)` and schedules a safe `ESP.restart()` after confirming success.
 
 ---
 

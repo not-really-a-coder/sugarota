@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.20.3"
+#define SUGAROTA_VERSION "v0.09.21.3"
 
 #include "config.h"
 #include "storage.h"
@@ -7,6 +7,7 @@
 #include "audio.h"
 #include "display.h"
 #include "net_client.h"
+#include <Update.h>
 #include "web_portal.h"
 #include "ui.h"
 #include "input.h"
@@ -59,6 +60,9 @@ unsigned long pendingRebootTime = 0;
 bool isDarkTheme = true;
 int brightnessLevel = 76;
 unsigned long lastUiUpdate = 0;
+
+bool isOTAUpdating = false;
+int otaProgressPercent = 0;
 
 BGReading bgHistory[MAX_HISTORY];
 int historyCount = 0;
@@ -186,6 +190,18 @@ static void detectHardwareVersion() {
   }
 }
 
+void exitConfigMode() {
+  if (!isConfigMode) return;
+  isConfigMode = false;
+  DBG_PRINTLN("CONFIG MODE: Exited");
+  SugarotaBLE::getInstance().enablePairingMode(false);
+  if (!isFetching) {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+  }
+  updateUI();
+}
+
 void powerOffDevice() {
   DBG_PRINTLN(F("Powering off device..."));
   deviceOn = false;
@@ -283,6 +299,15 @@ void checkSerialConsole() {
       delay(500);
       ESP.restart();
     }
+    else if (command == "GET_CRASH_LOG") {
+      Serial.println("--- BEGIN CRASH LOG ---");
+      Serial.print(readCrashLog());
+      Serial.println("--- END CRASH LOG ---");
+    }
+    else if (command == "CLEAR_CRASH_LOG") {
+      clearCrashLog();
+      Serial.println("CONF_OK");
+    }
   }
 }
 
@@ -363,6 +388,12 @@ void setup() {
   char hwMsg[40];
   snprintf(hwMsg, sizeof(hwMsg), "Hardware: V%d (%s)", hwVersion, hwVersionConfig.c_str());
   logBoot(hwMsg);
+
+  recordBootResetReason();
+  esp_reset_reason_t rstReason = esp_reset_reason();
+  char rstMsg[40];
+  snprintf(rstMsg, sizeof(rstMsg), "Boot Reason: %s (%d)", getResetReasonString(rstReason), (int)rstReason);
+  logBoot(rstMsg);
 
   if (loadHistoryFromCache()) {
     char cacheMsg[40];
@@ -577,11 +608,8 @@ void loop() {
   }
 
   if (isConfigMode && (millis() - configModeStartTime > 300000)) {
-    isConfigMode = false;
     DBG_PRINTLN("CONFIG MODE: AUTO OFF (5m Timeout)");
-    SugarotaBLE::getInstance().enablePairingMode(false);
-    if (!isFetching) { WiFi.disconnect(true); WiFi.mode(WIFI_OFF); }
-    updateUI();
+    exitConfigMode();
   }
 
   if (brightnessLevel > 0) {
@@ -623,8 +651,14 @@ void loop() {
     }
   }
 
-  if (isConfigMode) {
+  if (isConfigMode || isOTAUpdating || (WiFi.getMode() == WIFI_STA && WiFi.status() == WL_CONNECTED)) {
     server.handleClient();
+  }
+
+  if (isOTAUpdating) {
+    // While actively flashing, yield and bypass standard display/fetch logic
+    delay(1);
+    return;
   }
 
   // Smooth spinner animation while fetching

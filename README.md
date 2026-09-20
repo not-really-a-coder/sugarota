@@ -64,7 +64,8 @@ The local setup center requires **zero external python packages** (no `requireme
   - **Unit Configuration**: Configurable via Web Installer or Android Companion App settings.
 - **Companion App Remote Control & Find Device**: Control brightness, toggle dark/light theme, trigger acoustic Find Device locator alarm with loud distinct beeps, or remotely reboot and power off the device directly over BLE.
 - **High-DPI Interactive Historical Chart**: 4-hour historical CGM graph with touch scrubber for inspecting past readings.
-- **Orientation & Gesture Sensing**: QMI8658 6-axis IMU enables shake-to-refresh, face-down auto-sleep gesture, and automatic 180° rotation into injection-to-meal stopwatch timer mode.
+- **High-Speed Wi-Fi OTA Flashing**: Update firmware wirelessly over your local Wi-Fi network (`http://sugarota.local/api/ota` or local IP) in 3–5 seconds with live on-screen flashing progress, MD5 verification, and automatic rollback-safe reboot into the new partition.
+- **Orientation & Gesture Sensing**: QMI8658 6-axis IMU enables sustained shake-to-toggle setup/pairing config mode, face-down auto-sleep gesture, and automatic 180° rotation into injection-to-meal stopwatch timer mode.
 - **Privacy & Security**: Link-encrypted BLE pairing with numeric passkey verification; credentials are saved purely on-device in encrypted LittleFS flash with zero cloud reliance.
 
 ---

@@ -401,39 +401,57 @@ void pollIMU() {
       }
       
       // 3. Shake Detection
+      // To prevent accidental triggers and require an intentional, sustained shake (~1.5 seconds),
+      // we track continuous shaking over an extended window requiring 8 shake samples.
+      static unsigned long firstShakeTime = 0;
       static unsigned long lastShakeTime = 0;
+      static unsigned long lastShakeTriggerTime = 0;
       static int shakeCount = 0;
       float totalAcc = abs(x) + abs(y) + abs(z);
       
       if (totalAcc > 2.5) {
-        if (millis() - lastShakeTime < 500) {
-          shakeCount++;
-        } else {
-          shakeCount = 1;
-        }
-        lastShakeTime = millis();
-        
-        if (shakeCount >= 3) {
-          shakeCount = 0;
-          DBG_PRINTLN("SHAKE DETECTED: Entering Config Mode...");
-          isConfigMode = true;
-          configModeStartTime = millis();
-          
-          SugarotaBLE::getInstance().enablePairingMode(true);
-
-          WiFi.disconnect();
-          WiFi.mode(WIFI_AP);
-          WiFi.softAP("Sugarota-Setup");
-          
-          if (!MDNS.begin("sugarota")) {
-            DBG_PRINTLN("Error setting up MDNS responder!");
+        unsigned long now = millis();
+        if (now - lastShakeTriggerTime > 1500) { // Cooldown between triggers
+          if (now - lastShakeTime < 500) {
+            shakeCount++;
           } else {
-            DBG_PRINTLN("mDNS responder started: http://sugarota.local");
-            MDNS.addService("http", "tcp", 80);
+            shakeCount = 1;
+            firstShakeTime = now;
           }
+          lastShakeTime = now;
           
-          playBeeps(0, 3);
-          updateUI();
+          // Require at least 8 shake peaks and at least 1200ms of sustained shaking (~1.5s total)
+          if (shakeCount >= 8 && (now - firstShakeTime >= 1200)) {
+            shakeCount = 0;
+            firstShakeTime = 0;
+            lastShakeTriggerTime = now;
+            
+            if (isConfigMode) {
+              DBG_PRINTLN("SHAKE DETECTED: Exiting Config Mode...");
+              playBeeps(0, 2);
+              exitConfigMode();
+            } else {
+              DBG_PRINTLN("SHAKE DETECTED: Entering Config Mode...");
+              isConfigMode = true;
+              configModeStartTime = millis();
+              
+              SugarotaBLE::getInstance().enablePairingMode(true);
+
+              WiFi.disconnect();
+              WiFi.mode(WIFI_AP);
+              WiFi.softAP("Sugarota-Setup");
+              
+              if (!MDNS.begin("sugarota")) {
+                DBG_PRINTLN("Error setting up MDNS responder!");
+              } else {
+                DBG_PRINTLN("mDNS responder started: http://sugarota.local");
+                MDNS.addService("http", "tcp", 80);
+              }
+              
+              playBeeps(0, 3);
+              updateUI();
+            }
+          }
         }
       }
     }

@@ -74,6 +74,7 @@ fun DeviceDetailScreen(
     // Custom device name rename dialog
     var customName by remember { mutableStateOf(device.name) }
     var showRenameDialog by remember { mutableStateOf(false) }
+    var showFirmwareUpdate by remember { mutableStateOf(false) }
     var editNameText by remember { mutableStateOf(customName) }
 
     if (showRenameDialog) {
@@ -150,6 +151,15 @@ fun DeviceDetailScreen(
                 }
             }
         }
+    }
+
+    if (showFirmwareUpdate) {
+        FirmwareUpdateScreen(
+            device = device,
+            service = service,
+            onDismiss = { showFirmwareUpdate = false }
+        )
+        return
     }
 
     Scaffold(
@@ -333,7 +343,8 @@ fun DeviceDetailScreen(
                     DeviceChartContent(
                         device = device,
                         lastReading = lastReading,
-                        service = service
+                        service = service,
+                        onOpenFirmwareUpdate = { showFirmwareUpdate = true }
                     )
                 }
                 DeviceScreenTab.CONFIG -> {
@@ -342,6 +353,7 @@ fun DeviceDetailScreen(
                         deviceName = customName.ifBlank { device.name },
                         service = service,
                         showHeader = false,
+                        onOpenFirmwareUpdate = { showFirmwareUpdate = true },
                         onDismiss = onDismiss
                     )
                 }
@@ -360,7 +372,8 @@ fun DeviceDetailScreen(
 fun DeviceChartContent(
     device: SugarotaDevice,
     lastReading: org.sugarota.companion.model.GlucoseData?,
-    service: SugarotaBleService?
+    service: SugarotaBleService?,
+    onOpenFirmwareUpdate: () -> Unit = {}
 ) {
     val colors = ShadcnTheme.colors
     val typography = ShadcnTheme.typography
@@ -629,7 +642,8 @@ fun DeviceChartContent(
                             )
                             ShadcnBadge(
                                 text = device.status.version,
-                                variant = ShadcnButtonVariant.SECONDARY
+                                variant = ShadcnButtonVariant.SECONDARY,
+                                modifier = Modifier.clickable(onClick = onOpenFirmwareUpdate)
                             )
                         }
                     }

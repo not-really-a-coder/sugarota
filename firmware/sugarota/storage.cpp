@@ -158,3 +158,88 @@ void saveConfig() {
   serializeJson(doc, f);
   f.close();
 }
+
+const char* getResetReasonString(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON:    return "POWERON";
+    case ESP_RST_EXT:        return "EXT_PIN";
+    case ESP_RST_SW:         return "SW_RESET";
+    case ESP_RST_PANIC:      return "EXCEPTION_PANIC";
+    case ESP_RST_INT_WDT:    return "INT_WDT";
+    case ESP_RST_TASK_WDT:   return "TASK_WDT";
+    case ESP_RST_WDT:        return "OTHER_WDT";
+    case ESP_RST_DEEPSLEEP:  return "DEEP_SLEEP";
+    case ESP_RST_BROWNOUT:   return "BROWNOUT";
+    case ESP_RST_SDIO:       return "SDIO";
+    case ESP_RST_USB:        return "USB_RESET";
+    case ESP_RST_JTAG:       return "JTAG";
+    case ESP_RST_EFUSE:      return "EFUSE_ERR";
+    case ESP_RST_PWR_GLITCH: return "PWR_GLITCH";
+    case ESP_RST_CPU_LOCKUP: return "CPU_LOCKUP";
+    default:                 return "UNKNOWN";
+  }
+}
+
+void recordBootResetReason() {
+  esp_reset_reason_t reason = esp_reset_reason();
+  const char* reasonStr = getResetReasonString(reason);
+  DBG_PRINTF("SYSTEM: Boot reset reason: %s (%d)\n", reasonStr, (int)reason);
+
+  // If this is an abnormal reset (Brownout, Panic/Crash, Watchdog), record in /crash.log
+  if (reason == ESP_RST_BROWNOUT || reason == ESP_RST_PANIC || 
+      reason == ESP_RST_INT_WDT || reason == ESP_RST_TASK_WDT || reason == ESP_RST_WDT) {
+    
+    // Check file size to avoid unbounded growth (keep last ~4KB)
+    if (LittleFS.exists("/crash.log")) {
+      File check = LittleFS.open("/crash.log", "r");
+      if (check && check.size() > 4096) {
+        check.close();
+        LittleFS.remove("/crash.log");
+      } else if (check) {
+        check.close();
+      }
+    }
+
+    File f = LittleFS.open("/crash.log", "a");
+    if (f) {
+      time_t now = time(NULL);
+      struct tm ti;
+      localtime_r(&now, &ti);
+      char timeBuf[32];
+      if (now > 1700000000LL) {
+        snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d",
+                 ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday, ti.tm_hour, ti.tm_min, ti.tm_sec);
+      } else {
+        snprintf(timeBuf, sizeof(timeBuf), "uptime_boot");
+      }
+
+      char logEntry[128];
+      snprintf(logEntry, sizeof(logEntry), "[%s] CRASH: %s (code %d, bat: %.2fV / %d%%)\n",
+               timeBuf, reasonStr, (int)reason, currentBatteryVoltage, currentBatteryPct);
+      f.print(logEntry);
+      f.close();
+      DBG_PRINTF("SYSTEM: Crash event logged to /crash.log: %s", logEntry);
+    }
+  }
+}
+
+String readCrashLog() {
+  if (!LittleFS.exists("/crash.log")) {
+    return "No crash logs recorded.\n";
+  }
+  File f = LittleFS.open("/crash.log", "r");
+  if (!f) {
+    return "Failed to open crash log.\n";
+  }
+  String content = f.readString();
+  f.close();
+  return content;
+}
+
+void clearCrashLog() {
+  if (LittleFS.exists("/crash.log")) {
+    LittleFS.remove("/crash.log");
+    DBG_PRINTLN("SYSTEM: Crash log cleared.");
+  }
+}
+

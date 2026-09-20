@@ -511,6 +511,7 @@ fun DeviceConfigScreen(
     deviceName: String,
     service: SugarotaBleService?,
     showHeader: Boolean = true,
+    onOpenFirmwareUpdate: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     BackHandler(onBack = onDismiss)
@@ -520,6 +521,7 @@ fun DeviceConfigScreen(
     var isSaving by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var showRawJson by remember { mutableStateOf(false) }
+    var showFirmwareUpdateScreen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     val colors = ShadcnTheme.colors
@@ -674,6 +676,19 @@ fun DeviceConfigScreen(
                 }
             }
         }
+    }
+
+    if (showFirmwareUpdateScreen) {
+        val devObj = service?.devices?.collectAsState()?.value?.get(deviceAddress) ?: SugarotaDevice(
+            name = customName.ifBlank { deviceName },
+            address = deviceAddress
+        )
+        FirmwareUpdateScreen(
+            device = devObj,
+            service = service,
+            onDismiss = { showFirmwareUpdateScreen = false }
+        )
+        return
     }
 
     Scaffold(
@@ -1147,9 +1162,74 @@ fun DeviceConfigScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
+                // Firmware & Updates Section
+                Text(
+                    text = "FIRMWARE & UPDATES",
+                    style = typography.caption,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.foreground
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Manage Sugarota device firmware and over-the-air updates",
+                    style = typography.caption,
+                    color = colors.mutedForeground
+                )
+                Spacer(modifier = Modifier.height(8.dp))
 
+                val devObj = service?.devices?.collectAsState()?.value?.get(deviceAddress)
+                val fwVersion = devObj?.status?.version?.ifBlank { "Unknown" } ?: "Unknown"
 
-                // Toggle Raw JSON
+                ShadcnCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Installed Firmware",
+                                style = typography.body,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.foreground
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = fwVersion,
+                                style = typography.caption,
+                                color = colors.mutedForeground,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                        }
+
+                        ShadcnButton(
+                            onClick = {
+                                if (onOpenFirmwareUpdate != null) {
+                                    onOpenFirmwareUpdate()
+                                } else {
+                                    showFirmwareUpdateScreen = true
+                                }
+                            },
+                            variant = ShadcnButtonVariant.SECONDARY
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SystemUpdateAlt,
+                                contentDescription = null,
+                                tint = colors.foreground,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Check for updates",
+                                style = typography.caption,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.foreground
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
                 ShadcnButton(
                     onClick = { showRawJson = !showRawJson },
                     variant = ShadcnButtonVariant.GHOST,

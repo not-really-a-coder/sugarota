@@ -139,11 +139,30 @@ data class DeviceStatus(
     val isDebugMode: Boolean = false
 )
 
+data class WifiOtaStatus(
+    val status: String = "idle", // "idle", "ready", "wifi_failed"
+    val ip: String = "",
+    val mdns: String = ""
+) {
+    val isReady: Boolean get() = status == "ready" && ip.isNotBlank()
+    val isFailed: Boolean get() = status == "wifi_failed"
+}
+
+data class FirmwareReleaseInfo(
+    val version: String,
+    val changelog: String,
+    val downloadUrl: String,
+    val sizeBytes: Long = 0,
+    val md5: String = ""
+)
+
 data class SugarotaDevice(
     val name: String,
     val address: String,
     val rssi: Int = 0,
     val isConnected: Boolean = false,
     val isBonded: Boolean = false,
-    val status: DeviceStatus = DeviceStatus()
+    val status: DeviceStatus = DeviceStatus(),
+    val wifiOta: WifiOtaStatus = WifiOtaStatus()
 )
+

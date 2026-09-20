@@ -2,6 +2,24 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.21.3] — Sustained Shake Config Toggle & Wi-Fi OTA Flashing (2026-09-21)
+
+This release implements sustained shake detection to toggle device configuration mode on and off, high-speed Wi-Fi OTA flashing via WebSerial installer and Android companion, and automatic crash log retrieval.
+
+### Gestures & Hardware Controls
+
+- Increased shake detection duration to require sustained shaking (~1.5s with at least 8 acceleration peaks) to avoid accidental triggers
+- Added ability to exit Config Mode early by shaking the device again, accompanied by two confirmation beeps
+- Centralized config mode termination logic cleanly disabling SoftAP and BLE pairing mode
+
+### Firmware & Installation
+
+- Added Wi-Fi OTA flashing endpoints supporting high-speed multipart and raw binary streams with MD5 verification
+- Added graphical full-screen flashing progress bar on device display during wireless firmware updates
+- Added API endpoint and WebSerial command to retrieve stored crash logs from persistent storage
+
+---
+
 ## [v0.09.20.3] — Historical Gap Backfill Recovery & 64-bit Timestamp Ingestion (2026-09-20)
 
 This release implements automatic historical data gap detection and multi-packet chunk recovery over BLE, non-destructive Wi-Fi history merging, and 64-bit UTC epoch timestamp parsing for Dexcom Share.

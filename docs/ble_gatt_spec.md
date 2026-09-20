@@ -15,17 +15,17 @@ This document defines the Bluetooth Low Energy (BLE) interface for Sugarota on t
 
 | Characteristic | UUID | Properties | Format / Payload Description |
 | :--- | :--- | :--- | :--- |
-| **Glucose Data & Command Stream** | `6E400002-B5A3-F393-E0A9-E50E24DCCA9E` | `WRITE`, `WRITE_NR`, `WRITE_ENC`, `NOTIFY` | JSON format. Protected via authenticated BLE encryption.<br>• Glucose: `{"sgv": 115, "direction": "Flat", "delta": -2, "timestamp": 1725450000}`<br>• Remote API Signals: `{"type": "api_ok"}` (server queried, no new reading), `{"type": "api_err", "msg": "Network error"}` (triggers Wi-Fi fallback)<br>• Remote Commands: `{"cmd": "set_brightness", "val": 204}`, `{"cmd": "set_theme", "val": "dark"|"light"}`, `{"cmd": "find_device"}`, `{"cmd": "reboot"}`, `{"cmd": "power_off"}` |
+| **Glucose Data & Command Stream** | `6E400002-B5A3-F393-E0A9-E50E24DCCA9E` | `WRITE`, `WRITE_NR`, `WRITE_ENC`, `NOTIFY` | JSON format. Protected via authenticated BLE encryption.<br>• Glucose: `{"sgv": 115, "direction": "Flat", "delta": -2, "timestamp": 1725450000}`<br>• Remote API Signals: `{"type": "api_ok"}` (server queried, no new reading), `{"type": "api_err", "msg": "Network error"}` (triggers Wi-Fi fallback)<br>• Remote Commands: `{"cmd": "set_brightness", "val": 204}`, `{"cmd": "set_theme", "val": "dark"|"light"}`, `{"cmd": "find_device"}`, `{"cmd": "reboot"}`, `{"cmd": "power_off"}`, `{"cmd": "start_wifi_ota"}` |
 | **Device Config** | `6E400003-B5A3-F393-E0A9-E50E24DCCA9E` | `READ`, `READ_ENC`, `WRITE`, `WRITE_ENC`, `NOTIFY` | Protected via authenticated BLE encryption. Reads or writes the full device `/config.json`. Single JSON write or chunked `[START]...[END]` writes. Writing valid JSON commits to LittleFS and reboots device in 1s. |
-| **Device Status** | `6E400004-B5A3-F393-E0A9-E50E24DCCA9E` | `READ`, `NOTIFY` | Device telemetry notification broadcast upon connection, state changes, poll timer expiry, or routine heartbeat.<br>Payload: `{"battery": 85, "charging": true, "version": "v0.09.19.18", "brightness": 204, "dark_theme": true, "request_refresh": true}` |
-| **OTA Stream & Control** | `6E400005-B5A3-F393-E0A9-E50E24DCCA9E` | `WRITE`, `WRITE_NR`, `WRITE_ENC`, `NOTIFY` | Protected via authenticated BLE encryption. Dual-partition rollback safe firmware stream. Commands: `OTA_BEGIN` $\to$ binary chunks $\to$ `OTA_END` (reboots into new partition). |
+| **Device Status** | `6E400004-B5A3-F393-E0A9-E50E24DCCA9E` | `READ`, `NOTIFY` | Device telemetry notification broadcast upon connection, state changes, poll timer expiry, routine heartbeat, or Wi-Fi OTA handshake.<br>Payloads:<br>• Telemetry: `{"battery": 85, "charging": true, "version": "v0.09.20.41", "brightness": 204, "dark_theme": true, "request_refresh": true}`<br>• Wi-Fi OTA Handshake: `{"wifi_ota": "ready", "ip": "192.168.1.50", "mdns": "sugarota.local"}` or `{"wifi_ota": "wifi_failed"}` |
+| **OTA Stream & Control (BLE)** | `6E400005-B5A3-F393-E0A9-E50E24DCCA9E` | `WRITE`, `WRITE_NR`, `WRITE_ENC`, `NOTIFY` | Protected via authenticated BLE encryption. Legacy dual-partition BLE firmware stream (`OTA_BEGIN` $\to$ chunks $\to$ `OTA_END`). *Note: For significantly faster and more reliable flashing (3–5s), Wi-Fi OTA via `start_wifi_ota` is recommended.* |
 
 ### Security & Pairing Mode Architecture
 * **Pairing Protocol**: BLE Security Manager Protocol (SMP) using **LE Secure Connections (SC)** with Man-in-the-Middle (MITM) protection and **Numeric Comparison** (`BLE_HS_IO_DISPLAY_YESNO`).
 * **Pairing Mode Windows**:
   To protect against rogue strangers or nearby phones spamming pairing requests in public, open discovery/pairing is only enabled during designated windows:
   1. **Boot Window**: Active during the device boot sequence and initial companion check.
-  2. **Config Mode Window (Shake)**: Active when the device is shaken into Config Mode (5-minute auto-timeout).
+  2. **Config Mode Window (Shake)**: Active when the device is shaken into Config Mode (can also be manually exited early by shaking again, or via 5-minute auto-timeout).
   3. **Normal Running State**: Pairing mode is disabled. Unbonded pairing requests are rejected immediately.
 * **Pairing Flow**:
   1. When an unbonded phone connects during a Pairing Mode window and accesses a protected characteristic, a 6-digit PIN is generated.

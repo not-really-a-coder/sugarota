@@ -135,21 +135,44 @@ Written by the companion app to trigger hardware and UI state changes:
 
 // Clean power off device
 { "cmd": "power_off" }
+
+// Start high-speed Wi-Fi OTA preparation & mDNS
+{ "cmd": "start_wifi_ota" }
 ```
 
-### 3.3 Device Telemetry Notification (Characteristic `0x0004`)
-Broadcast by Sugarota upon connection, state change, poll interval expiry, or heartbeat:
+### 3.3 Device Telemetry & OTA Handshake Notification (Characteristic `0x0004`)
+Broadcast by Sugarota upon connection, state change, poll interval expiry, heartbeat, or Wi-Fi OTA trigger:
 
 ```json
+// Routine device status:
 {
   "battery": 85,
   "charging": true,
-  "version": "v0.09.19.18",
+  "version": "v0.09.20.41",
   "brightness": 204,
   "dark_theme": true,
   "request_refresh": true
 }
+
+// Wi-Fi OTA Handshake Response (in response to {"cmd": "start_wifi_ota"}):
+{
+  "wifi_ota": "ready",
+  "ip": "192.168.1.50",
+  "mdns": "sugarota.local"
+}
+// Or if Wi-Fi connection failed:
+{
+  "wifi_ota": "wifi_failed"
+}
 ```
+
+### 3.4 Wi-Fi OTA REST Endpoints (`http://sugarota.local` or Device IP)
+
+| Method & Endpoint | Payload / Headers | Description | Response |
+| :--- | :--- | :--- | :--- |
+| `GET /api/ota/status` | None | Polls current OTA status and firmware version | `{"version": "v...", "updating": false, "progress": 0}` |
+| `POST /api/ota` or `POST /update` | Multipart or raw binary stream.<br>Optional Header: `x-MD5: <32-char-hash>` | Uploads new firmware binary directly to inactive OTA flash partition | `{"status": "success", "message": "Update complete. Rebooting..."}` (HTTP 200) |
+
 
 ---
 

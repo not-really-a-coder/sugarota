@@ -23,7 +23,8 @@ Key architectural tenets:
 | Unsolicited pairing spam in public | Pairing mode auto-closes 60 seconds after boot; subsequent pairing attempts from unknown devices are rejected immediately unless device is shaken into Config Mode |
 | Wi-Fi credential exfiltration via local installer | WebSerial installer runs 100% client-side in the browser via Web Serial API; `utils/run_web_installer.py` serves static files locally on loopback (`127.0.0.1`) with zero telemetry |
 | Wi-Fi AP exposure / unauthorized config access | Local Access Point Config Mode (`http://sugarota.local`) auto-terminates after a strict 5-minute inactivity timeout |
-| Malicious firmware tampering / OTA corruption | Dual-partition A/B scheme (`ota_0` / `ota_1`) with CRC validation; bad images rollback automatically without bricking the device |
+| Malicious firmware tampering / OTA corruption | Dual-partition A/B scheme (`ota_0` / `ota_1`) with CRC and optional MD5 hash verification; incomplete or corrupted images abort before boot flag commitment, preventing bricking |
+| Remote Wi-Fi attack surface | Web portal and OTA HTTP endpoints operate strictly on the local area network subnet without opening UPnP, WAN port forwards, or public internet listeners |
 | Third-party tracking or data harvesting | No analytics SDKs, trackers, crash reporting libraries, or advertising identifiers are included in either the firmware or Android companion app |
 
 ---
@@ -32,7 +33,7 @@ Key architectural tenets:
 
 1. **Pairing Mode Window**:
    - **Boot Window**: Open for 60 seconds upon device power-up to allow initial pairing with family devices.
-   - **Config Mode Window**: Manually opened for 5 minutes by shaking the device into Config Mode.
+   - **Config Mode Window**: Manually opened by sustained shaking (~1.5s); can be dismissed early by shaking again or via automatic 5-minute timeout.
    - **Running State**: Pairing mode automatically disables; unbonded central pairing requests are rejected immediately.
 
 2. **Numeric Comparison Authentication**:

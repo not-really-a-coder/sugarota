@@ -429,6 +429,22 @@ void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* vers
     }
 }
 
+void SugarotaBLE::notifyWifiOTAStatus(const char* status, const char* ip, const char* mdns) {
+    if (!m_pStatusChar) return;
+
+    JsonDocument doc;
+    doc["wifi_ota"] = status;
+    if (ip && strlen(ip) > 0) doc["ip"] = ip;
+    if (mdns && strlen(mdns) > 0) doc["mdns"] = mdns;
+
+    String payload;
+    serializeJson(doc, payload);
+    m_pStatusChar->setValue((const uint8_t*)payload.c_str(), payload.length());
+    if (isConnected()) {
+        m_pStatusChar->notify();
+    }
+}
+
 void SugarotaBLE::enablePairingMode(bool enable) {
     if (m_pairingModeEnabled == enable) return;
     m_pairingModeEnabled = enable;

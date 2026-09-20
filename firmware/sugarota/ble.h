@@ -49,6 +49,7 @@ public:
     void updateAdvertising();
 
     void notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness = -1, int darkTheme = -1, bool requestRefresh = false, int debug = -1);
+    void notifyWifiOTAStatus(const char* status, const char* ip, const char* mdns);
     void disconnect();
 
     static const int MAX_BLE_CLIENTS = 2;

@@ -1,5 +1,7 @@
+#include "config.h"
 #include "web_portal.h"
 #include "storage.h"
+#include "ui.h"
 
 WebServer server(80);
 
@@ -214,9 +216,122 @@ void handleSaveConfig() {
   ESP.restart();
 }
 
+void handleCrashLog() {
+  server.send(200, "text/plain", readCrashLog());
+}
+
+void handleOTAStatus() {
+  JsonDocument doc;
+  doc["version"] = SUGAROTA_VERSION;
+  doc["updating"] = isOTAUpdating;
+  doc["progress"] = otaProgressPercent;
+  String res;
+  serializeJson(doc, res);
+  server.send(200, "application/json", res);
+}
+
+void handleOTAUpload() {
+  HTTPUpload& upload = server.upload();
+
+  if (upload.status == UPLOAD_FILE_START) {
+    DBG_PRINTF("[OTA] Update started: %s\n", upload.filename.c_str());
+    isOTAUpdating = true;
+    otaProgressPercent = 0;
+    drawOTAProgress(0, "Starting update...");
+
+    // Check optional MD5 header
+    if (server.hasHeader("x-MD5")) {
+      String md5 = server.header("x-MD5");
+      if (md5.length() == 32) {
+        Update.setMD5(md5.c_str());
+        DBG_PRINTF("[OTA] Set expected MD5: %s\n", md5.c_str());
+      }
+    }
+
+    // Begin firmware update (U_FLASH) with unknown size (or content length if available)
+    size_t updateSize = UPDATE_SIZE_UNKNOWN;
+    if (server.hasArg("size")) {
+      updateSize = (size_t)server.arg("size").toInt();
+    }
+    if (!Update.begin(updateSize, U_FLASH)) {
+      DBG_PRINTF("[OTA ERROR] Update.begin failed: %s\n", Update.errorString());
+      drawOTAProgress(0, "Update Init Failed");
+    }
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (!Update.hasError()) {
+      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+        DBG_PRINTF("[OTA ERROR] Update.write failed: %s\n", Update.errorString());
+        drawOTAProgress(otaProgressPercent, "Write Error!");
+      } else {
+        // Calculate progress if content length is known
+        size_t contentLength = 0;
+        if (server.hasArg("size")) {
+          contentLength = (size_t)server.arg("size").toInt();
+        }
+        if (contentLength == 0) {
+          contentLength = server.client().available() + upload.totalSize;
+        }
+        if (contentLength > 0) {
+          int pct = (upload.totalSize * 100) / contentLength;
+          if (pct > 100) pct = 100;
+          if (pct != otaProgressPercent) {
+            otaProgressPercent = pct;
+            drawOTAProgress(otaProgressPercent, "Flashing...");
+          }
+        }
+      }
+    }
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (Update.end(true)) {
+      DBG_PRINTF("[OTA] Update Success: %u bytes. Rebooting...\n", upload.totalSize);
+      otaProgressPercent = 100;
+      drawOTAProgress(100, "Update Complete! Rebooting...");
+    } else {
+      DBG_PRINTF("[OTA ERROR] Update.end failed: %s\n", Update.errorString());
+      drawOTAProgress(otaProgressPercent, "Verification Failed!");
+    }
+  } else if (upload.status == UPLOAD_FILE_ABORTED) {
+    Update.abort();
+    DBG_PRINTLN("[OTA] Update was aborted");
+    isOTAUpdating = false;
+    otaProgressPercent = 0;
+    updateUI();
+  }
+}
+
+void handleOTAFinish() {
+  server.sendHeader("Connection", "close");
+  if (!Update.hasError()) {
+    server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Update complete. Rebooting...\"}");
+    delay(1000);
+    ESP.restart();
+  } else {
+    String errMsg = Update.errorString();
+    server.send(500, "application/json", "{\"status\":\"error\",\"message\":\"" + errMsg + "\"}");
+    isOTAUpdating = false;
+    otaProgressPercent = 0;
+    delay(2000);
+    updateUI();
+  }
+}
+
 void setupWebPortal() {
+  // Collect x-MD5 header if sent
+  const char* headerkeys[] = {"x-MD5"};
+  size_t headerkeyssize = sizeof(headerkeys) / sizeof(char*);
+  server.collectHeaders(headerkeys, headerkeyssize);
+
   server.on("/", HTTP_GET, handleConfigPage);
   server.on("/api/config", HTTP_GET, handleGetConfig);
+  server.on("/api/crash_log", HTTP_GET, handleCrashLog);
   server.on("/save", HTTP_POST, handleSaveConfig);
+
+  // OTA Endpoints
+  server.on("/api/ota/status", HTTP_GET, handleOTAStatus);
+  server.on("/api/ota", HTTP_POST, handleOTAFinish, handleOTAUpload);
+  server.on("/update", HTTP_POST, handleOTAFinish, handleOTAUpload);
+
   server.begin();
 }
+
+

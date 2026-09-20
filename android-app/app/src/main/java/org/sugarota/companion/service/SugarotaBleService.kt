@@ -618,6 +618,21 @@ class SugarotaBleService : Service() {
         }
     }
 
+    fun startWifiOta(address: String, onComplete: ((Boolean) -> Unit)? = null) {
+        val cmd = org.json.JSONObject().apply {
+            put("cmd", "start_wifi_ota")
+        }
+        appendDeviceLog(address, "Sending start_wifi_ota command...")
+        // Reset device OTA status state to waiting/idle
+        val current = _devices.value.toMutableMap()
+        val dev = current[address]
+        if (dev != null) {
+            current[address] = dev.copy(wifiOta = org.sugarota.companion.model.WifiOtaStatus(status = "connecting"))
+            _devices.value = current
+        }
+        sendDeviceCommand(address, cmd, onComplete)
+    }
+
     fun powerOffDevice(address: String, onComplete: ((Boolean) -> Unit)? = null) {
         val cmd = org.json.JSONObject().apply {
             put("cmd", "power_off")
@@ -1062,11 +1077,24 @@ class SugarotaBleService : Service() {
         }
         try {
             val obj = org.json.JSONObject(trimmed)
+            val current = _devices.value.toMutableMap()
+            val existing = current[address] ?: SugarotaDevice(name = getDeviceDisplayName(address), address = address)
+
+            // Check if this notification is a wifi_ota status update
+            if (obj.has("wifi_ota")) {
+                val otaStatus = obj.optString("wifi_ota", "idle")
+                val otaIp = obj.optString("ip", "")
+                val otaMdns = obj.optString("mdns", "")
+                val wifiOta = org.sugarota.companion.model.WifiOtaStatus(status = otaStatus, ip = otaIp, mdns = otaMdns)
+                current[address] = existing.copy(wifiOta = wifiOta)
+                _devices.value = current
+                appendDeviceLog(address, "Wi-Fi OTA Status: status=$otaStatus ip=$otaIp mdns=$otaMdns")
+                return
+            }
+
             val bat = obj.optInt("battery", 0)
             val chg = obj.optBoolean("charging", false)
             val ver = obj.optString("version", "Unknown")
-            val current = _devices.value.toMutableMap()
-            val existing = current[address] ?: SugarotaDevice(name = getDeviceDisplayName(address), address = address)
             val brightness = if (obj.has("brightness")) obj.optInt("brightness", existing.status.brightness) else existing.status.brightness
             val isDark = if (obj.has("dark_theme")) obj.optBoolean("dark_theme", existing.status.isDarkTheme) else existing.status.isDarkTheme
             val isDebug = if (obj.has("debug")) obj.optBoolean("debug", existing.status.isDebugMode) else existing.status.isDebugMode

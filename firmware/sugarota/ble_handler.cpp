@@ -4,6 +4,7 @@
 #include "display.h"
 #include "ble.h"
 #include "storage.h"
+#include <ESPmDNS.h>
 #include <time.h>
 
 void insertOrUpdateReading(long long tsVal, int sgvVal, const char* dirVal, int deltaVal) {
@@ -239,6 +240,22 @@ void handleBLECommand(const JsonDocument& doc) {
   } else if (strcmp(cmd, "power_off") == 0) {
     DBG_PRINTLN("BLE: Remote power off requested...");
     deviceOn = false;
+  } else if (strcmp(cmd, "start_wifi_ota") == 0) {
+    DBG_PRINTLN("BLE: start_wifi_ota command received. Preparing Wi-Fi & WebServer...");
+    connectWiFi();
+    if (WiFi.status() == WL_CONNECTED) {
+      if (!MDNS.begin("sugarota")) {
+        DBG_PRINTLN("[OTA] mDNS begin failed");
+      } else {
+        MDNS.addService("http", "tcp", 80);
+      }
+      String ipStr = WiFi.localIP().toString();
+      DBG_PRINTF("BLE: Wi-Fi connected for OTA at %s (sugarota.local)\n", ipStr.c_str());
+      SugarotaBLE::getInstance().notifyWifiOTAStatus("ready", ipStr.c_str(), "sugarota.local");
+    } else {
+      DBG_PRINTLN("BLE: Wi-Fi connection failed for OTA");
+      SugarotaBLE::getInstance().notifyWifiOTAStatus("wifi_failed", "", "");
+    }
   }
 }
 

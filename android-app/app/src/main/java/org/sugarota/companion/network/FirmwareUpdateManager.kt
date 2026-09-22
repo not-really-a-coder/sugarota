@@ -24,31 +24,41 @@ class FirmwareUpdateManager(private val context: Context) {
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
+    private val fastHttpClient = OkHttpClient.Builder()
+        .connectTimeout(2, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .build()
+
+    private val localProbeHttpClient = OkHttpClient.Builder()
+        .connectTimeout(500, TimeUnit.MILLISECONDS)
+        .readTimeout(1000, TimeUnit.MILLISECONDS)
+        .build()
+
     /**
      * Checks for the latest available Sugarota firmware release.
      * Tries remote release manifest (or GitHub API), and falls back to local web server or packaged manifest.
      */
     suspend fun checkForUpdates(deviceVersion: String): FirmwareReleaseInfo? = withContext(Dispatchers.IO) {
-        // Candidate URLs to probe for latest release info
-        // 1. Local development / web installer server (running on host machine port 8123)
-        // 2. Fallback to GitHub repository releases
+        // Build candidate list: prioritize GitHub directly for fastest and most reliable check,
+        // while also checking local development server with a sub-second probe timeout.
         val candidateUrls = listOf(
-            "http://10.0.2.2:8123/data/version_state.json", // Android emulator to host
-            "http://127.0.0.1:8123/data/version_state.json",
-            "https://raw.githubusercontent.com/not-really-a-coder/sugarota/main/data/version_state.json"
+            "https://raw.githubusercontent.com/not-really-a-coder/sugarota/main/data/version_state.json",
+            "http://10.0.2.2:8123/data/version_state.json",
+            "http://127.0.0.1:8123/data/version_state.json"
         )
 
         for (url in candidateUrls) {
             try {
+                val isLocal = url.contains("8123")
+                val client = if (isLocal) localProbeHttpClient else fastHttpClient
                 val req = Request.Builder().url(url).build()
-                val resp = httpClient.newCall(req).execute()
+                val resp = client.newCall(req).execute()
                 if (resp.isSuccessful) {
                     val body = resp.body?.string() ?: continue
                     val obj = JSONObject(body)
                     val fwObj = obj.optJSONObject("firmware") ?: obj
                     val latestVer = fwObj.optString("version", "")
                     if (latestVer.isNotBlank()) {
-                        val isLocal = url.contains("8123")
                         val binUrl = if (isLocal) {
                             val hostBase = url.substringBefore("/data/")
                             "$hostBase/build/esp32.esp32.esp32s3/sugarota.ino.bin"
@@ -77,19 +87,21 @@ class FirmwareUpdateManager(private val context: Context) {
      * Returns the full project changelog markdown so the user can inspect all version notes.
      */
     private fun fetchChangelog(baseUrl: String, version: String): String {
-        val changelogUrls = listOf(
+        // Prioritize the base URL from which the version info was obtained
+        val changelogUrls = linkedSetOf(
             "$baseUrl/CHANGELOG.md",
             "https://raw.githubusercontent.com/not-really-a-coder/sugarota/main/CHANGELOG.md"
         )
         for (url in changelogUrls) {
             try {
+                val isLocal = url.contains("8123")
+                val client = if (isLocal) localProbeHttpClient else fastHttpClient
                 val req = Request.Builder().url(url).build()
-                val resp = httpClient.newCall(req).execute()
+                val resp = client.newCall(req).execute()
                 if (resp.isSuccessful) {
                     val fullMd = resp.body?.string() ?: continue
                     val clean = fullMd.trim()
                     if (clean.isNotBlank()) {
-                        // Strip leading title & preamble: start from the first "## " version entry
                         val firstHeaderIdx = clean.indexOf("## ")
                         return if (firstHeaderIdx != -1) {
                             clean.substring(firstHeaderIdx).trim()

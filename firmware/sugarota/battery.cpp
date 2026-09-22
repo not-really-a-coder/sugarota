@@ -66,17 +66,24 @@ void fillVoltageHistory(float voltage) {
 }
 
 int getBatteryPercentage(float voltage) {
-  float vMap[] = {3.00, 3.20, 3.40, 3.50, 3.55, 3.60, 3.65, 3.75, 3.85, 3.90, 3.95, 4.05};
-  int pMap[]   = {   0,    5,   10,   20,   30,   40,   50,   60,   70,   80,   90,  100};
-  
+  // Adjusted for standard 3.7V Li-ion/LiPo discharge curve under light load:
+  // - Full charge rests around 4.12V-4.20V
+  // - Initial voltage drop 4.20V -> 3.90V represents ~25-30% of capacity
+  // - Main discharge plateau is between 3.65V and 3.80V (~30% to ~70%)
+  // - Knee begins below 3.55V (~20%), steep discharge below 3.45V
+  // - Cutoff protection is at 3.00V
+  const float vMap[] = {3.10f, 3.35f, 3.45f, 3.55f, 3.62f, 3.68f, 3.74f, 3.80f, 3.88f, 3.98f, 4.12f};
+  const int   pMap[] = {    0,     5,    10,    20,    30,    40,    50,    60,    70,    85,   100};
+  const int   numPoints = sizeof(vMap) / sizeof(vMap[0]);
+
   if (voltage <= vMap[0]) return 0;
-  if (voltage >= vMap[11]) return 100;
-  
-  for (int i = 0; i < 11; i++) {
-    if (voltage >= vMap[i] && voltage <= vMap[i+1]) {
-      float range = vMap[i+1] - vMap[i];
+  if (voltage >= vMap[numPoints - 1]) return 100;
+
+  for (int i = 0; i < numPoints - 1; i++) {
+    if (voltage >= vMap[i] && voltage <= vMap[i + 1]) {
+      float range = vMap[i + 1] - vMap[i];
       float offset = voltage - vMap[i];
-      float pRange = pMap[i+1] - pMap[i];
+      float pRange = pMap[i + 1] - pMap[i];
       return pMap[i] + (int)((offset / range) * pRange);
     }
   }

@@ -25,7 +25,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -175,12 +179,27 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun CompanionAppContent(service: SugarotaBleService?) {
     val currentService by rememberUpdatedState(service)
     val devicesMap by service?.devices?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
-    val deviceList = devicesMap.values.toList()
+    val deviceOrder by service?.deviceOrder?.collectAsState() ?: remember { mutableStateOf(emptyList()) }
+    val deviceReadings by service?.deviceReadings?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
+    val deviceConfigured by service?.deviceConfigured?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
+
+    // Sort device list according to user custom order
+    val sortedDeviceList = remember(devicesMap, deviceOrder) {
+        val knownMap = devicesMap.toMutableMap()
+        val result = mutableListOf<SugarotaDevice>()
+        for (addr in deviceOrder) {
+            knownMap.remove(addr)?.let { result.add(it) }
+        }
+        // Append any new devices not yet in order
+        result.addAll(knownMap.values)
+        result
+    }
+
     val serviceScanning by service?.isScanning?.collectAsState() ?: remember { mutableStateOf(false) }
     val isScanning = serviceScanning
 
@@ -188,6 +207,9 @@ fun CompanionAppContent(service: SugarotaBleService?) {
     var targetDeviceTab by remember { mutableStateOf(DeviceScreenTab.CHART) }
     val bridgeStatusText by service?.bridgeStatus?.collectAsState() ?: remember { mutableStateOf("Idle") }
     val lastReading by service?.lastReading?.collectAsState() ?: remember { mutableStateOf(null) }
+
+    // Dialog state for confirming Forget scenario
+    var deviceToForget by remember { mutableStateOf<SugarotaDevice?>(null) }
 
     val colors = ShadcnTheme.colors
     val typography = ShadcnTheme.typography
@@ -320,27 +342,36 @@ fun CompanionAppContent(service: SugarotaBleService?) {
             }
         }
 
+        // Pull-to-refresh disabled temporarily per user request to avoid gesture conflicts with drag-to-sort
+        val enablePullToRefresh = false
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .nestedScroll(nestedScrollConnection)
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        do {
-                            val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-                        } while (event.changes.any { it.pressed })
-                        // When finger leaves the screen, check if pull was active or threshold was reached
-                        if (pullDistancePx > 0f || hasReachedThreshold) {
-                            currentOnPullRelease()
-                        }
+                .then(
+                    if (enablePullToRefresh) {
+                        Modifier
+                            .nestedScroll(nestedScrollConnection)
+                            .pointerInput(Unit) {
+                                awaitEachGesture {
+                                    awaitFirstDown(requireUnconsumed = false)
+                                    do {
+                                        val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                    } while (event.changes.any { it.pressed })
+                                    if (pullDistancePx > 0f || hasReachedThreshold) {
+                                        currentOnPullRelease()
+                                    }
+                                }
+                            }
+                    } else {
+                        Modifier
                     }
-                }
+                )
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             // Pull-to-refresh banner shows during drag and stays visible while active scanning
-            val showBanner = pullDistancePx > 5f || isScanning
+            val showBanner = enablePullToRefresh && (pullDistancePx > 5f || isScanning)
             androidx.compose.animation.AnimatedVisibility(
                 visible = showBanner,
                 enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
@@ -396,7 +427,7 @@ fun CompanionAppContent(service: SugarotaBleService?) {
             )
             Spacer(modifier = Modifier.height(10.dp))
 
-                if (deviceList.isEmpty()) {
+                if (sortedDeviceList.isEmpty()) {
                     val context = androidx.compose.ui.platform.LocalContext.current
                     val currentAppVersion = remember(context) {
                         try {
@@ -445,23 +476,278 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                         }
                     }
                 } else {
+                    val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+                    var draggedDeviceAddress by remember { mutableStateOf<String?>(null) }
+                    var settlingDeviceAddress by remember { mutableStateOf<String?>(null) }
+                    var dragDisplacementY by remember { mutableFloatStateOf(0f) }
+                    val settleOffsetY = remember { Animatable(0f) }
+                    // Single stable state instance across re-renders to prevent pointerInput closure from holding a stale delegate
+                    var currentOrderList by remember { mutableStateOf(sortedDeviceList) }
+                    var initialDragIndex by remember { mutableIntStateOf(-1) }
+                    var initialItemCenters by remember { mutableStateOf<Map<Int, Float>>(emptyMap()) }
+                    var initialItemOffsets by remember { mutableStateOf<Map<Int, Float>>(emptyMap()) }
+                    val dragScope = rememberCoroutineScope()
+                    val currentSortedDeviceList by rememberUpdatedState(sortedDeviceList)
+
+                    // Sync when sortedDeviceList changes outside of active drag session
+                    LaunchedEffect(sortedDeviceList) {
+                        if (draggedDeviceAddress == null && settlingDeviceAddress == null) {
+                            currentOrderList = sortedDeviceList
+                        }
+                    }
+
+                    var swipedDeviceAddress by remember { mutableStateOf<String?>(null) }
+
                     LazyColumn(
-                        modifier = Modifier.weight(1f),
+                        state = lazyListState,
+                        modifier = Modifier
+                            .weight(1f)
+                            .pointerInput(Unit) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { offset ->
+                                        val items = lazyListState.layoutInfo.visibleItemsInfo
+                                        val hitItem = items.firstOrNull {
+                                            offset.y.toInt() in it.offset..(it.offset + it.size)
+                                        }
+                                        if (hitItem != null && hitItem.index in currentOrderList.indices) {
+                                            initialDragIndex = hitItem.index
+                                            draggedDeviceAddress = currentOrderList.getOrNull(hitItem.index)?.address
+                                            dragDisplacementY = 0f
+                                            settlingDeviceAddress = null
+                                            // Capture static initial slot geometry so we never read stale layoutInfo mid-drag
+                                            initialItemCenters = items.associate { it.index to (it.offset + it.size / 2f) }
+                                            initialItemOffsets = items.associate { it.index to it.offset.toFloat() }
+                                        }
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        val currentAddr = draggedDeviceAddress ?: return@detectDragGesturesAfterLongPress
+                                        dragDisplacementY += dragAmount.y
+
+                                        val currentPos = currentOrderList.indexOfFirst { it.address == currentAddr }
+                                        if (currentPos == -1 || initialDragIndex !in initialItemCenters) return@detectDragGesturesAfterLongPress
+
+                                        val startCenter = initialItemCenters[initialDragIndex] ?: return@detectDragGesturesAfterLongPress
+                                        val currentDraggedCenter = startCenter + dragDisplacementY
+
+                                        // Slot swap check with directional hysteresis (requires crossing 60% towards the target slot, providing a 20% deadband)
+                                        val nextCenter = initialItemCenters[currentPos + 1]
+                                        val prevCenter = initialItemCenters[currentPos - 1]
+                                        val curCenter = initialItemCenters[currentPos] ?: startCenter
+
+                                        val targetIndex = when {
+                                            nextCenter != null && currentDraggedCenter > curCenter + (nextCenter - curCenter) * 0.6f -> currentPos + 1
+                                            prevCenter != null && currentDraggedCenter < curCenter - (curCenter - prevCenter) * 0.6f -> currentPos - 1
+                                            else -> null
+                                        }
+
+                                        // Swap synchronously in state
+                                        if (targetIndex != null && targetIndex in currentOrderList.indices) {
+                                            val reordered = currentOrderList.toMutableList()
+                                            val item = reordered.removeAt(currentPos)
+                                            reordered.add(targetIndex, item)
+                                            currentOrderList = reordered
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        val currentAddr = draggedDeviceAddress
+                                        if (currentAddr != null) {
+                                            val currentPos = currentOrderList.indexOfFirst { it.address == currentAddr }
+                                            val originOffset = initialItemOffsets[initialDragIndex] ?: 0f
+                                            val currentSlotOffset = initialItemOffsets[currentPos] ?: originOffset
+                                            val currentVisualTranslationY = dragDisplacementY - (currentSlotOffset - originOffset)
+
+                                            draggedDeviceAddress = null
+                                            settlingDeviceAddress = currentAddr
+
+                                            dragScope.launch {
+                                                settleOffsetY.snapTo(currentVisualTranslationY)
+                                                settleOffsetY.animateTo(
+                                                    0f,
+                                                    spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioLowBouncy)
+                                                )
+                                                settlingDeviceAddress = null
+                                                val finalOrder = currentOrderList.map { it.address }
+                                                currentService?.saveDeviceOrder(finalOrder)
+                                            }
+                                        } else {
+                                            draggedDeviceAddress = null
+                                        }
+                                    },
+                                    onDragCancel = {
+                                        draggedDeviceAddress = null
+                                        settlingDeviceAddress = null
+                                        currentOrderList = currentSortedDeviceList
+                                    }
+                                )
+                            },
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(deviceList) { device ->
-                            DeviceCard(
-                                device = device,
-                                bridgeStatusText = bridgeStatusText,
-                                lastReading = lastReading,
-                                onClick = {
-                                    targetDeviceTab = DeviceScreenTab.CHART
-                                    selectedDeviceAddress = device.address
-                                },
-                                onConnect = { service?.connectDevice(device.address) },
-                                onSync = { service?.triggerManualSync() },
-                                onDisconnect = { service?.disconnectDevice(device.address) }
-                            )
+                        items(
+                            items = currentOrderList,
+                            key = { it.address }
+                        ) { device ->
+                            val isDragging = draggedDeviceAddress == device.address
+                            val isSettling = settlingDeviceAddress == device.address
+                            val currentPos = currentOrderList.indexOfFirst { it.address == device.address }
+                            val originOffset = initialItemOffsets[initialDragIndex] ?: 0f
+                            val currentSlotOffset = initialItemOffsets[currentPos] ?: originOffset
+                            val activeVisualTranslationY = if (isDragging) {
+                                dragDisplacementY - (currentSlotOffset - originOffset)
+                            } else if (isSettling) {
+                                settleOffsetY.value
+                            } else 0f
+
+                            val devReading = deviceReadings[device.address] ?: if (device.address == currentOrderList.firstOrNull()?.address) lastReading else null
+                            val isConfigured = deviceConfigured[device.address] ?: true
+
+                            // Custom horizontal swipe-to-forget with snap threshold
+                            val currentDensity = androidx.compose.ui.platform.LocalDensity.current
+                            val maxSwipePx = with(currentDensity) { -90.dp.toPx() } // snap distance
+                            val swipeOffsetX = remember(device.address) { androidx.compose.animation.core.Animatable(0f) }
+                            val swipeScope = rememberCoroutineScope()
+
+                            // Auto-close swipe when another card becomes active
+                            LaunchedEffect(swipedDeviceAddress) {
+                                if (swipedDeviceAddress != device.address && swipeOffsetX.value != 0f) {
+                                    swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (!isDragging && !isSettling) {
+                                            Modifier.animateItemPlacement(
+                                                animationSpec = spring(
+                                                    stiffness = Spring.StiffnessHigh,
+                                                    dampingRatio = Spring.DampingRatioNoBouncy
+                                                )
+                                            )
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
+                                    .zIndex(if (isDragging || isSettling) 10f else 1f)
+                                    .graphicsLayer {
+                                        if (isDragging || isSettling) {
+                                            this.translationY = activeVisualTranslationY
+                                            this.scaleX = 1.03f
+                                            this.scaleY = 1.03f
+                                            this.shadowElevation = 20f
+                                        }
+                                    }
+                                    .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusLarge))
+                            ) {
+                                // Background Forget action button, revealed only when swiping left
+                                if (swipeOffsetX.value < -2f) {
+                                    Box(
+                                        modifier = Modifier
+                                            .matchParentSize()
+                                            .background(Color(0xFFDC2626)) // destructive red
+                                            .clickable {
+                                                deviceToForget = device
+                                                swipedDeviceAddress = null
+                                                swipeScope.launch {
+                                                    swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                                                }
+                                            }
+                                            .padding(end = 22.dp),
+                                        contentAlignment = Alignment.CenterEnd
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.DeleteOutline,
+                                                contentDescription = "Forget",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = "Forget",
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                style = typography.caption
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Foreground Device Card with constrained swipe offset
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .offset { IntOffset(swipeOffsetX.value.toInt(), 0) }
+                                        .pointerInput(isDragging) {
+                                            if (!isDragging) {
+                                                detectHorizontalDragGestures(
+                                                    onDragEnd = {
+                                                        swipeScope.launch {
+                                                            // Snap to revealed state (-90dp) if dragged past 50% threshold, else snap back to 0
+                                                            if (swipeOffsetX.value <= maxSwipePx * 0.5f) {
+                                                                swipedDeviceAddress = device.address
+                                                                swipeOffsetX.animateTo(maxSwipePx, spring(stiffness = Spring.StiffnessMediumLow))
+                                                            } else {
+                                                                if (swipedDeviceAddress == device.address) {
+                                                                    swipedDeviceAddress = null
+                                                                }
+                                                                swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                                                            }
+                                                        }
+                                                    },
+                                                    onDragCancel = {
+                                                        if (swipedDeviceAddress == device.address) {
+                                                            swipedDeviceAddress = null
+                                                        }
+                                                        swipeScope.launch {
+                                                            swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                                                        }
+                                                    },
+                                                    onHorizontalDrag = { change, dragAmount ->
+                                                        change.consume()
+                                                        val newOffset = (swipeOffsetX.value + dragAmount).coerceIn(maxSwipePx, 0f)
+                                                        if (dragAmount < 0f && swipedDeviceAddress != device.address) {
+                                                            swipedDeviceAddress = device.address
+                                                        }
+                                                        swipeScope.launch {
+                                                            swipeOffsetX.snapTo(newOffset)
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        }
+                                ) {
+                                    val devUnits = devReading?.units?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
+                                    DeviceCard(
+                                        device = device,
+                                        bridgeStatusText = bridgeStatusText,
+                                        lastReading = devReading,
+                                        units = devUnits,
+                                        isConfigured = isConfigured,
+                                        onClick = {
+                                            if (swipeOffsetX.value < -5f) {
+                                                swipeScope.launch {
+                                                    swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                                                }
+                                            } else {
+                                                targetDeviceTab = DeviceScreenTab.CHART
+                                                selectedDeviceAddress = device.address
+                                            }
+                                        },
+                                        onConfigureClick = {
+                                            targetDeviceTab = DeviceScreenTab.CONFIG
+                                            selectedDeviceAddress = device.address
+                                        },
+                                        onConnect = { service?.connectDevice(device.address) },
+                                        onSync = { service?.triggerManualSync() },
+                                        onDisconnect = { service?.disconnectDevice(device.address) }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -486,6 +772,82 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                 )
             }
         }
+
+    // Confirmation Dialog for Forget Device scenario
+    if (deviceToForget != null) {
+        val targetDev = deviceToForget!!
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { deviceToForget = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.75f))
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusLarge))
+                        .background(colors.card)
+                        .border(
+                            androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                            RoundedCornerShape(ShadcnTheme.shapes.radiusLarge)
+                        )
+                        .padding(20.dp)
+                ) {
+                    Text(
+                        text = "Forget ${targetDev.name}?",
+                        style = typography.h2,
+                        color = colors.foreground
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "This will unpair the device from your phone and clear its connection. The Sugarota device will continue operating as normal, but you will need to re-pair it to connect again.",
+                        style = typography.body,
+                        color = colors.mutedForeground
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ShadcnButton(
+                            onClick = { deviceToForget = null },
+                            variant = ShadcnButtonVariant.GHOST
+                        ) {
+                            Text(
+                                text = "Cancel",
+                                style = typography.body,
+                                color = colors.mutedForeground
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        ShadcnButton(
+                            onClick = {
+                                val addr = targetDev.address
+                                deviceToForget = null
+                                if (selectedDeviceAddress == addr) {
+                                    selectedDeviceAddress = null
+                                }
+                                service?.forgetDevice(addr)
+                            },
+                            variant = ShadcnButtonVariant.DESTRUCTIVE
+                        ) {
+                            Text(
+                                text = "Forget Device",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Device Detail Screen (animated full screen overlay with Chart & Config tabs)
     AnimatedVisibility(
@@ -1417,7 +1779,10 @@ fun DeviceCard(
     device: SugarotaDevice,
     bridgeStatusText: String = "Idle",
     lastReading: org.sugarota.companion.model.GlucoseData? = null,
+    units: String = "mg/dL",
+    isConfigured: Boolean = true,
     onClick: () -> Unit = {},
+    onConfigureClick: () -> Unit = {},
     onConnect: () -> Unit,
     onSync: () -> Unit,
     onDisconnect: () -> Unit
@@ -1431,13 +1796,7 @@ fun DeviceCard(
     ShadcnCard(
         modifier = Modifier
             .fillMaxWidth()
-            .then(
-                if (device.isConnected) {
-                    Modifier.clickable(onClick = onClick)
-                } else {
-                    Modifier
-                }
-            )
+            .clickable(onClick = onClick)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // Header Row: Device Name + Green/Red light icon indicator & Action icons (Sync, Disconnect or Connect)
@@ -1521,103 +1880,150 @@ fun DeviceCard(
                 }
             }
 
-            // Bridge Status block content (for connected device)
-            if (device.isConnected) {
+            // Bridge Status / Glucose Reading block content
+            if (device.isConnected && !device.isBonded) {
                 Spacer(modifier = Modifier.height(10.dp))
-                if (!device.isBonded) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                color = colors.secondary.copy(alpha = 0.5f),
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                            )
-                            .padding(horizontal = 10.dp, vertical = 8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = "Pairing Required",
-                            tint = colors.primary,
-                            modifier = Modifier.size(16.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            color = colors.secondary.copy(alpha = 0.5f),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "Pairing Required",
-                                style = typography.body.copy(fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
-                                color = colors.foreground
-                            )
-                            Text(
-                                text = "Confirm 6-digit PIN on display to view glucose",
-                                style = typography.caption.copy(fontSize = 11.sp),
-                                color = colors.mutedForeground
-                            )
-                        }
-                    }
-                } else if (lastReading != null) {
-                    val deltaFormatted = "${if (lastReading.delta > 0) "+" else ""}${lastReading.delta}"
-                    val bgCol = getGlucoseColor(lastReading.sgv)
-                    val timeStr = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                        .format(java.util.Date(lastReading.timestamp * 1000))
-                    val minsAgo = ((System.currentTimeMillis() / 1000 - lastReading.timestamp) / 60).coerceAtLeast(0)
-
-                    // Prominent one line display: {last BG_value} {trend_icon} (color coded)  {delta_value} {units}
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Pairing Required",
+                        tint = colors.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
                         Text(
-                            text = "${lastReading.sgv}",
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = bgCol
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        TrendArrowIcon(
-                            direction = lastReading.direction,
-                            tint = bgCol
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "$deltaFormatted ${lastReading.units}",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            text = "Pairing Required",
+                            style = typography.body.copy(fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
                             color = colors.foreground
                         )
+                        Text(
+                            text = "Confirm 6-digit PIN on display to view glucose",
+                            style = typography.caption.copy(fontSize = 11.sp),
+                            color = colors.mutedForeground
+                        )
                     }
-
-                    Spacer(modifier = Modifier.height(3.dp))
-
-                    // "Synced on {HH:MM} ({M} min ago)" in smaller font
-                    Text(
-                        text = "Synced on $timeStr ($minsAgo min ago)",
-                        style = typography.caption,
-                        color = colors.mutedForeground
+                }
+            } else if (!isConfigured) {
+                Spacer(modifier = Modifier.height(10.dp))
+                // Account not configured banner leading to config screen
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        .background(Color(0xFFF59E0B).copy(alpha = 0.15f))
+                        .clickable(onClick = onConfigureClick)
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Configure Account",
+                        tint = Color(0xFFF59E0B),
+                        modifier = Modifier.size(16.dp)
                     )
-                } else {
-                    // Fallback when no reading is fetched yet or an error message is present
-                    Text(
-                        text = bridgeStatusText,
-                        style = typography.caption,
-                        color = if (bridgeStatusText.startsWith("Synced")) colors.primary else colors.mutedForeground
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Account not configured",
+                            style = typography.body.copy(fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
+                            color = Color(0xFFF59E0B)
+                        )
+                        Text(
+                            text = "Tap to set up Nightscout or Dexcom provider",
+                            style = typography.caption.copy(fontSize = 11.sp),
+                            color = colors.mutedForeground
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = Color(0xFFF59E0B),
+                        modifier = Modifier.size(18.dp)
                     )
                 }
-            } else {
-                // Disconnected state message
+            } else if (lastReading != null) {
                 Spacer(modifier = Modifier.height(10.dp))
+                val isMmol = units.equals("mmol/l", ignoreCase = true)
+                val formattedSgv = if (isMmol) {
+                    String.format(java.util.Locale.US, "%.1f", lastReading.sgv / 18.0182f)
+                } else {
+                    "${lastReading.sgv}"
+                }
+                val deltaVal = if (isMmol) {
+                    val mmolVal = lastReading.delta / 18.0182f
+                    if (lastReading.delta == 0) "+0.0" else String.format(java.util.Locale.US, "%s%.1f", if (lastReading.delta > 0) "+" else "", mmolVal)
+                } else {
+                    "${if (lastReading.delta > 0) "+" else ""}${lastReading.delta}"
+                }
+                val bgCol = getGlucoseColor(lastReading.sgv)
+                val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+                    .format(java.util.Date(lastReading.timestamp * 1000))
+                val minsAgo = ((System.currentTimeMillis() / 1000 - lastReading.timestamp) / 60).coerceAtLeast(0)
+
+                // Prominent one line display: {last BG_value} {trend_icon} (color coded)  {delta_value} {units}
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = formattedSgv,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = bgCol
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    TrendArrowIcon(
+                        direction = lastReading.direction,
+                        tint = bgCol
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "$deltaVal $units",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.foreground
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(3.dp))
+
+                // "Synced on {HH:mm:ss} ({M} min ago)" in smaller font
                 Text(
-                    text = "Device is offline. Connect to proceed",
+                    text = "Synced on $timeStr ($minsAgo min ago)",
                     style = typography.caption,
                     color = colors.mutedForeground
                 )
+            } else if (device.isConnected) {
+                Spacer(modifier = Modifier.height(10.dp))
+                // Fallback when connected but no reading is fetched yet
+                Text(
+                    text = bridgeStatusText,
+                    style = typography.caption,
+                    color = if (bridgeStatusText.startsWith("Synced")) colors.primary else colors.mutedForeground
+                )
             }
 
-            if (device.isConnected) {
-                Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-                // Battery and version at the bottom of the card
+            // Footer line: Battery & version when connected, or "Connect the display for more settings" when offline
+            if (device.isConnected) {
                 Text(
                     text = "Battery: ${device.status.batteryPct}% ${if (device.status.isCharging) "(+)" else ""} · ${device.status.version}",
+                    style = typography.caption,
+                    color = colors.mutedForeground
+                )
+            } else {
+                Text(
+                    text = "Connect the display for more settings",
                     style = typography.caption,
                     color = colors.mutedForeground
                 )

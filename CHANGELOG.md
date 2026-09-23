@@ -2,6 +2,25 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.23.87] — App Icon Refresh, Disconnect Controls & 2-Hour Notification Chart (2026-09-23)
+
+This release updates the Android app launcher branding, expands the companion foreground notification history to two hours, auto-dismisses nearby device discovery alerts, and adds manual disconnect suppression to prevent unwanted reconnections.
+
+### Interface & Branding
+
+- Updated Android launcher icons and internal logo drawables to the refreshed candy icon across all mipmap densities
+- Added app icon badge to README documentation
+- Expanded companion notification chart time window from 1 hour to 2 hours
+- Adjusted notification chart layout with dynamic target gridlines and relative sample spacing
+
+### Connectivity & UX
+
+- Manual disconnect state tracking preventing automatic reconnection until user taps connect
+- Nearby device notification auto-dismissal when displays move out of radio range
+- Added manual disconnect reconnection suppression to project security threat matrix and architecture documentation
+
+---
+
 ## [v0.09.21.12] — Sustained Shake Config Toggle & Wi-Fi OTA Flashing (2026-09-21)
 
 This release implements sustained shake detection to toggle device configuration mode on and off, high-speed Wi-Fi OTA flashing via WebSerial installer and Android companion, and automatic crash log retrieval.

@@ -67,6 +67,11 @@ Sugarota supports three operating modes configured in `config.json`:
 2. **`BLE_ONLY`**: Disables Wi-Fi permanently. Relies exclusively on the Android Companion background foreground service, extending battery life significantly.
 3. **`WIFI_ONLY`**: Disables BLE peripheral advertising. Directly contacts Dexcom Share or Nightscout APIs on a periodic interval (30s to 300s).
 
+The Android companion app pairs with this architecture via a background foreground service (`SugarotaBleService`) and dynamic scan receiver (`SugarotaBleScanReceiver`), providing:
+- Real-time notification tray rendering with a custom 2-hour trend sparkline and delta indicators.
+- Proximity-aware discovery with auto-dismissing notifications when Sugarota displays leave radio range.
+- Explicit manual disconnect suppression preventing unwanted automatic reconnections.
+
 ### 2.4 Power Management & Sensors
 - **Battery Monitoring**: High-accuracy ESP32-S3 internal ADC calibration scheme (`adc_oneshot` with curve fitting). Employs rolling median and slope detection to filter out USB charging noise.
 - **IMU & Gestures (`QMI8658`)**:

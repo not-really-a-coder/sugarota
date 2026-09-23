@@ -1,5 +1,9 @@
 # 🍭 Sugarota: A Pocket-Size Smart Glucose Monitor Firmware and Android App
 
+<p align="center">
+  <img src="pix/sugarota_icon.png" width="128" height="128" alt="Sugarota App Icon" />
+</p>
+
 Sugarota is a wireless blood glucose display and telemetry terminal powered by the ESP32-S3 chipset. It syncs real-time CGM data from Dexcom Share or Nightscout APIs, plots high-DPI historical trend graphs on the screen, and features a browser-based WebSerial interface to flash firmware and manage device settings. The Android companion app bridges the gap between the display and your phone, providing seamless data management and synchronization through energy-efficient BLE connectivity.
 
 ![Real device with Android app on Pixel 7, enhanced with AI for clarity](pix/photo-2.jpg)
@@ -99,6 +103,11 @@ Refer to the [Manufacturer's GitHub Repository](https://github.com/waveshareteam
 ## 📱 Android Companion App
 
 The Android Companion App provides direct Bluetooth Low Energy (BLE) background bridging, syncing glucose telemetry and history packets from Dexcom Share or Nightscout directly to the Sugarota display without requiring the device to wake its Wi-Fi radio.
+
+Key capabilities include:
+- **Rich Foreground Notifications**: Real-time glucose values, delta indicators, and an interactive 2-hour trend sparkline rendered directly inside the Android system notification tray.
+- **Auto-Dismiss Nearby Discovery**: Automatically shows nearby Sugarota displays and auto-dismisses discovery alerts as soon as devices move out of range.
+- **Manual Disconnect UX**: Explicitly disconnecting via the device card suppresses unsolicited automatic reconnections until manually reconnected by the user.
 
 Download the pre-built APK directly from the repository:
 - **[sugarota-app-debug.apk](android-app/sugarota-app-debug.apk)**

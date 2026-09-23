@@ -16,6 +16,35 @@ import org.sugarota.companion.MainActivity
 class SugarotaBleScanReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        val action = intent.action
+        if (action == ACTION_CONNECT_ACTION) {
+            val address = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
+            if (!address.isNullOrBlank()) {
+                clearNotificationForDevice(context, address)
+                try {
+                    val connectIntent = Intent(context, SugarotaBleService::class.java).apply {
+                        this.action = SugarotaBleService.ACTION_CONNECT_DEVICE
+                        putExtra(SugarotaBleService.EXTRA_DEVICE_ADDRESS, address)
+                    }
+                    context.startService(connectIntent)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to startService on Connect action: ${e.message}")
+                }
+            }
+            return
+        }
+
+        if (action == ACTION_SNOOZE_ACTION) {
+            val address = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
+            if (!address.isNullOrBlank()) {
+                val snoozeUntil = System.currentTimeMillis() + SNOOZE_DURATION_MS
+                snoozedUntilTime[address] = snoozeUntil
+                clearNotificationForDevice(context, address)
+                Log.i(TAG, "Device $address snoozed for 10 minutes (until $snoozeUntil)")
+            }
+            return
+        }
+
         val results: List<ScanResult>? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent.getParcelableArrayListExtra(BluetoothLeScanner.EXTRA_LIST_SCAN_RESULT, ScanResult::class.java)
         } else {
@@ -75,26 +104,40 @@ class SugarotaBleScanReceiver : BroadcastReceiver() {
             "Sugarota-$suffix"
         }
 
-        Log.i(TAG, "Nearby Sugarota device detected: $displayName ($address, RSSI: ${result.rssi} dBm)")
+        val now = System.currentTimeMillis()
+        // Track last seen time for nearby check
+        lastSeenNearbyTime[address] = now
 
-        // Tell SugarotaBleService to auto-connect to this device
-        try {
-            val connectIntent = Intent(context, SugarotaBleService::class.java).apply {
-                action = SugarotaBleService.ACTION_CONNECT_DEVICE
-                putExtra(SugarotaBleService.EXTRA_DEVICE_ADDRESS, address)
+        // Check if device was manually disconnected by the user
+        val isManuallyDisconnected = SugarotaBleService.isDeviceManuallyDisconnected(address)
+
+        // Tell SugarotaBleService to auto-connect to this device (unless manually disconnected)
+        if (!isManuallyDisconnected) {
+            try {
+                val connectIntent = Intent(context, SugarotaBleService::class.java).apply {
+                    action = SugarotaBleService.ACTION_CONNECT_DEVICE
+                    putExtra(SugarotaBleService.EXTRA_DEVICE_ADDRESS, address)
+                }
+                context.startService(connectIntent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to startService for auto-connect: ${e.message}")
             }
-            context.startService(connectIntent)
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to startService for auto-connect: ${e.message}")
         }
 
         // Requirement 5: Do not show "Sugarota Detected Nearby" notification if the device is already connected
         if (SugarotaBleService.isDeviceConnected(address)) {
             Log.d(TAG, "Suppressing nearby notification: $address is already connected")
+            clearNotificationForDevice(context, address)
             return
         }
 
-        val now = System.currentTimeMillis()
+        // Check if device is snoozed or manually disconnected
+        val snoozedUntil = snoozedUntilTime[address] ?: 0L
+        if (now < snoozedUntil || isManuallyDisconnected) {
+            Log.d(TAG, "Ignoring advertisement for $address: snoozed or manually disconnected")
+            return
+        }
+
         val lastNotified = lastNotificationTime[address] ?: 0L
         if (now - lastNotified < NOTIFICATION_THROTTLE_MS) {
             // Prevent notification spam if the device continues advertising repeatedly
@@ -116,10 +159,34 @@ class SugarotaBleScanReceiver : BroadcastReceiver() {
             putExtra(EXTRA_FROM_DISCOVERY, true)
         }
 
-        val pendingIntent = PendingIntent.getActivity(
+        val contentPendingIntent = PendingIntent.getActivity(
             context,
             NOTIFICATION_ID_OFFSET + address.hashCode(),
             launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Action 1: Connect
+        val connectIntent = Intent(context, SugarotaBleScanReceiver::class.java).apply {
+            action = ACTION_CONNECT_ACTION
+            putExtra(EXTRA_DEVICE_ADDRESS, address)
+        }
+        val connectPendingIntent = PendingIntent.getBroadcast(
+            context,
+            (NOTIFICATION_ID_OFFSET + address.hashCode()) * 31 + 1,
+            connectIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Action 2: Snooze (10 minutes)
+        val snoozeIntent = Intent(context, SugarotaBleScanReceiver::class.java).apply {
+            action = ACTION_SNOOZE_ACTION
+            putExtra(EXTRA_DEVICE_ADDRESS, address)
+        }
+        val snoozePendingIntent = PendingIntent.getBroadcast(
+            context,
+            (NOTIFICATION_ID_OFFSET + address.hashCode()) * 31 + 2,
+            snoozeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -133,27 +200,61 @@ class SugarotaBleScanReceiver : BroadcastReceiver() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
             .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(contentPendingIntent)
+            .addAction(android.R.drawable.ic_menu_rotate, "Connect", connectPendingIntent)
+            .addAction(android.R.drawable.ic_lock_idle_alarm, "Snooze (10m)", snoozePendingIntent)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .build()
 
         notificationManager.notify(NOTIFICATION_ID_OFFSET + address.hashCode(), notification)
+        activeNearbyNotifications[address] = System.currentTimeMillis()
     }
 
     companion object {
         private const val TAG = "SugarotaScanReceiver"
         private const val NOTIFICATION_ID_OFFSET = 2000
         private const val NOTIFICATION_THROTTLE_MS = 60_000L // Don't re-notify within 60s for same device
+        const val SNOOZE_DURATION_MS = 10 * 60 * 1000L // 10 minutes snooze
+
+        const val ACTION_CONNECT_ACTION = "org.sugarota.companion.ACTION_NOTIFICATION_CONNECT"
+        const val ACTION_SNOOZE_ACTION = "org.sugarota.companion.ACTION_NOTIFICATION_SNOOZE"
 
         const val EXTRA_DEVICE_ADDRESS = "extra_device_address"
         const val EXTRA_DEVICE_NAME = "extra_device_name"
         const val EXTRA_FROM_DISCOVERY = "extra_from_discovery"
 
         private val lastNotificationTime = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        private val snoozedUntilTime = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        private val lastSeenNearbyTime = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        private val activeNearbyNotifications = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
         fun clearNotificationForDevice(context: Context, address: String) {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.cancel(NOTIFICATION_ID_OFFSET + address.hashCode())
+            activeNearbyNotifications.remove(address)
+        }
+
+        fun isDeviceSnoozed(address: String): Boolean {
+            val until = snoozedUntilTime[address] ?: return false
+            return System.currentTimeMillis() < until
+        }
+
+        /**
+         * Clears "Sugarota Detected Nearby" notification if the device hasn't been seen advertising
+         * within staleThresholdMs (default 25 seconds) or is already connected.
+         */
+        fun dismissStaleNearbyNotifications(context: Context, staleThresholdMs: Long = 25_000L) {
+            val now = System.currentTimeMillis()
+            val entries = activeNearbyNotifications.entries.toList()
+            for (entry in entries) {
+                val addr = entry.key
+                val lastSeen = lastSeenNearbyTime[addr] ?: 0L
+                val isConnected = SugarotaBleService.isDeviceConnected(addr)
+                if (isConnected || (now - lastSeen) > staleThresholdMs) {
+                    Log.i(TAG, "Auto-dismissing nearby notification for $addr (isConnected=$isConnected, lastSeenDelta=${now - lastSeen}ms)")
+                    clearNotificationForDevice(context, addr)
+                }
+            }
         }
     }
 }

@@ -21,6 +21,7 @@ Key architectural tenets:
 | Eavesdropping on wireless BLE telemetry | AES-128 link encryption with authenticated 128-bit Long Term Keys (LTK) negotiated during numeric pairing |
 | Rogue BLE control / unwanted commands | All writable characteristics (`CHAR_GLUCOSE`, `CHAR_CONFIG`, `CHAR_OTA`) enforce authenticated encryption (`WRITE_ENC`); unauthenticated writes are rejected at the GATT layer |
 | Unsolicited pairing spam in public | Pairing mode auto-closes 60 seconds after boot; subsequent pairing attempts from unknown devices are rejected immediately unless device is shaken into Config Mode |
+| Unwanted background auto-reconnections | Explicit manual disconnect in the Android companion app suppresses passive reconnect scans and BLE auto-connect loops until explicitly initiated by the user |
 | Wi-Fi credential exfiltration via local installer | WebSerial installer runs 100% client-side in the browser via Web Serial API; `utils/run_web_installer.py` serves static files locally on loopback (`127.0.0.1`) with zero telemetry |
 | Wi-Fi AP exposure / unauthorized config access | Local Access Point Config Mode (`http://sugarota.local`) auto-terminates after a strict 5-minute inactivity timeout |
 | Malicious firmware tampering / OTA corruption | Dual-partition A/B scheme (`ota_0` / `ota_1`) with CRC and optional MD5 hash verification; incomplete or corrupted images abort before boot flag commitment, preventing bricking |
@@ -41,10 +42,11 @@ Key architectural tenets:
    - ESP32-S3 generates a random 6-digit passkey displayed on the 3.49" LCD alongside a confirmation dialog.
    - User verifies that the 6-digit code on the Sugarota screen matches the prompt on the smartphone OS before confirming on both devices.
 
-3. **Key Storage & Bonding**:
+3. **Key Storage, Bonding & Connection Controls**:
    - Upon mutual confirmation, a 128-bit Long Term Key (LTK) is stored in ESP32 non-volatile storage (NVS).
    - Up to 3 bonded central devices are remembered simultaneously, supporting up to 2 concurrent connected smartphones (`MAX_BLE_CLIENTS = 2`).
    - Reconnections from bonded devices resume automatically with silent AES-128 encryption.
+   - Users can manually disconnect a bonded device at any time from the Android companion app. Manual disconnect enters a protected state that suppresses automatic background reconnection and opportunistic GATT re-linking until the user explicitly requests reconnection.
 
 ---
 

@@ -58,15 +58,19 @@ fun DeviceDetailScreen(
         address = deviceAddress
     )
 
-    // Return to main screen automatically when the device is disconnected (e.g. rebooting or powering off)
+    val lastReading by service?.lastReading?.collectAsState() ?: remember { mutableStateOf(null) }
+    val deviceReadings by service?.deviceReadings?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
+    val deviceConfigured by service?.deviceConfigured?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
+    val deviceReading = deviceReadings[deviceAddress] ?: lastReading
+    val isConfigured = deviceConfigured[deviceAddress] ?: true
+    var currentTab by remember { mutableStateOf(initialTab) }
+
+    // Fallback tab to CHART when device is offline
     LaunchedEffect(device.isConnected) {
-        if (!device.isConnected) {
-            onDismiss()
+        if (!device.isConnected && currentTab != DeviceScreenTab.CHART) {
+            currentTab = DeviceScreenTab.CHART
         }
     }
-
-    val lastReading by service?.lastReading?.collectAsState() ?: remember { mutableStateOf(null) }
-    var currentTab by remember { mutableStateOf(initialTab) }
 
     val colors = ShadcnTheme.colors
     val typography = ShadcnTheme.typography
@@ -272,20 +276,33 @@ fun DeviceDetailScreen(
 
                             // Config Tab Button
                             val isConfigSelected = currentTab == DeviceScreenTab.CONFIG
+                            val isConfigEnabled = device.isConnected
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(if (isConfigSelected) colors.secondary else Color.Transparent)
-                                    .clickable { currentTab = DeviceScreenTab.CONFIG },
+                                    .then(
+                                        if (isConfigEnabled) {
+                                            Modifier.clickable { currentTab = DeviceScreenTab.CONFIG }
+                                        } else {
+                                            Modifier
+                                        }
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         imageVector = Icons.Default.Settings,
                                         contentDescription = null,
-                                        tint = if (isConfigSelected) colors.foreground else colors.mutedForeground,
+                                        tint = if (!isConfigEnabled) {
+                                            colors.mutedForeground.copy(alpha = 0.35f)
+                                        } else if (isConfigSelected) {
+                                            colors.foreground
+                                        } else {
+                                            colors.mutedForeground
+                                        },
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -294,27 +311,46 @@ fun DeviceDetailScreen(
                                         style = typography.caption.copy(
                                             fontWeight = if (isConfigSelected) FontWeight.SemiBold else FontWeight.Normal
                                         ),
-                                        color = if (isConfigSelected) colors.foreground else colors.mutedForeground
+                                        color = if (!isConfigEnabled) {
+                                            colors.mutedForeground.copy(alpha = 0.35f)
+                                        } else if (isConfigSelected) {
+                                            colors.foreground
+                                        } else {
+                                            colors.mutedForeground
+                                        }
                                     )
                                 }
                             }
 
                             // Logs Tab Button (Terminal / Verbose debug logs)
                             val isLogsSelected = currentTab == DeviceScreenTab.LOGS
+                            val isLogsEnabled = device.isConnected
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(if (isLogsSelected) colors.secondary else Color.Transparent)
-                                    .clickable { currentTab = DeviceScreenTab.LOGS },
+                                    .then(
+                                        if (isLogsEnabled) {
+                                            Modifier.clickable { currentTab = DeviceScreenTab.LOGS }
+                                        } else {
+                                            Modifier
+                                        }
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         imageVector = Icons.Default.Code,
                                         contentDescription = null,
-                                        tint = if (isLogsSelected) colors.foreground else colors.mutedForeground,
+                                        tint = if (!isLogsEnabled) {
+                                            colors.mutedForeground.copy(alpha = 0.35f)
+                                        } else if (isLogsSelected) {
+                                            colors.foreground
+                                        } else {
+                                            colors.mutedForeground
+                                        },
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -323,7 +359,13 @@ fun DeviceDetailScreen(
                                         style = typography.caption.copy(
                                             fontWeight = if (isLogsSelected) FontWeight.SemiBold else FontWeight.Normal
                                         ),
-                                        color = if (isLogsSelected) colors.foreground else colors.mutedForeground
+                                        color = if (!isLogsEnabled) {
+                                            colors.mutedForeground.copy(alpha = 0.35f)
+                                        } else if (isLogsSelected) {
+                                            colors.foreground
+                                        } else {
+                                            colors.mutedForeground
+                                        }
                                     )
                                 }
                             }
@@ -342,8 +384,10 @@ fun DeviceDetailScreen(
                 DeviceScreenTab.CHART -> {
                     DeviceChartContent(
                         device = device,
-                        lastReading = lastReading,
+                        lastReading = deviceReading,
+                        isConfigured = isConfigured,
                         service = service,
+                        onNavigateToConfig = { currentTab = DeviceScreenTab.CONFIG },
                         onOpenFirmwareUpdate = { showFirmwareUpdate = true }
                     )
                 }
@@ -372,7 +416,9 @@ fun DeviceDetailScreen(
 fun DeviceChartContent(
     device: SugarotaDevice,
     lastReading: org.sugarota.companion.model.GlucoseData?,
+    isConfigured: Boolean = true,
     service: SugarotaBleService?,
+    onNavigateToConfig: () -> Unit = {},
     onOpenFirmwareUpdate: () -> Unit = {}
 ) {
     val colors = ShadcnTheme.colors
@@ -391,18 +437,75 @@ fun DeviceChartContent(
         }
     }
 
-    val units = lastReading?.units ?: "mg/dL"
+    val units = lastReading?.units?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
+    val isMmol = units.equals("mmol/l", ignoreCase = true)
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
+        // If not configured, show prominent callout to start configuration
+        if (!isConfigured) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusMedium))
+                    .background(Color(0xFFF59E0B).copy(alpha = 0.15f))
+                    .border(
+                        width = 1.dp,
+                        color = Color(0xFFF59E0B).copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(ShadcnTheme.shapes.radiusMedium)
+                    )
+                    .clickable(onClick = onNavigateToConfig)
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Configure Account",
+                    tint = Color(0xFFF59E0B),
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Account Details Not Configured",
+                        style = typography.body.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                        color = Color(0xFFF59E0B)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Tap to set up Nightscout URL or Dexcom credentials for this device.",
+                        style = typography.caption.copy(fontSize = 12.sp),
+                        color = colors.mutedForeground
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = Color(0xFFF59E0B),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
         // Glucose Value One-liner above the chart
         if (lastReading != null) {
-            val deltaFormatted = "${if (lastReading.delta > 0) "+" else ""}${lastReading.delta}"
+            val formattedSgv = if (isMmol) {
+                String.format(java.util.Locale.US, "%.1f", lastReading.sgv / 18.0182f)
+            } else {
+                "${lastReading.sgv}"
+            }
+            val deltaFormatted = if (isMmol) {
+                val mmolVal = lastReading.delta / 18.0182f
+                if (lastReading.delta == 0) "+0.0" else String.format(java.util.Locale.US, "%s%.1f", if (lastReading.delta > 0) "+" else "", mmolVal)
+            } else {
+                "${if (lastReading.delta > 0) "+" else ""}${lastReading.delta}"
+            }
             val bgCol = getGlucoseColor(lastReading.sgv)
-            val timeStr = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
                 .format(java.util.Date(lastReading.timestamp * 1000))
             val minsAgo = ((System.currentTimeMillis() / 1000 - lastReading.timestamp) / 60).coerceAtLeast(0)
 
@@ -410,7 +513,7 @@ fun DeviceChartContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "${lastReading.sgv}",
+                    text = formattedSgv,
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
                     color = bgCol
@@ -422,7 +525,7 @@ fun DeviceChartContent(
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "$deltaFormatted ${lastReading.units}",
+                    text = "$deltaFormatted $units",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = colors.foreground
@@ -459,9 +562,25 @@ fun DeviceChartContent(
                 .fillMaxWidth()
                 .weight(0.70f)
         ) {
-            ShadcnCard(
-                modifier = Modifier.fillMaxSize()
-            ) {
+            if (!device.isConnected) {
+                ShadcnCard(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Device is offline",
+                            style = typography.body.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
+                            color = colors.mutedForeground
+                        )
+                    }
+                }
+            } else {
+                ShadcnCard(
+                    modifier = Modifier.fillMaxSize()
+                ) {
                 // Confirmation Dialog States
                 var showResetDialog by remember { mutableStateOf(false) }
                 var showPowerOffDialog by remember { mutableStateOf(false) }
@@ -901,6 +1020,8 @@ fun DeviceChartContent(
         }
     }
 }
+}
+
 
 @Composable
 fun DeviceLogsScreen(

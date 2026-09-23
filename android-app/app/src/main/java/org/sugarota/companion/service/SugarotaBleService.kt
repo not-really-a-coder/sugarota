@@ -45,7 +45,6 @@ class SugarotaBleService : Service() {
     private val deviceConfigs = ConcurrentHashMap<String, String>() // address -> raw JSON
     private val lastPushedTimestamps = ConcurrentHashMap<String, Long>() // address -> timestamp
     private val currentMtu = ConcurrentHashMap<String, Int>() // address -> negotiated MTU
-    private val manuallyDisconnected = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
     // Per-device write queue: each entry is a list of raw byte payloads to be sent sequentially.
     // The next chunk is sent only after onCharacteristicWrite fires for the previous one.
     private val pendingWriteQueues = ConcurrentHashMap<String, ArrayDeque<ByteArray>>()
@@ -82,6 +81,19 @@ class SugarotaBleService : Service() {
 
     private val _lastReading = MutableStateFlow<GlucoseData?>(null)
     val lastReading: StateFlow<GlucoseData?> = _lastReading.asStateFlow()
+
+    // Per-device latest readings (address -> GlucoseData)
+    private val _deviceReadings = MutableStateFlow<Map<String, GlucoseData>>(emptyMap())
+    val deviceReadings: StateFlow<Map<String, GlucoseData>> = _deviceReadings.asStateFlow()
+
+    // Per-device configuration completeness (address -> Boolean: true if provider and credentials are set)
+    private val _deviceConfigured = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val deviceConfigured: StateFlow<Map<String, Boolean>> = _deviceConfigured.asStateFlow()
+
+    // Persistent custom device ordering (ordered list of BLE addresses)
+    private val orderPrefs by lazy { getSharedPreferences("sugarota_device_order", Context.MODE_PRIVATE) }
+    private val _deviceOrder = MutableStateFlow<List<String>>(emptyList())
+    val deviceOrder: StateFlow<List<String>> = _deviceOrder.asStateFlow()
 
     private val _bridgeStatus = MutableStateFlow("Idle")
     val bridgeStatus: StateFlow<String> = _bridgeStatus.asStateFlow()
@@ -128,6 +140,8 @@ class SugarotaBleService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        _deviceOrder.value = loadDeviceOrder()
+        loadCachedDeviceConfigs()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("Sugarota Service Running"))
 
@@ -150,8 +164,12 @@ class SugarotaBleService : Service() {
         if (action == ACTION_CONNECT_DEVICE) {
             val address = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
             if (!address.isNullOrBlank()) {
-                Log.i("SugarotaBleService", "onStartCommand: Auto-connecting requested device: $address")
-                connectDevice(address)
+                if (isDeviceManuallyDisconnected(address)) {
+                    Log.i("SugarotaBleService", "onStartCommand: Skipping auto-connect for $address because it was manually disconnected by user")
+                } else {
+                    Log.i("SugarotaBleService", "onStartCommand: Auto-connecting requested device: $address")
+                    connectDevice(address)
+                }
             }
         }
         return START_STICKY
@@ -173,6 +191,28 @@ class SugarotaBleService : Service() {
 
     // Custom device names storage
     private val namePrefs by lazy { getSharedPreferences("sugarota_device_names", Context.MODE_PRIVATE) }
+    // Cached device configs storage (address -> JSON string)
+    private val configPrefs by lazy { getSharedPreferences("sugarota_device_configs", Context.MODE_PRIVATE) }
+
+    private fun loadCachedDeviceConfigs() {
+        try {
+            val all = configPrefs.all
+            for ((addr, value) in all) {
+                if (value is String && value.isNotBlank()) {
+                    deviceConfigs[addr] = value
+                    checkConfigCompleteness(addr, value)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("SugarotaBleService", "Error loading cached device configs: ${e.message}")
+        }
+    }
+
+    private fun saveCachedDeviceConfig(address: String, configJson: String) {
+        if (configJson.isNotBlank()) {
+            configPrefs.edit().putString(address, configJson).apply()
+        }
+    }
 
     fun getDefaultDeviceName(address: String): String {
         val clean = address.replace(":", "").replace("-", "")
@@ -200,6 +240,111 @@ class SugarotaBleService : Service() {
         current[address]?.let { dev ->
             current[address] = dev.copy(name = getDeviceDisplayName(address))
             _devices.value = current
+        }
+    }
+
+    private fun loadDeviceOrder(): List<String> {
+        val raw = orderPrefs.getString("device_addresses_order", "") ?: ""
+        return if (raw.isBlank()) emptyList() else raw.split(",").filter { it.isNotBlank() }
+    }
+
+    fun saveDeviceOrder(orderedAddresses: List<String>) {
+        _deviceOrder.value = orderedAddresses
+        orderPrefs.edit().putString("device_addresses_order", orderedAddresses.joinToString(",")).apply()
+    }
+
+    fun getPrimaryDeviceAddress(): String? {
+        val order = _deviceOrder.value
+        val connectedMap = _devices.value.filter { it.value.isConnected }
+        if (connectedMap.isNotEmpty()) {
+            // Find first connected device according to user's order
+            for (addr in order) {
+                if (connectedMap.containsKey(addr)) return addr
+            }
+            // Fallback to any connected device
+            return connectedMap.keys.firstOrNull()
+        }
+        // Fallback to first device in order or any known device
+        return order.firstOrNull { _devices.value.containsKey(it) } ?: _devices.value.keys.firstOrNull()
+    }
+
+    /**
+     * Forget a device: disconnects GATT, clears pairing/bond via BluetoothDevice.removeBond(),
+     * purges cached configurations, readings, and logs. Does NOT modify device settings;
+     * device continues working as usual and must be re-paired next time.
+     */
+    fun forgetDevice(address: String) {
+        Log.i("SugarotaBleService", "forgetDevice requested for $address")
+        manuallyDisconnected.add(address)
+        connectingDevices.remove(address)
+        syncingDevices.remove(address)
+
+        // Disconnect and close GATT
+        val gatt = connectedGatts.remove(address)
+        try {
+            gatt?.disconnect()
+            gatt?.close()
+        } catch (e: Exception) {
+            Log.w("SugarotaBleService", "Error closing GATT during forgetDevice for $address: ${e.message}")
+        }
+
+        // Clean internal state
+        deviceConfigs.remove(address)
+        lastPushedTimestamps.remove(address)
+        currentMtu.remove(address)
+        pendingWriteQueues.remove(address)
+        pendingConfigReads.remove(address)
+
+        val updatedReadings = _deviceReadings.value.toMutableMap()
+        updatedReadings.remove(address)
+        _deviceReadings.value = updatedReadings
+
+        val updatedConfigured = _deviceConfigured.value.toMutableMap()
+        updatedConfigured.remove(address)
+        _deviceConfigured.value = updatedConfigured
+
+        clearDeviceLogs(address)
+        namePrefs.edit().remove(address).apply()
+        configPrefs.edit().remove(address).apply()
+
+        // Remove from devices state flow
+        val currentDevs = _devices.value.toMutableMap()
+        currentDevs.remove(address)
+        _devices.value = currentDevs
+
+        // Remove from device order
+        val newOrder = _deviceOrder.value.filter { it != address }
+        saveDeviceOrder(newOrder)
+
+        // Clear Android OS Bluetooth bond/pairing
+        try {
+            val device = bluetoothAdapter?.getRemoteDevice(address)
+            if (device != null && device.bondState != BluetoothDevice.BOND_NONE) {
+                val method = device.javaClass.getMethod("removeBond")
+                val result = method.invoke(device) as? Boolean
+                Log.i("SugarotaBleService", "BluetoothDevice.removeBond() invoked for $address, result=$result")
+            }
+        } catch (e: Exception) {
+            Log.w("SugarotaBleService", "Failed to invoke removeBond on $address: ${e.message}")
+        }
+
+        // Clear notification if this was the primary device
+        if (connectedGatts.isEmpty()) {
+            updateNotification("Waiting for Sugarota connection...")
+        } else {
+            val primaryAddr = getPrimaryDeviceAddress()
+            val primaryReading = primaryAddr?.let { _deviceReadings.value[it] }
+            if (primaryReading != null) {
+                val units = primaryReading.units.takeIf { it.isNotBlank() } ?: getDeviceUnits(primaryAddr)
+                val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+                    .format(java.util.Date(primaryReading.timestamp * 1000))
+                val valStr = formatGlucoseValue(primaryReading.sgv, units)
+                val deltaStr = formatGlucoseDelta(primaryReading.delta, units)
+                val summary = "$valStr $units ${primaryReading.trendArrow} ($deltaStr) at $timeStr"
+                updateNotification("Glucose: $summary", reading = primaryReading)
+            } else {
+                updateNotification("Connected to ${connectedGatts.size} device(s)")
+            }
         }
     }
 
@@ -361,7 +506,6 @@ class SugarotaBleService : Service() {
                         lastDisconnectTime[addr] = System.currentTimeMillis()
                         connectedGatts.remove(addr)
                         markDeviceConnected(addr, false)
-                        deviceConfigs.remove(addr)
                         lastPushedTimestamps.remove(addr)
                         currentMtu.remove(addr)
                         pendingWriteQueues.remove(addr) // Clear any pending history chunks
@@ -490,9 +634,37 @@ class SugarotaBleService : Service() {
         }
     }
 
+    private fun updateDeviceConfiguredStatus(address: String, isConfigured: Boolean) {
+        val current = _deviceConfigured.value.toMutableMap()
+        current[address] = isConfigured
+        _deviceConfigured.value = current
+    }
+
+    private fun checkConfigCompleteness(address: String, configJson: String) {
+        try {
+            val json = org.json.JSONObject(configJson)
+            val provider = json.optString("provider", "NIGHTSCOUT")
+            val isConfigured = if (provider.equals("DEXCOM", ignoreCase = true)) {
+                val dex = json.optJSONObject("dexcom")
+                val user = dex?.optString("user", "") ?: ""
+                val pass = dex?.optString("pass", "") ?: ""
+                user.isNotBlank() && pass.isNotBlank()
+            } else {
+                val ns = json.optJSONObject("nightscout")
+                val url = ns?.optString("url", "") ?: ""
+                url.isNotBlank()
+            }
+            updateDeviceConfiguredStatus(address, isConfigured)
+        } catch (e: Exception) {
+            updateDeviceConfiguredStatus(address, false)
+        }
+    }
+
     private fun handleConfigReceived(address: String, payload: String) {
         if (payload.isNotBlank()) {
             deviceConfigs[address] = payload
+            saveCachedDeviceConfig(address, payload)
+            checkConfigCompleteness(address, payload)
         }
         pendingConfigReads.remove(address)?.invoke(payload)
         // Trigger sync ONLY if not already synced or syncing for this device
@@ -509,7 +681,6 @@ class SugarotaBleService : Service() {
         connectingDevices.remove(address)
         syncingDevices.remove(address)
         val gatt = connectedGatts.remove(address)
-        deviceConfigs.remove(address)
         lastPushedTimestamps.remove(address)
         currentMtu.remove(address)
         updateDeviceState(address, isConnected = false)
@@ -817,6 +988,8 @@ class SugarotaBleService : Service() {
         }
 
         deviceConfigs[address] = configJson
+        saveCachedDeviceConfig(address, configJson)
+        checkConfigCompleteness(address, configJson)
 
         serviceScope.launch {
             try {
@@ -937,27 +1110,39 @@ class SugarotaBleService : Service() {
                 val pass = dex?.optString("pass", "") ?: ""
                 val server = dex?.optString("server", "shareous1.dexcom.com") ?: "shareous1.dexcom.com"
                 if (user.isBlank() || pass.isBlank()) {
+                    updateDeviceConfiguredStatus(address, false)
                     _bridgeStatus.value = "Dexcom credentials missing in /config.json"
                     return false
                 }
+                updateDeviceConfiguredStatus(address, true)
                 bridgeClient.fetchDexcom(user, pass, server)
             } else {
                 val ns = json.optJSONObject("nightscout")
                 val url = ns?.optString("url", "") ?: ""
                 val secret = ns?.optString("secret", "") ?: ""
                 if (url.isBlank()) {
+                    updateDeviceConfiguredStatus(address, false)
                     _bridgeStatus.value = "Nightscout URL missing in /config.json"
                     return false
                 }
+                updateDeviceConfiguredStatus(address, true)
                 bridgeClient.fetchNightscout(url, secret)
             }
 
             if (reading != null) {
+                // Update global fallback and per-device reading map
                 _lastReading.value = reading
-                val timeStr = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                val updatedReadings = _deviceReadings.value.toMutableMap()
+                updatedReadings[address] = reading
+                _deviceReadings.value = updatedReadings
+
+                val units = reading.units.takeIf { it.isNotBlank() } ?: getDeviceUnits(address)
+                val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
                     .format(java.util.Date(reading.timestamp * 1000))
                 val arrow = reading.trendArrow
-                val summary = "${reading.sgv} $arrow (${if (reading.delta >= 0) "+" else ""}${reading.delta}) at $timeStr"
+                val valStr = formatGlucoseValue(reading.sgv, units)
+                val deltaStr = formatGlucoseDelta(reading.delta, units)
+                val summary = "$valStr $units $arrow ($deltaStr) at $timeStr"
 
                 val lastTs = lastPushedTimestamps[address]
                 val isNewData = (lastTs == null || reading.timestamp > lastTs)
@@ -994,7 +1179,12 @@ class SugarotaBleService : Service() {
                 lastPushedTimestamps[address] = reading.timestamp
                 pushGlucoseToDevice(address, reading, isFullSync = shouldFullSync)
                 _bridgeStatus.value = "Synced $summary"
-                updateNotification("Glucose: $summary")
+
+                // Topmost device in list is the primary source for status notifications and chart preview
+                val primaryAddr = getPrimaryDeviceAddress()
+                if (primaryAddr == null || primaryAddr == address) {
+                    updateNotification("Glucose: $summary", isNewData = isNewData, reading = reading)
+                }
                 return true
             } else {
                 _bridgeStatus.value = "Fetch failed · Network error"
@@ -1047,9 +1237,17 @@ class SugarotaBleService : Service() {
         bridgeJob?.cancel()
         bridgeJob = serviceScope.launch {
             while (isActive) {
-                if (connectedGatts.isNotEmpty()) {
-                    for (address in connectedGatts.keys) {
-                        if (!deviceConfigs.containsKey(address) || deviceConfigs[address].isNullOrBlank()) {
+                // Collect addresses to query: connected devices take priority, followed by any configured offline devices
+                val targetAddresses = linkedSetOf<String>()
+                targetAddresses.addAll(connectedGatts.keys)
+                val configuredOffline = deviceConfigs.keys.filter { addr ->
+                    !connectedGatts.containsKey(addr) && (_deviceConfigured.value[addr] == true)
+                }
+                targetAddresses.addAll(configuredOffline)
+
+                if (targetAddresses.isNotEmpty()) {
+                    for (address in targetAddresses) {
+                        if (connectedGatts.containsKey(address) && (!deviceConfigs.containsKey(address) || deviceConfigs[address].isNullOrBlank())) {
                             readConfig(address) { /* handleConfigReceived takes care of caching and trigger */ }
                         }
                         fetchAndPushForDevice(address)
@@ -1059,6 +1257,8 @@ class SugarotaBleService : Service() {
                 }
 
                 val delayMs = computeNextDelayMs()
+                // Auto-dismiss "Sugarota Detected Nearby" notification when device is no longer nearby or now connected
+                SugarotaBleScanReceiver.dismissStaleNearbyNotifications(this@SugarotaBleService)
                 delay(delayMs)
             }
         }
@@ -1142,7 +1342,98 @@ class SugarotaBleService : Service() {
         }
     }
 
-    private fun buildNotification(text: String): Notification {
+    private fun wakeScreenBriefly() {
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+            val isInteractive = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
+                powerManager?.isInteractive == true
+            } else {
+                @Suppress("DEPRECATION")
+                powerManager?.isScreenOn == true
+            }
+
+            // Only wake if screen is currently OFF
+            if (!isInteractive && powerManager != null) {
+                @Suppress("DEPRECATION")
+                val wakeLock = powerManager.newWakeLock(
+                    android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    "sugarota:glucose_update_wake"
+                )
+                wakeLock.acquire(3000L) // 3 seconds timeout
+                Log.d("SugarotaBleService", "Acquired temporary WakeLock for new glucose reading")
+            }
+        } catch (e: Exception) {
+            Log.w("SugarotaBleService", "Failed to wake screen: ${e.message}")
+        }
+    }
+
+    fun getDeviceUnits(address: String?): String {
+        if (address != null) {
+            val cfgJson = deviceConfigs[address]
+            if (!cfgJson.isNullOrBlank()) {
+                try {
+                    val u = org.json.JSONObject(cfgJson).optString("units", "")
+                    if (u.isNotBlank()) return u
+                } catch (e: Exception) {
+                    // Ignore JSON parsing errors
+                }
+            }
+        }
+        return "mg/dL"
+    }
+
+    private fun formatGlucoseValue(sgv: Int, units: String): String {
+        return if (units.equals("mmol/l", ignoreCase = true)) {
+            String.format(java.util.Locale.US, "%.1f", sgv / 18.0182f)
+        } else {
+            sgv.toString()
+        }
+    }
+
+    private fun formatGlucoseDelta(delta: Int, units: String): String {
+        return if (units.equals("mmol/l", ignoreCase = true)) {
+            val mmolVal = delta / 18.0182f
+            if (delta == 0) "+0.0" else String.format(java.util.Locale.US, "%s%.1f", if (delta > 0) "+" else "", mmolVal)
+        } else {
+            "${if (delta >= 0) "+" else ""}$delta"
+        }
+    }
+
+    private fun createGlucoseIconBitmap(text: String): android.graphics.Bitmap {
+        val size = 96
+        val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            isAntiAlias = true
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD)
+            textSize = when {
+                text.length <= 2 -> 76f
+                text.length == 3 -> 66f
+                text.length == 4 -> 54f
+                else -> 42f
+            }
+        }
+
+        // Measure text bounds to ensure text is precisely centered and fits within the canvas
+        val bounds = android.graphics.Rect()
+        paint.getTextBounds(text, 0, text.length, bounds)
+
+        // If width exceeds canvas width minus safe padding, downscale slightly
+        val maxAllowedWidth = size - 8f
+        if (bounds.width() > maxAllowedWidth) {
+            paint.textSize *= (maxAllowedWidth / bounds.width())
+            paint.getTextBounds(text, 0, text.length, bounds)
+        }
+
+        val y = (size / 2f) - bounds.exactCenterY()
+        canvas.drawText(text, size / 2f, y, paint)
+        return bitmap
+    }
+
+    private fun buildNotification(text: String, reading: GlucoseData? = null): Notification {
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -1153,18 +1444,46 @@ class SugarotaBleService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val primaryAddr = getPrimaryDeviceAddress()
+        val units = reading?.units?.takeIf { it.isNotBlank() } ?: getDeviceUnits(primaryAddr)
+        val chartReading = reading ?: _lastReading.value
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Sugarota Companion")
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
-            .build()
+
+        if (chartReading != null) {
+            val iconText = formatGlucoseValue(chartReading.sgv, units)
+            val iconBitmap = createGlucoseIconBitmap(iconText)
+            builder.setSmallIcon(androidx.core.graphics.drawable.IconCompat.createWithBitmap(iconBitmap))
+        } else {
+            builder.setSmallIcon(android.R.drawable.stat_notify_sync)
+        }
+
+        if (chartReading != null) {
+            try {
+                val chartBitmap = org.sugarota.companion.ui.notification.NotificationChartRenderer.renderTwoHourChart(chartReading, units)
+                builder.setStyle(
+                    NotificationCompat.BigPictureStyle()
+                        .bigPicture(chartBitmap)
+                        .setSummaryText(text)
+                )
+            } catch (e: Exception) {
+                Log.w("SugarotaBleService", "Error generating notification chart: ${e.message}")
+            }
+        }
+
+        return builder.build()
     }
 
-    private fun updateNotification(text: String) {
+    private fun updateNotification(text: String, isNewData: Boolean = false, reading: GlucoseData? = null) {
+        if (isNewData) {
+            wakeScreenBriefly()
+        }
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID, buildNotification(text))
+        manager.notify(NOTIFICATION_ID, buildNotification(text, reading))
     }
 
     private fun createNotificationChannel() {
@@ -1250,6 +1569,7 @@ class SugarotaBleService : Service() {
 
         // Track active connections for fast checks across processes/receivers
         private val activeConnectedAddresses = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+        private val manuallyDisconnected = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
 
         fun isDeviceConnected(address: String): Boolean {
             return activeConnectedAddresses.contains(address)
@@ -1260,6 +1580,18 @@ class SugarotaBleService : Service() {
                 activeConnectedAddresses.add(address)
             } else {
                 activeConnectedAddresses.remove(address)
+            }
+        }
+
+        fun isDeviceManuallyDisconnected(address: String): Boolean {
+            return manuallyDisconnected.contains(address)
+        }
+
+        fun markDeviceManuallyDisconnected(address: String, disconnected: Boolean) {
+            if (disconnected) {
+                manuallyDisconnected.add(address)
+            } else {
+                manuallyDisconnected.remove(address)
             }
         }
     }

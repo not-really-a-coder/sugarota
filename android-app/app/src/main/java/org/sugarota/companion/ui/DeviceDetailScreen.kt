@@ -509,6 +509,9 @@ fun DeviceChartContent(
                 .format(java.util.Date(lastReading.timestamp * 1000))
             val minsAgo = ((System.currentTimeMillis() / 1000 - lastReading.timestamp) / 60).coerceAtLeast(0)
 
+            val syncRotation = remember { androidx.compose.animation.core.Animatable(0f) }
+            val syncScope = rememberCoroutineScope()
+
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -536,6 +539,34 @@ fun DeviceChartContent(
                     style = typography.caption,
                     color = colors.mutedForeground
                 )
+                Spacer(modifier = Modifier.width(4.dp))
+                IconButton(
+                    onClick = {
+                        syncScope.launch {
+                            syncRotation.snapTo(0f)
+                            syncRotation.animateTo(
+                                targetValue = 360f,
+                                animationSpec = androidx.compose.animation.core.tween(
+                                    durationMillis = 700,
+                                    easing = androidx.compose.animation.core.FastOutSlowInEasing
+                                )
+                            )
+                        }
+                        service?.triggerManualSync()
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Force Refresh",
+                        tint = colors.primary,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .graphicsLayer {
+                                rotationZ = syncRotation.value
+                            }
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(10.dp))
         }

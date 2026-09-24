@@ -238,14 +238,22 @@ fun GlucoseChartView(
             )
 
             // 4. Data Gap indicators (when timeDiff > 360 sec)
-            val gapBgColor = if (isDarkTheme) Color(0xFF451A03).copy(alpha = 0.35f) else Color(0xFFFEF3C7)
-            val gapTextColor = android.graphics.Color.parseColor("#F97316")
-            val gapPaint = Paint().apply {
-                color = gapTextColor
-                textSize = 9.sp.toPx()
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                isAntiAlias = true
-            }
+            // Rendered as two vertical zigzag lines with width equal to 1 data point interval,
+            // matching firmware ui.cpp.
+            val zigzagColor = Color(0xFF71717A) // Muted gray
+            val insideBgColor = if (isDarkTheme) colors.card else colors.card
+
+            class GapRegion(
+                val x1: Float,
+                val x2: Float,
+                val gapIdx: Int,
+                val timeDiff: Long
+            )
+            val gapRegions = mutableListOf<GapRegion>()
+
+            val numSegments = 10
+            val segH = chartHeight / numSegments.toFloat()
+            val amp = 3.dp.toPx()
 
             for (i in 0 until count - 1) {
                 val timeDiff = sortedHistory[i].timestamp - sortedHistory[i + 1].timestamp
@@ -254,27 +262,52 @@ fun GlucoseChartView(
                     val xLeft = getPointX(i + 1)
                     if (xRight < chartLeft || xLeft < chartLeft) continue
 
-                    val gapW = xRight - xLeft
-                    if (gapW > 0) {
-                        drawRect(
-                            color = gapBgColor,
-                            topLeft = Offset(xLeft, chartTop),
-                            size = Size(gapW, chartHeight)
-                        )
+                    val xMid = (xLeft + xRight) / 2f
+                    var gapW = barWidth
+                    val minGapW = 6.dp.toPx()
+                    if (gapW < minGapW) gapW = minGapW
+                    val gx1 = xMid - gapW / 2f
+                    val gx2 = gx1 + gapW
 
-                        val diffMin = timeDiff / 60
-                        val gapMsg = "${diffMin}m gap"
-                        val msgWidth = gapPaint.measureText(gapMsg)
+                    gapRegions.add(GapRegion(gx1, gx2, i, timeDiff))
 
-                        if (gapW >= msgWidth + 4.dp.toPx()) {
-                            nativeCanvas.drawText(
-                                gapMsg,
-                                xLeft + (gapW - msgWidth) / 2f,
-                                chartTop + chartHeight / 2f,
-                                gapPaint
-                            )
+                    // Fill interior between the two zigzag lines to canvas background
+                    for (s in 0 until numSegments) {
+                        val sy1 = chartTop + s * segH
+                        val sy2 = if (s == numSegments - 1) chartBottom else (sy1 + segH)
+                        val dxStart = if (s % 2 == 0) -amp else amp
+                        val dxEnd = if (s % 2 == 0) amp else -amp
+
+                        val segPath = Path().apply {
+                            moveTo(gx1 + dxStart, sy1)
+                            lineTo(gx2 + dxStart, sy1)
+                            lineTo(gx2 + dxEnd, sy2)
+                            lineTo(gx1 + dxEnd, sy2)
+                            close()
+                        }
+                        drawPath(segPath, insideBgColor)
+                    }
+
+                    // Draw the two vertical zigzag boundary lines
+                    val line1Path = Path().apply {
+                        moveTo(gx1 + (if (0 % 2 == 0) -amp else amp), chartTop)
+                        for (s in 0 until numSegments) {
+                            val sy2 = if (s == numSegments - 1) chartBottom else (chartTop + (s + 1) * segH)
+                            val dxEnd = if (s % 2 == 0) amp else -amp
+                            lineTo(gx1 + dxEnd, sy2)
                         }
                     }
+                    val line2Path = Path().apply {
+                        moveTo(gx2 + (if (0 % 2 == 0) -amp else amp), chartTop)
+                        for (s in 0 until numSegments) {
+                            val sy2 = if (s == numSegments - 1) chartBottom else (chartTop + (s + 1) * segH)
+                            val dxEnd = if (s % 2 == 0) amp else -amp
+                            lineTo(gx2 + dxEnd, sy2)
+                        }
+                    }
+
+                    drawPath(line1Path, zigzagColor, style = Stroke(width = 1.dp.toPx()))
+                    drawPath(line2Path, zigzagColor, style = Stroke(width = 1.dp.toPx()))
                 }
             }
 
@@ -321,17 +354,20 @@ fun GlucoseChartView(
                 )
             }
 
-            // 7. X-Axis Time Labels (-3h, -2h, -1h, Now)
+            // 7. X-Axis Time Labels (Absolute hours: e.g. 14:00, 13:00, 12:00, 11:00 or current reading time)
             val xAxisPaint = Paint().apply {
                 color = android.graphics.Color.parseColor("#71717A")
                 textSize = 10.sp.toPx()
                 isAntiAlias = true
             }
+
+            val latestTs = sortedHistory.first().timestamp
+            val timeSdf = SimpleDateFormat("HH:mm", Locale.getDefault())
             val timeIntervals = listOf(
-                Pair(0f, "Now"),
-                Pair(16 * barWidth, "-1h"),
-                Pair(32 * barWidth, "-2h"),
-                Pair(48 * barWidth, "-3h")
+                Pair(0f, timeSdf.format(Date(latestTs * 1000L))),
+                Pair(16 * barWidth, timeSdf.format(Date((latestTs - 3600L) * 1000L))),
+                Pair(32 * barWidth, timeSdf.format(Date((latestTs - 7200L) * 1000L))),
+                Pair(48 * barWidth, timeSdf.format(Date((latestTs - 10800L) * 1000L)))
             )
             for ((offsetFromRight, label) in timeIntervals) {
                 val lx = chartRight - offsetFromRight
@@ -346,106 +382,176 @@ fun GlucoseChartView(
                 }
             }
 
-            // 8. Interactive Scrubber / Tooltip
+            // 8. Interactive Scrubber / Tooltip (supports both regular reading & gap scrubber)
             if (isTouching && touchX in chartLeft..chartRight) {
-                // Find closest reading
-                var closestIdx = 0
-                var minDiff = Float.MAX_VALUE
-                for (i in 0 until count) {
-                    val px = getPointX(i)
-                    if (px < chartLeft) continue
-                    val diff = abs(touchX - px)
-                    if (diff < minDiff) {
-                        minDiff = diff
-                        closestIdx = i
+                // Check if scrubber cursor falls inside or near a gap
+                val touchTolerance = 6.dp.toPx()
+                val touchedGap = gapRegions.firstOrNull { gap ->
+                    touchX >= (gap.x1 - touchTolerance) && touchX <= (gap.x2 + touchTolerance)
+                }
+
+                if (touchedGap != null) {
+                    // Scrubber over Gap: display gap duration and start/end times
+                    val gxMid = (touchedGap.x1 + touchedGap.x2) / 2f
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.8f),
+                        start = Offset(gxMid, chartTop),
+                        end = Offset(gxMid, chartBottom),
+                        strokeWidth = 1.5.dp.toPx()
+                    )
+
+                    val boxW = 120.dp.toPx()
+                    val boxH = 44.dp.toPx()
+                    var boxX = gxMid - (boxW / 2f)
+                    if (boxX < chartLeft) boxX = chartLeft
+                    if (boxX + boxW > chartRight) boxX = chartRight - boxW
+                    val boxY = (chartTop + 10.dp.toPx()).coerceAtLeast(chartTop)
+
+                    drawRoundRect(
+                        color = Color(0xFF27272A),
+                        topLeft = Offset(boxX, boxY),
+                        size = Size(boxW, boxH),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx())
+                    )
+                    drawRoundRect(
+                        color = Color(0xFF3F3F46),
+                        topLeft = Offset(boxX, boxY),
+                        size = Size(boxW, boxH),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
+                        style = Stroke(width = 1.dp.toPx())
+                    )
+
+                    val gapTitlePaint = Paint().apply {
+                        color = android.graphics.Color.WHITE
+                        textSize = 13.sp.toPx()
+                        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                        isAntiAlias = true
                     }
-                }
+                    val gapSubPaint = Paint().apply {
+                        color = android.graphics.Color.parseColor("#A1A1AA")
+                        textSize = 10.sp.toPx()
+                        isAntiAlias = true
+                    }
 
-                val curReading = sortedHistory[closestIdx]
-                val curX = getPointX(closestIdx)
-                val curY = getY(curReading.sgv)
+                    val gapMins = touchedGap.timeDiff / 60
+                    val idx = touchedGap.gapIdx
+                    val tStart = sortedHistory[idx + 1].timestamp
+                    val tEnd = sortedHistory[idx].timestamp
+                    val sStart = timeSdf.format(Date(tStart * 1000L))
+                    val sEnd = timeSdf.format(Date(tEnd * 1000L))
 
-                // Vertical cursor line
-                drawLine(
-                    color = Color.White.copy(alpha = 0.8f),
-                    start = Offset(curX, chartTop),
-                    end = Offset(curX, chartBottom),
-                    strokeWidth = 1.5.dp.toPx()
-                )
-
-                // Dot selection indicator
-                drawCircle(
-                    color = Color.White,
-                    radius = 5.dp.toPx(),
-                    center = Offset(curX, curY)
-                )
-                drawCircle(
-                    color = Color.Black,
-                    radius = 3.5.dp.toPx(),
-                    center = Offset(curX, curY)
-                )
-
-                // Tooltip Callout Box (firmware ui.cpp: boxW=90, boxH=40)
-                val boxW = 84.dp.toPx()
-                val boxH = 44.dp.toPx()
-                var boxX = curX - (boxW / 2f)
-                if (boxX < chartLeft) boxX = chartLeft
-                if (boxX + boxW > chartRight) boxX = chartRight - boxW
-                val boxY = (curY - boxH - 10.dp.toPx()).coerceAtLeast(chartTop)
-
-                // Box background
-                drawRoundRect(
-                    color = Color(0xFF27272A),
-                    topLeft = Offset(boxX, boxY),
-                    size = Size(boxW, boxH),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx())
-                )
-                drawRoundRect(
-                    color = Color(0xFF3F3F46),
-                    topLeft = Offset(boxX, boxY),
-                    size = Size(boxW, boxH),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
-                    style = Stroke(width = 1.dp.toPx())
-                )
-
-                // Tooltip text
-                val valPaint = Paint().apply {
-                    color = android.graphics.Color.WHITE
-                    textSize = 14.sp.toPx()
-                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    isAntiAlias = true
-                }
-                val timePaint = Paint().apply {
-                    color = android.graphics.Color.parseColor("#A1A1AA")
-                    textSize = 10.sp.toPx()
-                    isAntiAlias = true
-                }
-
-                val formattedBg = if (units.equals("mmol/l", ignoreCase = true)) {
-                    String.format(Locale.US, "%.1f", curReading.sgv / 18.0182f)
+                    nativeCanvas.drawText(
+                        "GAP $gapMins min",
+                        boxX + 10.dp.toPx(),
+                        boxY + 18.dp.toPx(),
+                        gapTitlePaint
+                    )
+                    nativeCanvas.drawText(
+                        "$sStart - $sEnd",
+                        boxX + 10.dp.toPx(),
+                        boxY + 34.dp.toPx(),
+                        gapSubPaint
+                    )
                 } else {
-                    curReading.sgv.toString()
+                    // Regular reading scrubber
+                    var closestIdx = 0
+                    var minDiff = Float.MAX_VALUE
+                    for (i in 0 until count) {
+                        val px = getPointX(i)
+                        if (px < chartLeft) continue
+                        val diff = abs(touchX - px)
+                        if (diff < minDiff) {
+                            minDiff = diff
+                            closestIdx = i
+                        }
+                    }
+
+                    val curReading = sortedHistory[closestIdx]
+                    val curX = getPointX(closestIdx)
+                    val curY = getY(curReading.sgv)
+
+                    // Vertical cursor line
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.8f),
+                        start = Offset(curX, chartTop),
+                        end = Offset(curX, chartBottom),
+                        strokeWidth = 1.5.dp.toPx()
+                    )
+
+                    // Dot selection indicator
+                    drawCircle(
+                        color = Color.White,
+                        radius = 5.dp.toPx(),
+                        center = Offset(curX, curY)
+                    )
+                    drawCircle(
+                        color = Color.Black,
+                        radius = 3.5.dp.toPx(),
+                        center = Offset(curX, curY)
+                    )
+
+                    // Tooltip Callout Box
+                    val boxW = 84.dp.toPx()
+                    val boxH = 44.dp.toPx()
+                    var boxX = curX - (boxW / 2f)
+                    if (boxX < chartLeft) boxX = chartLeft
+                    if (boxX + boxW > chartRight) boxX = chartRight - boxW
+                    val boxY = (curY - boxH - 10.dp.toPx()).coerceAtLeast(chartTop)
+
+                    // Box background
+                    drawRoundRect(
+                        color = Color(0xFF27272A),
+                        topLeft = Offset(boxX, boxY),
+                        size = Size(boxW, boxH),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx())
+                    )
+                    drawRoundRect(
+                        color = Color(0xFF3F3F46),
+                        topLeft = Offset(boxX, boxY),
+                        size = Size(boxW, boxH),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
+                        style = Stroke(width = 1.dp.toPx())
+                    )
+
+                    // Tooltip text
+                    val valPaint = Paint().apply {
+                        color = android.graphics.Color.WHITE
+                        textSize = 14.sp.toPx()
+                        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                        isAntiAlias = true
+                    }
+                    val timePaint = Paint().apply {
+                        color = android.graphics.Color.parseColor("#A1A1AA")
+                        textSize = 10.sp.toPx()
+                        isAntiAlias = true
+                    }
+
+                    val formattedBg = if (units.equals("mmol/l", ignoreCase = true)) {
+                        String.format(Locale.US, "%.1f", curReading.sgv / 18.0182f)
+                    } else {
+                        curReading.sgv.toString()
+                    }
+                    val deltaStr = if (curReading.delta != 0) {
+                        val sign = if (curReading.delta > 0) "+" else ""
+                        " ($sign${curReading.delta})"
+                    } else ""
+                    val fullValStr = "$formattedBg$deltaStr"
+
+                    val timeStr = timeSdf.format(Date(curReading.timestamp * 1000L))
+
+                    nativeCanvas.drawText(
+                        fullValStr,
+                        boxX + 10.dp.toPx(),
+                        boxY + 18.dp.toPx(),
+                        valPaint
+                    )
+                    nativeCanvas.drawText(
+                        "$timeStr · $units",
+                        boxX + 10.dp.toPx(),
+                        boxY + 34.dp.toPx(),
+                        timePaint
+                    )
                 }
-                val deltaStr = if (curReading.delta != 0) {
-                    val sign = if (curReading.delta > 0) "+" else ""
-                    " ($sign${curReading.delta})"
-                } else ""
-                val fullValStr = "$formattedBg$deltaStr"
-
-                val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(curReading.timestamp * 1000L))
-
-                nativeCanvas.drawText(
-                    fullValStr,
-                    boxX + 10.dp.toPx(),
-                    boxY + 18.dp.toPx(),
-                    valPaint
-                )
-                nativeCanvas.drawText(
-                    "$timeStr · $units",
-                    boxX + 10.dp.toPx(),
-                    boxY + 34.dp.toPx(),
-                    timePaint
-                )
             }
         }
     }

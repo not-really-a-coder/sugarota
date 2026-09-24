@@ -73,10 +73,10 @@ int getBatteryPercentage(float voltage) {
   // - Knee begins below 3.55V (~20%), steep discharge below 3.45V
   // - Cutoff protection is at 3.00V
   const float vMap[] = {3.10f, 3.35f, 3.45f, 3.55f, 3.62f, 3.68f, 3.74f, 3.80f, 3.88f, 3.98f, 4.12f};
-  const int   pMap[] = {    0,     5,    10,    20,    30,    40,    50,    60,    70,    85,   100};
+  const int   pMap[] = {    1,     5,    10,    20,    30,    40,    50,    60,    70,    85,   100};
   const int   numPoints = sizeof(vMap) / sizeof(vMap[0]);
 
-  if (voltage <= vMap[0]) return 0;
+  if (voltage <= vMap[0]) return 1;
   if (voltage >= vMap[numPoints - 1]) return 100;
 
   for (int i = 0; i < numPoints - 1; i++) {
@@ -84,7 +84,8 @@ int getBatteryPercentage(float voltage) {
       float range = vMap[i + 1] - vMap[i];
       float offset = voltage - vMap[i];
       float pRange = pMap[i + 1] - pMap[i];
-      return pMap[i] + (int)((offset / range) * pRange);
+      int pct = pMap[i] + (int)((offset / range) * pRange);
+      return (pct < 1) ? 1 : pct;
     }
   }
   return 100;

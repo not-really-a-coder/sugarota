@@ -707,7 +707,7 @@ void drawStatusBar() {
     uint16_t batColor = textColor;
     bool showBat = true;
 
-    if (currentBatteryPct <= 5) {
+    if (currentBatteryPct <= 3) {
       if (!debugMode) {
         batColor = textColor;
       } else {

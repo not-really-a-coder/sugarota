@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.23.0"
+#define SUGAROTA_VERSION "v0.09.24.3"
 
 #include "config.h"
 #include "storage.h"
@@ -139,7 +139,7 @@ void logBoot(const String& msg) {
     if (bootLog[i] == '\n') {
       gfx->setCursor(20, logY);
       String line = bootLog.substring(startIdx, i);
-      if (line.startsWith("Battery:") && (currentBatteryPct <= 5)) {
+      if (line.startsWith("Battery:") && (currentBatteryPct <= 3)) {
         gfx->setTextColor(RED);
       } else {
         gfx->setTextColor(GREEN);

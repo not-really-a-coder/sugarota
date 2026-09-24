@@ -328,24 +328,8 @@ class SugarotaBleService : Service() {
             Log.w("SugarotaBleService", "Failed to invoke removeBond on $address: ${e.message}")
         }
 
-        // Clear notification if this was the primary device
-        if (connectedGatts.isEmpty()) {
-            updateNotification("Waiting for Sugarota connection...")
-        } else {
-            val primaryAddr = getPrimaryDeviceAddress()
-            val primaryReading = primaryAddr?.let { _deviceReadings.value[it] }
-            if (primaryReading != null) {
-                val units = primaryReading.units.takeIf { it.isNotBlank() } ?: getDeviceUnits(primaryAddr)
-                val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
-                    .format(java.util.Date(primaryReading.timestamp * 1000))
-                val valStr = formatGlucoseValue(primaryReading.sgv, units)
-                val deltaStr = formatGlucoseDelta(primaryReading.delta, units)
-                val summary = "$valStr $units ${primaryReading.trendArrow} ($deltaStr) at $timeStr"
-                updateNotification("Glucose: $summary", reading = primaryReading)
-            } else {
-                updateNotification("Connected to ${connectedGatts.size} device(s)")
-            }
-        }
+        // Update notification: always show actual glucose reading and chart if available
+        refreshNotificationState()
     }
 
     private val scanCallback = object : ScanCallback() {
@@ -513,7 +497,7 @@ class SugarotaBleService : Service() {
                         updateDeviceState(addr, isConnected = false, isBonded = bonded)
                         appendDeviceLog(addr, "Disconnected from BLE (status=$status)")
                         gatt.close()
-                        updateNotification("Waiting for Sugarota connection...")
+                        refreshNotificationState()
                     }
                 }
 
@@ -676,6 +660,25 @@ class SugarotaBleService : Service() {
         }
     }
 
+    private fun refreshNotificationState() {
+        val primaryAddr = getPrimaryDeviceAddress()
+        val primaryReading = (primaryAddr?.let { _deviceReadings.value[it] } ?: _lastReading.value)
+        if (primaryReading != null) {
+            val units = primaryReading.units.takeIf { it.isNotBlank() } ?: getDeviceUnits(primaryAddr)
+            val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+                .format(java.util.Date(primaryReading.timestamp * 1000))
+            val valStr = formatGlucoseValue(primaryReading.sgv, units)
+            val deltaStr = formatGlucoseDelta(primaryReading.delta, units)
+            val statusSuffix = if (connectedGatts.isEmpty()) " (Offline)" else ""
+            val summary = "$valStr $units ${primaryReading.trendArrow} ($deltaStr) at $timeStr$statusSuffix"
+            updateNotification("Glucose: $summary", reading = primaryReading)
+        } else if (connectedGatts.isNotEmpty()) {
+            updateNotification("Connected to ${connectedGatts.size} device(s)")
+        } else {
+            updateNotification("Sugarota Companion (Offline)")
+        }
+    }
+
     fun disconnectDevice(address: String) {
         manuallyDisconnected.add(address)
         connectingDevices.remove(address)
@@ -690,7 +693,7 @@ class SugarotaBleService : Service() {
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        updateNotification("Waiting for Sugarota connection...")
+        refreshNotificationState()
     }
 
     // Send a remote JSON command packet to the device over CHAR_GLUCOSE

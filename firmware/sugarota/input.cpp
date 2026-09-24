@@ -209,6 +209,9 @@ void checkTouch() {
     touchConfidence = 0;
     return;
   }
+  static int touchStartX = -1;
+  static int touchStartY = -1;
+  static unsigned long touchStartTime = 0;
   int tx, ty;
   bool touched = readTouch(tx, ty);
   static bool waitForRelease = false;
@@ -242,6 +245,13 @@ void checkTouch() {
     touchY = ty;
     isTouching = true;
 
+    // Track touch start point for gesture recognition
+    if (touchConfidence == 3) {
+      touchStartX = tx;
+      touchStartY = ty;
+      touchStartTime = millis();
+    }
+
     if (isShowingPairingDialog) {
       int w = 220; int h = 130;
       int dx = (640 - w) / 2;
@@ -264,26 +274,140 @@ void checkTouch() {
       return;
     }
 
-    if (touchX >= 15 && touchX <= 65 && touchY >= 60 && touchY <= 110) {
-      showHarveyBallInfo = true;
-      lastHarveyBallTapTime = millis();
-      updateUI(); 
+    // --- On Countdown Alarm Screen Touch Handling ---
+    if (currentScreen == SCREEN_COUNTDOWN_ALARM) {
+      // 1) Digits HH:MM (Tap upper half to increment, lower half to decrement)
+      // Digit positions: H1: 30-78, H2: 85-133, M1: 165-213, M2: 220-268; Y: 62-157
+      int dX[4] = { 30, 85, 165, 220 };
+      for (int i = 0; i < 4; i++) {
+        if (touchX >= dX[i] && touchX <= dX[i] + 48 && touchY >= 62 && touchY <= 157) {
+          bool isUp = (touchY < 62 + 95 / 2);
+          int delta = isUp ? 1 : -1;
+          if (i == 0) {
+            // Tens of hours (0..2)
+            int hTens = (alarmSetHours / 10 + delta + 3) % 3;
+            alarmSetHours = hTens * 10 + (alarmSetHours % 10);
+            if (alarmSetHours > 23) alarmSetHours = 23;
+          } else if (i == 1) {
+            // Ones of hours (0..9)
+            int hTens = alarmSetHours / 10;
+            int hOnes = (alarmSetHours % 10 + delta + 10) % 10;
+            alarmSetHours = hTens * 10 + hOnes;
+            if (alarmSetHours > 23) alarmSetHours = 23;
+          } else if (i == 2) {
+            // Tens of minutes (0..5)
+            int mTens = (alarmSetMinutes / 10 + delta + 6) % 6;
+            alarmSetMinutes = mTens * 10 + (alarmSetMinutes % 10);
+          } else if (i == 3) {
+            // Ones of minutes (0..9)
+            int mTens = alarmSetMinutes / 10;
+            int mOnes = (alarmSetMinutes % 10 + delta + 10) % 10;
+            alarmSetMinutes = mTens * 10 + mOnes;
+          }
+          waitForRelease = true;
+          updateUI();
+          return;
+        }
+      }
+
+      // 2) Record Button: x=300..450, y=62..106
+      if (touchX >= 300 && touchX <= 450 && touchY >= 62 && touchY <= 106) {
+        if (isRecordingAudio) {
+          // Stop recording
+          isRecordingAudio = false;
+          stopVoiceRecording();
+        } else {
+          // Start recording (deletes previous message automatically)
+          deleteVoiceRecording();
+          if (startVoiceRecording()) {
+            isRecordingAudio = true;
+            audioRecordingStartTime = millis();
+          }
+        }
+        waitForRelease = true;
+        updateUI();
+        return;
+      }
+
+      // 3) Play Voice / Test Msg Button: x=300..450, y=113..157
+      if (touchX >= 300 && touchX <= 450 && touchY >= 113 && touchY <= 157) {
+        if (hasVoiceRecording() && !isRecordingAudio) {
+          playVoiceRecording();
+        }
+        waitForRelease = true;
+        return;
+      }
+
+      // 4) Start / Stop Button: x=470..615, y=62..106
+      if (touchX >= 470 && touchX <= 615 && touchY >= 62 && touchY <= 106) {
+        if (isAlarmRunning) {
+          // Stop running alarm
+          isAlarmRunning = false;
+          alarmEndMillis = 0;
+        } else {
+          // Start countdown timer
+          if (alarmSetHours > 0 || alarmSetMinutes > 0) {
+            unsigned long totalSeconds = (unsigned long)alarmSetHours * 3600UL + (unsigned long)alarmSetMinutes * 60UL;
+            alarmEndMillis = millis() + totalSeconds * 1000UL;
+            isAlarmRunning = true;
+          }
+        }
+        waitForRelease = true;
+        updateUI();
+        return;
+      }
+
+      // 5) Reset Button: x=470..615, y=113..157
+      if (touchX >= 470 && touchX <= 615 && touchY >= 113 && touchY <= 157) {
+        isAlarmRunning = false;
+        alarmEndMillis = 0;
+        alarmSetHours = 0;
+        alarmSetMinutes = 0;
+        waitForRelease = true;
+        updateUI();
+        return;
+      }
     }
 
-    if (touchX >= 300 && touchX <= 640 && touchY > 40) {
-      lastScrubberX = touchX;
-      lastScrubberTouchTime = millis();
+    // --- On Main Screen Touch Handling ---
+    if (currentScreen == SCREEN_MAIN) {
+      if (touchX >= 15 && touchX <= 65 && touchY >= 60 && touchY <= 110) {
+        showHarveyBallInfo = true;
+        lastHarveyBallTapTime = millis();
+        updateUI(); 
+      }
+
+      if (touchX >= 300 && touchX <= 640 && touchY > 40) {
+        lastScrubberX = touchX;
+        lastScrubberTouchTime = millis();
+      }
     }
 
   } else {
-    touchConfidence = 0;
-    lastRawX = -1; lastRawY = -1;
-    
+    // Touch released
     if (isTouching) {
+      // Check horizontal swipe gestures
+      int deltaX = lastRawX - touchStartX;
+      int deltaY = abs(lastRawY - touchStartY);
+
+      // Swipe Left (deltaX < -70, predominantly horizontal) -> Main Screen to Alarm Screen
+      if (currentScreen == SCREEN_MAIN && deltaX < -70 && deltaY < 80) {
+        currentScreen = SCREEN_COUNTDOWN_ALARM;
+        DBG_PRINTLN("NAV: Swiped left -> SCREEN_COUNTDOWN_ALARM");
+      }
+      // Swipe Right (deltaX > 70, predominantly horizontal) -> Alarm Screen to Main Screen
+      else if (currentScreen == SCREEN_COUNTDOWN_ALARM && deltaX > 70 && deltaY < 80) {
+        currentScreen = SCREEN_MAIN;
+        DBG_PRINTLN("NAV: Swiped right -> SCREEN_MAIN");
+      }
+
       isTouching = false;
       lastRawX = -1; lastRawY = -1;
+      touchStartX = -1; touchStartY = -1;
       updateUI();
     }
+    touchConfidence = 0;
+    lastRawX = -1; lastRawY = -1;
   }
 }
 

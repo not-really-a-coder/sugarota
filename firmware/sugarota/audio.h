@@ -7,6 +7,7 @@
 #include <LittleFS.h>
 
 extern esp_codec_dev_handle_t playback;
+extern esp_codec_dev_handle_t record;
 
 void initAudioCodec();
 void codecBeep(int durationMs);
@@ -19,5 +20,14 @@ void startFindDeviceAlert();
 void stopFindDeviceAlert();
 void updateFindDevice();
 bool isFindDeviceActive();
+
+// Countdown Alarm Audio & Recording API
+bool startVoiceRecording();
+bool recordVoiceChunk();
+void stopVoiceRecording();
+bool hasVoiceRecording();
+void deleteVoiceRecording();
+void playVoiceRecording();
+void playAlarmAudioSequence();
 
 #endif // SUGAROTA_AUDIO_H

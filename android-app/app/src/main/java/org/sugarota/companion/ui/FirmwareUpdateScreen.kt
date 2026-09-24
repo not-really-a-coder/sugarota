@@ -386,6 +386,7 @@ fun FirmwareUpdateScreen(
                                     val file = downloadedFile
                                     val devIp = activeDeviceIp.ifBlank { device.wifiOta.ip.ifBlank { "sugarota.local" } }
                                     if (file != null && file.exists()) {
+                                        errorMessage = null
                                         screenState = UpdateScreenState.FLASHING
                                         flashProgress = 0
                                         flashStatusText = "Uploading firmware..."
@@ -395,10 +396,16 @@ fun FirmwareUpdateScreen(
                                                 flashStatusText = if (pct >= 100) "Verifying & Rebooting..." else "Flashing ($pct%)..."
                                             }
                                             if (res.isSuccess) {
+                                                errorMessage = null
                                                 screenState = UpdateScreenState.COMPLETE
                                             } else {
-                                                errorMessage = res.exceptionOrNull()?.message ?: "Flashing failed."
-                                                screenState = UpdateScreenState.ERROR
+                                                val rawErr = res.exceptionOrNull()?.message ?: "Flashing failed."
+                                                errorMessage = if (rawErr.contains("Broken pipe", ignoreCase = true) || rawErr.contains("reset", ignoreCase = true)) {
+                                                    "Connection interrupted by device ($rawErr). Tap retry to resume."
+                                                } else {
+                                                    rawErr
+                                                }
+                                                screenState = UpdateScreenState.READY_TO_FLASH
                                             }
                                         }
                                     }

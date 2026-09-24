@@ -8,10 +8,12 @@ void updateUI();
 void drawStatusBar();
 void drawBluetoothIcon(int x, int y, uint16_t color);
 void drawWiFiIcon(int x, int y, uint16_t color);
+void drawAlarmIcon(int x, int y, uint16_t color);
 void drawGlucoseContainer();
 void drawHarveyBall(int x, int y, int radius, long long timestamp);
 void drawTrendArrow(int x, int y, const String& direction, uint16_t color);
 void drawHistoryChart();
+void drawCountdownAlarmScreen();
 void drawOTAProgress(int percent, const char* statusMsg);
 
 #endif // SUGAROTA_UI_H

@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "audio.h"
 #include "ble.h"
 #include "qrcode.h"
 #include <WiFi.h>
@@ -34,6 +35,8 @@ void updateUI() {
     } else {
       gfx->print(timerStr);
     }
+  } else if (currentScreen == SCREEN_COUNTDOWN_ALARM) {
+    drawCountdownAlarmScreen();
   } else {
     drawGlucoseContainer();
     drawHistoryChart();
@@ -640,6 +643,25 @@ void drawWiFiIcon(int x, int y, uint16_t color) {
   gfx->fillRect(x + 5, y + 8, 3, 3, color);
 }
 
+void drawAlarmIcon(int x, int y, uint16_t color) {
+  // 12x11 Alarm Clock icon
+  // Bells / hammers on top corners
+  gfx->fillRect(x + 1, y, 2, 2, color);
+  gfx->fillRect(x + 9, y, 2, 2, color);
+  // Main circular body
+  gfx->fillRect(x + 2, y + 2, 8, 7, color);
+  gfx->fillRect(x + 1, y + 3, 10, 5, color);
+  // Inner cutout (negative space)
+  uint16_t bg = isDarkTheme ? BLACK : WHITE;
+  gfx->fillRect(x + 3, y + 3, 6, 5, bg);
+  // Clock hands
+  gfx->fillRect(x + 5, y + 4, 2, 3, color);
+  gfx->fillRect(x + 6, y + 5, 2, 1, color);
+  // Feet
+  gfx->fillRect(x + 1, y + 9, 2, 2, color);
+  gfx->fillRect(x + 9, y + 9, 2, 2, color);
+}
+
 void drawStatusBar() {
   uint16_t textColor = isDarkTheme ? WHITE : BLACK;
   gfx->setTextColor(textColor);
@@ -796,6 +818,12 @@ void drawStatusBar() {
       drawWiFiIcon(currentLeftX + 2, 9, wifiColor);
     }
 
+    if (isAlarmRunning) {
+      currentLeftX -= 18;
+      uint16_t alarmIconColor = isDarkTheme ? YELLOW : ORANGE;
+      drawAlarmIcon(currentLeftX + 2, 9, alarmIconColor);
+    }
+
     if (isConfigMode) {
       currentLeftX -= 15;
       gfx->setTextColor(ORANGE);
@@ -906,5 +934,147 @@ void drawOTAProgress(int percent, const char* statusMsg) {
   }
 
   gfx->flush();
+}
+
+void drawCountdownAlarmScreen() {
+  uint16_t textColor = isDarkTheme ? WHITE : BLACK;
+  uint16_t cardBg = isDarkTheme ? 0x18E3 : 0xEF7D; // Zinc-900 / Zinc-100
+  uint16_t borderColor = ZINC_BORDER;
+
+  // Header / Title
+  gfx->setTextSize(2);
+  gfx->setTextColor(isDarkTheme ? CYAN : BLUE);
+  gfx->setCursor(25, 36);
+  gfx->print("COUNTDOWN ALARM");
+
+  if (isAlarmRunning) {
+    long remainingSec = (long)((alarmEndMillis - millis()) / 1000UL);
+    if (remainingSec < 0) remainingSec = 0;
+    int remH = remainingSec / 3600;
+    int remM = (remainingSec % 3600) / 60;
+    int remS = remainingSec % 60;
+
+    gfx->setTextSize(1);
+    gfx->setTextColor(YELLOW);
+    gfx->setCursor(260, 42);
+    gfx->printf("(RUNNING: %02d:%02d:%02d)", remH, remM, remS);
+  }
+
+  // 4 Digit Boxes for HH : MM
+  // H1: x=30, H2: x=85, ':' at x=142, M1: x=165, M2: x=220. Width=48, Height=100
+  int digits[4] = {
+    alarmSetHours / 10,
+    alarmSetHours % 10,
+    alarmSetMinutes / 10,
+    alarmSetMinutes % 10
+  };
+  int digitX[4] = { 30, 85, 165, 220 };
+  int digitY = 62;
+  int digitW = 48;
+  int digitH = 95;
+
+  for (int i = 0; i < 4; i++) {
+    gfx->fillRoundRect(digitX[i], digitY, digitW, digitH, 6, cardBg);
+    gfx->drawRoundRect(digitX[i], digitY, digitW, digitH, 6, borderColor);
+
+    // Subtle up/down arrows
+    // Up arrow at top
+    int midX = digitX[i] + digitW / 2;
+    gfx->fillTriangle(midX, digitY + 6, midX - 6, digitY + 14, midX + 6, digitY + 14, GRAY);
+    // Down arrow at bottom
+    gfx->fillTriangle(midX, digitY + digitH - 6, midX - 6, digitY + digitH - 14, midX + 6, digitY + digitH - 14, GRAY);
+
+    // Digit text
+    gfx->setTextSize(5);
+    gfx->setTextColor(textColor);
+    gfx->setCursor(digitX[i] + 11, digitY + 28);
+    gfx->print(digits[i]);
+  }
+
+  // Colon divider
+  gfx->setTextSize(6);
+  gfx->setTextColor(isDarkTheme ? GRAY : 0x4208);
+  gfx->setCursor(140, digitY + 22);
+  gfx->print(":");
+
+  // Right Side Control Buttons:
+  // 1) Record / Mic Button: x=300, y=62, w=150, h=44
+  // 2) Play Voice Button:   x=300, y=113, w=150, h=44
+  // 3) Start / Pause:       x=470, y=62, w=145, h=44
+  // 4) Reset Button:        x=470, y=113, w=145, h=44
+
+  // --- 1) Record Button ---
+  int btnRecX = 300, btnRecY = 62, btnRecW = 150, btnRecH = 44;
+  if (isRecordingAudio) {
+    gfx->fillRoundRect(btnRecX, btnRecY, btnRecW, btnRecH, 6, RED);
+    gfx->drawRoundRect(btnRecX, btnRecY, btnRecW, btnRecH, 6, WHITE);
+    gfx->setTextColor(WHITE);
+    gfx->setTextSize(2);
+    // Flashing recording indicator
+    unsigned long recElapsed = (millis() - audioRecordingStartTime) / 1000UL;
+    char recStr[16];
+    snprintf(recStr, sizeof(recStr), "REC %lus", recElapsed);
+    gfx->setCursor(btnRecX + 25, btnRecY + 14);
+    gfx->print(recStr);
+  } else {
+    gfx->fillRoundRect(btnRecX, btnRecY, btnRecW, btnRecH, 6, cardBg);
+    gfx->drawRoundRect(btnRecX, btnRecY, btnRecW, btnRecH, 6, borderColor);
+    // Red mic dot
+    gfx->fillCircle(btnRecX + 22, btnRecY + 22, 6, RED);
+    gfx->setTextColor(textColor);
+    gfx->setTextSize(2);
+    gfx->setCursor(btnRecX + 38, btnRecY + 14);
+    gfx->print("RECORD");
+  }
+
+  // --- 2) Play Voice Button ---
+  int btnPlayX = 300, btnPlayY = 113, btnPlayW = 150, btnPlayH = 44;
+  bool hasRec = hasVoiceRecording();
+  gfx->fillRoundRect(btnPlayX, btnPlayY, btnPlayW, btnPlayH, 6, cardBg);
+  gfx->drawRoundRect(btnPlayX, btnPlayY, btnPlayW, btnPlayH, 6, hasRec ? (isDarkTheme ? CYAN : BLUE) : borderColor);
+  
+  if (hasRec) {
+    // Play triangle
+    gfx->fillTriangle(btnPlayX + 16, btnPlayY + 15, btnPlayX + 16, btnPlayY + 29, btnPlayX + 28, btnPlayY + 22, isDarkTheme ? CYAN : BLUE);
+    gfx->setTextColor(textColor);
+    gfx->setTextSize(2);
+    gfx->setCursor(btnPlayX + 36, btnPlayY + 14);
+    gfx->print("TEST MSG");
+  } else {
+    gfx->setTextColor(GRAY);
+    gfx->setTextSize(2);
+    gfx->setCursor(btnPlayX + 25, btnPlayY + 14);
+    gfx->print("NO VOICE");
+  }
+
+  // --- 3) Start / Stop Button ---
+  int btnStartX = 470, btnStartY = 62, btnStartW = 145, btnStartH = 44;
+  if (isAlarmRunning) {
+    gfx->fillRoundRect(btnStartX, btnStartY, btnStartW, btnStartH, 6, RED);
+    gfx->drawRoundRect(btnStartX, btnStartY, btnStartW, btnStartH, 6, WHITE);
+    gfx->setTextColor(WHITE);
+    gfx->setTextSize(2);
+    gfx->setCursor(btnStartX + 45, btnStartY + 14);
+    gfx->print("STOP");
+  } else {
+    bool canStart = (alarmSetHours > 0 || alarmSetMinutes > 0);
+    uint16_t startBtnBg = canStart ? GREEN : cardBg;
+    uint16_t startBtnFg = canStart ? BLACK : GRAY;
+    gfx->fillRoundRect(btnStartX, btnStartY, btnStartW, btnStartH, 6, startBtnBg);
+    gfx->drawRoundRect(btnStartX, btnStartY, btnStartW, btnStartH, 6, canStart ? WHITE : borderColor);
+    gfx->setTextColor(startBtnFg);
+    gfx->setTextSize(2);
+    gfx->setCursor(btnStartX + 40, btnStartY + 14);
+    gfx->print("START");
+  }
+
+  // --- 4) Reset Button ---
+  int btnResetX = 470, btnResetY = 113, btnResetW = 145, btnResetH = 44;
+  gfx->fillRoundRect(btnResetX, btnResetY, btnResetW, btnResetH, 6, cardBg);
+  gfx->drawRoundRect(btnResetX, btnResetY, btnResetW, btnResetH, 6, borderColor);
+  gfx->setTextColor(textColor);
+  gfx->setTextSize(2);
+  gfx->setCursor(btnResetX + 40, btnResetY + 14);
+  gfx->print("RESET");
 }
 

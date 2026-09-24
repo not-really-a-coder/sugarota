@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.24.11"
+#define SUGAROTA_VERSION "v0.09.25.18"
 
 #include "config.h"
 #include "storage.h"
@@ -96,6 +96,16 @@ unsigned long lastHarveyBallTapTime = 0;
 bool showHarveyBallInfo = false;
 unsigned long lastScrubberTouchTime = 0;
 int lastScrubberX = -1;
+
+// Active Screen & Countdown Alarm states
+DeviceScreen currentScreen = SCREEN_MAIN;
+int alarmSetHours = 0;
+int alarmSetMinutes = 0;
+bool isAlarmRunning = false;
+unsigned long alarmEndMillis = 0;
+bool isAlarmRinging = false;
+bool isRecordingAudio = false;
+unsigned long audioRecordingStartTime = 0;
 
 ButtonState pwrBtn = {PIN_PWR_BTN, false, 0, false};
 ButtonState bootBtn = {PIN_BOOT_BTN, false, 0, false};
@@ -657,6 +667,40 @@ void loop() {
   if (lastScrubberX != -1 && (millis() - lastScrubberTouchTime > 3000) && !isTouching) {
     lastScrubberX = -1;
     updateUI(); 
+  }
+
+  // Active voice recording chunk capture (up to 10 seconds max)
+  if (isRecordingAudio) {
+    if (millis() - audioRecordingStartTime > 10000) {
+      // 10s auto stop
+      isRecordingAudio = false;
+      stopVoiceRecording();
+      updateUI();
+    } else {
+      bool canRecordMore = recordVoiceChunk();
+      if (!canRecordMore) {
+        isRecordingAudio = false;
+        stopVoiceRecording();
+        updateUI();
+      }
+    }
+  }
+
+  // Background Countdown Alarm Processing
+  if (isAlarmRunning && !isAlarmRinging) {
+    if (millis() >= alarmEndMillis) {
+      isAlarmRunning = false;
+      alarmEndMillis = 0;
+      isAlarmRinging = true;
+      DBG_PRINTLN("ALARM: Countdown finished! Triggering alarm sequence...");
+      updateUI();
+
+      // Execute alarm sequence: 3 ascending tones, pause 1s, voice msg, pause 1s, 3 descending tones
+      playAlarmAudioSequence();
+
+      isAlarmRinging = false;
+      updateUI();
+    }
   }
   
   updateFindDevice();

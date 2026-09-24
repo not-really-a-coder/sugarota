@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#define SUGAROTA_VERSION "v0.09.24.11"
+#define SUGAROTA_VERSION "v0.09.25.18"
 
 // --- Design System Colors (RGB565 matching Shadcn Zinc Dark & Telemetry Palette) ---
 #define BLACK   0x0841  // #09090B (OLED Zinc Dark Canvas)
@@ -191,6 +191,19 @@ extern unsigned long lastHarveyBallTapTime;
 extern bool showHarveyBallInfo;
 extern unsigned long lastScrubberTouchTime;
 extern int lastScrubberX;
+// Active Screen
+enum DeviceScreen { SCREEN_MAIN = 0, SCREEN_COUNTDOWN_ALARM = 1 };
+extern DeviceScreen currentScreen;
+
+// Countdown Alarm states
+extern int alarmSetHours;
+extern int alarmSetMinutes;
+extern bool isAlarmRunning;
+extern unsigned long alarmEndMillis;
+extern bool isAlarmRinging;
+extern bool isRecordingAudio;
+extern unsigned long audioRecordingStartTime;
+
 extern ButtonState pwrBtn;
 extern ButtonState bootBtn;
 

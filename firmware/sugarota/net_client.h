@@ -9,7 +9,9 @@
 
 extern SensorPCF85063 rtc;
 
+void initWiFiEvents();
 void connectWiFi(bool allowBleBailout = true);
+void sleepWiFi();
 void fetchData();
 void parseResponse(const String& payload);
 bool loginDexcom();

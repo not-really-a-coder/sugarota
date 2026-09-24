@@ -9,6 +9,7 @@ SensorPCF85063 rtc;
 // Forward declarations
 void logBoot(const String& msg);
 void updateUI();
+void checkSerialConsole();
 
 void restoreTimeFromRTC() {
   RTC_DateTime datetime = rtc.getDateTime();
@@ -41,12 +42,82 @@ void restoreTimeFromRTC() {
   settimeofday(&tv, NULL);
 }
 
+static const char* wifiDisconnectReasonToStr(uint8_t reason) {
+  switch (reason) {
+    case WIFI_REASON_UNSPECIFIED: return "UNSPECIFIED";
+    case WIFI_REASON_AUTH_EXPIRE: return "AUTH_EXPIRE";
+    case WIFI_REASON_AUTH_LEAVE: return "AUTH_LEAVE";
+    case WIFI_REASON_ASSOC_EXPIRE: return "ASSOC_EXPIRE";
+    case WIFI_REASON_ASSOC_TOOMANY: return "ASSOC_TOOMANY";
+    case WIFI_REASON_NOT_AUTHED: return "NOT_AUTHED";
+    case WIFI_REASON_NOT_ASSOCED: return "NOT_ASSOCED";
+    case WIFI_REASON_ASSOC_LEAVE: return "ASSOC_LEAVE";
+    case WIFI_REASON_ASSOC_NOT_AUTHED: return "ASSOC_NOT_AUTHED";
+    case WIFI_REASON_DISASSOC_PWRCAP_BAD: return "DISASSOC_PWRCAP_BAD";
+    case WIFI_REASON_DISASSOC_SUPCHAN_BAD: return "DISASSOC_SUPCHAN_BAD";
+    case WIFI_REASON_BSS_TRANSITION_DISASSOC: return "BSS_TRANSITION_DISASSOC";
+    case WIFI_REASON_IE_INVALID: return "IE_INVALID";
+    case WIFI_REASON_MIC_FAILURE: return "MIC_FAILURE";
+    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT: return "4WAY_HANDSHAKE_TIMEOUT";
+    case WIFI_REASON_GROUP_KEY_UPDATE_TIMEOUT: return "GROUP_KEY_UPDATE_TIMEOUT";
+    case WIFI_REASON_IE_IN_4WAY_DIFFERS: return "IE_IN_4WAY_DIFFERS";
+    case WIFI_REASON_GROUP_CIPHER_INVALID: return "GROUP_CIPHER_INVALID";
+    case WIFI_REASON_PAIRWISE_CIPHER_INVALID: return "PAIRWISE_CIPHER_INVALID";
+    case WIFI_REASON_AKMP_INVALID: return "AKMP_INVALID";
+    case WIFI_REASON_UNSUPP_RSN_IE_VERSION: return "UNSUPP_RSN_IE_VERSION";
+    case WIFI_REASON_INVALID_RSN_IE_CAP: return "INVALID_RSN_IE_CAP";
+    case WIFI_REASON_802_1X_AUTH_FAILED: return "802_1X_AUTH_FAILED";
+    case WIFI_REASON_CIPHER_SUITE_REJECTED: return "CIPHER_SUITE_REJECTED";
+    case WIFI_REASON_BEACON_TIMEOUT: return "BEACON_TIMEOUT (Missed beacons/RF contention)";
+    case WIFI_REASON_NO_AP_FOUND: return "NO_AP_FOUND (SSID not in range/wrong channel)";
+    case WIFI_REASON_AUTH_FAIL: return "AUTH_FAIL (Incorrect password/rejected)";
+    case WIFI_REASON_ASSOC_FAIL: return "ASSOC_FAIL (Router rejected association)";
+    case WIFI_REASON_HANDSHAKE_TIMEOUT: return "HANDSHAKE_TIMEOUT (WPA handshake timed out)";
+    case WIFI_REASON_CONNECTION_FAIL: return "CONNECTION_FAIL (AP connection failed)";
+    default: return "OTHER";
+  }
+}
+
+static volatile bool apConnected = false;
+
+void initWiFiEvents() {
+  static bool initialized = false;
+  if (initialized) return;
+  initialized = true;
+
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    apConnected = false;
+    uint8_t reason = info.wifi_sta_disconnected.reason;
+    DBG_PRINTF("[WiFi Event] STA Disconnected, Reason: %d (%s)\n", reason, wifiDisconnectReasonToStr(reason));
+  }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    apConnected = true;
+    DBG_PRINTLN("[WiFi Event] STA Connected to AP (negotiating DHCP IP...)");
+  }, ARDUINO_EVENT_WIFI_STA_CONNECTED);
+
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    DBG_PRINTF("[WiFi Event] STA Got IP: %s\n", IPAddress(info.got_ip.ip_info.ip.addr).toString().c_str());
+  }, ARDUINO_EVENT_WIFI_STA_GOT_IP);
+}
+
+void sleepWiFi() {
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFi.disconnect(false, false);
+  }
+  apConnected = false;
+  // Put radio into modem sleep without de-initializing the PHY/MAC driver (avoids type=13 un-init timeout)
+  WiFi.setSleep(true);
+}
+
 void connectWiFi(bool allowBleBailout) {
   if (WiFi.status() == WL_CONNECTED) return;
   
+  // Pause BLE advertising during Wi-Fi connection to prevent 2.4GHz RF contention
+  SugarotaBLE::getInstance().pauseAdvertising();
+
   int wifiRetryLoop = 0;
-  WiFi.disconnect(false, false);
-  delay(50);
+  WiFi.setSleep(false);
   WiFi.mode(WIFI_STA);
   WiFi.setHostname("Sugarota");
   
@@ -83,49 +154,79 @@ void connectWiFi(bool allowBleBailout) {
     
     if (firstSSID.length() > 0) {
       logBoot("Trying WiFi 1: " + firstSSID);
+      apConnected = false;
       WiFi.begin(firstSSID.c_str(), firstPass.c_str());
       unsigned long startAttemptTime = millis();
-      while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
-        spinnerDelay(500);
+      
+      // Step 1: Wait for AP connection or timeout (up to 8s)
+      while (!apConnected && WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 8000) {
+        delay(50);
+        checkSerialConsole();
+      }
+      
+      // Step 2: If connected to AP, wait for DHCP to assign IP address (up to 8s)
+      if (apConnected || WiFi.status() == WL_CONNECTED) {
+        unsigned long dhcpWaitStart = millis();
+        while (WiFi.status() != WL_CONNECTED && (millis() - dhcpWaitStart < 8000)) {
+          delay(50);
+          checkSerialConsole();
+        }
       }
       
       if (WiFi.status() == WL_CONNECTED) {
         unsigned long ipWait = millis();
-        while (WiFi.localIP() == IPAddress(0, 0, 0, 0) && millis() - ipWait < 4000) {
+        while (WiFi.localIP() == IPAddress(0, 0, 0, 0) && millis() - ipWait < 3000) {
           delay(50);
         }
-        delay(200); // Allow DNS & TCP/IP stack to stabilize
+        delay(50);
         DBG_PRINTF("WiFi: Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+        SugarotaBLE::getInstance().resumeAdvertising();
         return;
       }
-      WiFi.disconnect();
-      spinnerDelay(500);
+      WiFi.disconnect(false, false);
+      delay(150);
     }
     
     if (secondSSID.length() > 0) {
       logBoot("Trying WiFi 2: " + secondSSID);
+      apConnected = false;
       WiFi.begin(secondSSID.c_str(), secondPass.c_str());
       unsigned long startAttemptTime = millis();
-      while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
-        spinnerDelay(500);
+      
+      // Step 1: Wait for AP connection or timeout (up to 8s)
+      while (!apConnected && WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 8000) {
+        delay(50);
+        checkSerialConsole();
+      }
+      
+      // Step 2: If connected to AP, wait for DHCP to assign IP address (up to 8s)
+      if (apConnected || WiFi.status() == WL_CONNECTED) {
+        unsigned long dhcpWaitStart = millis();
+        while (WiFi.status() != WL_CONNECTED && (millis() - dhcpWaitStart < 8000)) {
+          delay(50);
+          checkSerialConsole();
+        }
       }
       
       if (WiFi.status() == WL_CONNECTED) {
         unsigned long ipWait = millis();
-        while (WiFi.localIP() == IPAddress(0, 0, 0, 0) && millis() - ipWait < 4000) {
+        while (WiFi.localIP() == IPAddress(0, 0, 0, 0) && millis() - ipWait < 3000) {
           delay(50);
         }
-        delay(200); // Allow DNS & TCP/IP stack to stabilize
+        delay(50);
         DBG_PRINTF("WiFi: Connected! IP: %s\n", WiFi.localIP().toString().c_str());
         useSecondaryFirst = !useSecondaryFirst;
         saveConfig();
+        SugarotaBLE::getInstance().resumeAdvertising();
         return;
       }
-      WiFi.disconnect();
+      WiFi.disconnect(false, false);
+      delay(150);
     }
     
     // BLE scan step at the end of each Wi-Fi loop (only during boot / auto detection)
     if (allowBleBailout) {
+      SugarotaBLE::getInstance().resumeAdvertising();
       if (SugarotaBLE::getInstance().isConnected()) {
         logBoot("BLE Companion Connected!");
         return;
@@ -140,17 +241,18 @@ void connectWiFi(bool allowBleBailout) {
         }
         delay(50);
       }
+      SugarotaBLE::getInstance().pauseAdvertising();
     }
 
     wifiRetryLoop++;
     spinnerDelay(1000);
   }
 
-  // If connection was unsuccessful, power down Wi-Fi radio to save battery and avoid stuck STA state
+  // If connection was unsuccessful, put Wi-Fi radio to sleep without tearing down PHY/MAC
   if (WiFi.status() != WL_CONNECTED && !isConfigMode) {
-    WiFi.disconnect(false, false);
-    WiFi.mode(WIFI_OFF);
+    sleepWiFi();
   }
+  SugarotaBLE::getInstance().resumeAdvertising();
 }
 
 static const char* mapTrendToString(int trend) {
@@ -360,10 +462,8 @@ void parseResponse(const String& payload) {
   }
   
   if (!isConfigMode) {
-    WiFi.disconnect(true, false);
-    delay(50);
-    WiFi.mode(WIFI_OFF);
-    DBG_PRINTLN("Power Saving: WiFi Radio OFF");
+    sleepWiFi();
+    DBG_PRINTLN("Power Saving: WiFi Radio Sleeping");
   }
   isFetching = false;
   fetchStartTime = 0;
@@ -399,8 +499,7 @@ void fetchData() {
   } else {
     if (dexSessionId == "" && !loginDexcom()) {
       if (!isConfigMode) {
-        WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
+        sleepWiFi();
       }
       isFetching = false;
       fetchStartTime = 0;
@@ -465,10 +564,8 @@ void fetchData() {
     }
     nextFetchIntervalMs = getFetchIntervalMs();
     if (!isConfigMode) {
-      WiFi.disconnect(true, false);
-      delay(50);
-      WiFi.mode(WIFI_OFF);
-      DBG_PRINTLN("Power Saving: WiFi Radio OFF after HTTP error");
+      sleepWiFi();
+      DBG_PRINTLN("Power Saving: WiFi Radio Sleeping after HTTP error");
     }
     isFetching = false;
     fetchStartTime = 0;

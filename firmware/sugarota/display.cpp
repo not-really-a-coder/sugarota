@@ -51,12 +51,18 @@ void setBrightness(int level) {
   // AXS15231B backlight is inverted (0 = max, 255 = off)
   int val = 255 - level;
 
-  // Dual-drive backlight PWM across both V1 (GPIO 8) and V2 (GPIO 42)
-  analogWrite(PIN_BL_V1, val);
-  analogWrite(PIN_BL_V2, val);
-
-  // Enable boost converter on V2 when screen is on
-  updateBacklightPower(level > 0);
+  if (hwVersion == 2) {
+    // On V2 hardware, backlight PWM is on GPIO 42
+    analogWrite(PIN_BL_V2, val);
+    // Ensure GPIO 8 (EXIO INT / Wi-Fi stability pin) is kept HIGH as required by Waveshare V2 hardware
+    pinMode(PIN_BL_V1, OUTPUT);
+    digitalWrite(PIN_BL_V1, HIGH);
+    // Enable boost converter on V2 when screen is on
+    updateBacklightPower(level > 0);
+  } else {
+    // On V1 hardware, backlight PWM is on GPIO 8
+    analogWrite(PIN_BL_V1, val);
+  }
   
   if (level == 0) {
     gfx->displayOff();

@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.25.18"
+#define SUGAROTA_VERSION "v0.09.25.46"
 
 #include "config.h"
 #include "storage.h"
@@ -201,6 +201,12 @@ static void detectHardwareVersion() {
       hwVersion = 1;
     }
   }
+
+  // If V2, ensure GPIO 8 is initialized as OUTPUT HIGH per Waveshare hardware specification
+  if (hwVersion == 2) {
+    pinMode(PIN_BL_V1, OUTPUT);
+    digitalWrite(PIN_BL_V1, HIGH);
+  }
 }
 
 void exitConfigMode() {
@@ -209,8 +215,7 @@ void exitConfigMode() {
   DBG_PRINTLN("CONFIG MODE: Exited");
   SugarotaBLE::getInstance().enablePairingMode(false);
   if (!isFetching) {
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
+    sleepWiFi();
   }
   updateUI();
 }
@@ -347,6 +352,8 @@ void setup() {
 
   DBG_PRINTLN("\n--- Sugarota " SUGAROTA_VERSION " Booting ---");
 
+  initWiFiEvents();
+
   // Validate current firmware partition and cancel automatic rollback to previous partition
   esp_ota_mark_app_valid_cancel_rollback();
 
@@ -420,15 +427,19 @@ void setup() {
   }
   logBoot(batMsg);
 
-  // BLE Peripheral
-  SugarotaBLE::getInstance().setGlucoseCallback(handleBLEGlucose);
-  SugarotaBLE::getInstance().setConfigCallback(handleBLEConfig);
-  SugarotaBLE::getInstance().setPairingCallback(handleBLEPairingDisplay);
-  SugarotaBLE::getInstance().begin("Sugarota");
-  SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
-  
-  // Enable pairing mode during boot so any new or existing phone can pair/connect
-  SugarotaBLE::getInstance().enablePairingMode(true);
+  // BLE Peripheral: initialized unless connection mode is explicitly set to WIFI_ONLY
+  if (connectionMode != "WIFI_ONLY") {
+    SugarotaBLE::getInstance().setGlucoseCallback(handleBLEGlucose);
+    SugarotaBLE::getInstance().setConfigCallback(handleBLEConfig);
+    SugarotaBLE::getInstance().setPairingCallback(handleBLEPairingDisplay);
+    SugarotaBLE::getInstance().begin("Sugarota");
+    SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
+    
+    // Enable pairing mode during boot so phone can connect
+    SugarotaBLE::getInstance().enablePairingMode(true);
+  } else {
+    logBoot("Mode: Wi-Fi Only (BLE Off)");
+  }
 
   bool bleConnectedEarly = false;
 
@@ -451,8 +462,7 @@ void setup() {
       logBoot("No Companion yet (Offline)");
       offlineMode = true;
     }
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
+    sleepWiFi();
   } else {
     if (connectionMode == "AUTO") {
       logBoot("Mode: AUTO (Checking BLE)...");
@@ -483,8 +493,7 @@ void setup() {
   if (bleConnectedEarly) {
     logBoot("BLE Active. Wi-Fi sleeping...");
     offlineMode = false;
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
+    sleepWiFi();
 
     logBoot("Waiting for BLE Data Sync...");
     bleGlucoseReceived = false;
@@ -515,8 +524,7 @@ void setup() {
     if (SugarotaBLE::getInstance().isConnected()) {
       logBoot("BLE Active. Wi-Fi sleeping...");
       offlineMode = false;
-      WiFi.disconnect(true);
-      WiFi.mode(WIFI_OFF);
+      sleepWiFi();
 
       logBoot("Waiting for BLE Data Sync...");
       bleGlucoseReceived = false;
@@ -572,8 +580,7 @@ void setup() {
     } else {
       logBoot("WiFi Failed. Entering Offline Mode...");
       offlineMode = true;
-      WiFi.disconnect(true);
-      WiFi.mode(WIFI_OFF);
+      sleepWiFi();
       delay(1500);
     }
   }
@@ -750,9 +757,8 @@ void loop() {
       DBG_PRINTLN("FETCH: Timed out after 15s");
       isFetching = false;
       fetchStartTime = 0;
-      if (!isConfigMode && WiFi.getMode() != WIFI_OFF) {
-        WiFi.disconnect(false, false);
-        WiFi.mode(WIFI_OFF);
+      if (!isConfigMode) {
+        sleepWiFi();
       }
       updateUI();
 

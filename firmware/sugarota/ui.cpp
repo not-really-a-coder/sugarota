@@ -755,8 +755,7 @@ void drawStatusBar() {
 
     cursorX = (640 - 15) - indicatorWidth;
 
-    bool isWifiActive = (WiFi.getMode() != WIFI_OFF &&
-                         (WiFi.status() == WL_CONNECTED || isConfigMode));
+    bool isWifiActive = (WiFi.status() == WL_CONNECTED || isConfigMode);
     int batLeftX = cursorX;
     if (SugarotaBLE::getInstance().isConnected())
       batLeftX -= 18;

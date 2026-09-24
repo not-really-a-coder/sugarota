@@ -1,5 +1,6 @@
 #include "ble.h"
 #include <ArduinoJson.h>
+#include <esp_mac.h>
 
 // Forward reference
 extern bool debugMode;
@@ -449,6 +450,20 @@ void SugarotaBLE::enablePairingMode(bool enable) {
     if (m_pairingModeEnabled == enable) return;
     m_pairingModeEnabled = enable;
     BLE_DBG_PRINTF("[BLE Security] Pairing mode %s\n", enable ? "ENABLED" : "DISABLED");
+    updateAdvertising();
+}
+
+void SugarotaBLE::pauseAdvertising() {
+    if (!isInitialized()) return;
+    NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
+    if (pAdvertising && pAdvertising->isAdvertising()) {
+        NimBLEDevice::stopAdvertising();
+        BLE_DBG_PRINTLN("[BLE] Paused advertising for radio coexistence");
+    }
+}
+
+void SugarotaBLE::resumeAdvertising() {
+    if (!isInitialized()) return;
     updateAdvertising();
 }
 

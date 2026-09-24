@@ -2,6 +2,47 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.25.48] — Countdown Alarm, OTA Rollback Protection & Hardware Pin Isolation (2026-09-25)
+
+This release adds a dedicated postprandial countdown alarm with built-in voice reminders, resolves wireless OTA rollback reversions, prevents Wi-Fi driver de-initialization timeouts, isolates V2 hardware pin conflicts, and improves RF coexistence during DHCP acquisition.
+
+### Interface & Gestures
+
+- Added dedicated countdown alarm screen accessible via horizontal swipe left from main screen
+- Swipe right navigation to return to main glucose screen from countdown alarm
+- Interactive digit controls to adjust timer hours and minutes individually
+- Live countdown display with status bar alarm icon visible across all screens and timer modes
+- Voice reminder recording and playback controls on alarm screen
+
+### Audio & Alarm
+
+- Up to 10-second voice reminder recording via ES7210 microphone stored in PSRAM
+- Automatic deletion of previous voice reminders upon recording a new message
+- Multi-tone alarm sequence on timer expiry with three ascending tones, voice message, and three descending tones
+- Automatic alarm reset and buffer purge on device reboot
+
+### Firmware & System Stability
+
+- Added explicit OTA application validation on boot to cancel ESP-IDF automatic rollback and commit firmware updates permanently
+- Replaced destructive Wi-Fi de-initialization with modem sleep to prevent RF driver timeout hangs during sleep transitions
+- Added temporary BLE advertising pause during Wi-Fi association to avoid RF packet collisions and ensure rapid DHCP IP acquisition
+- Added two-stage Wi-Fi association and DHCP negotiation loop with 8-second timeout and decoded disconnect reason logging
+- Fully inhibited BLE radio initialization on boot when Wi-Fi Only connection mode is selected
+- Relocated esp_mac header inclusion to implementation file to clean BLE interface headers
+
+### Hardware & Display
+
+- Isolated backlight PWM execution strictly to V1 hardware, routing backlight control exclusively to GPIO 42 on V2
+- Configured GPIO 8 on V2 hardware as digital output held high to prevent PWM noise on the IO expander interrupt line
+- Removed CPU-blocking display redraw calls from within the Wi-Fi connection loop
+
+### Android Companion App
+
+- Flushed pending BLE characteristic write queues prior to initiating Wi-Fi OTA to prevent packet congestion
+- Cleared cached firmware binaries prior to downloading updates and added retry error recovery
+
+---
+
 ## [v0.09.23.87] — App Icon Refresh, Disconnect Controls & 2-Hour Notification Chart (2026-09-23)
 
 This release updates the Android app launcher branding, expands the companion foreground notification history to two hours, auto-dismisses nearby device discovery alerts, and adds manual disconnect suppression to prevent unwanted reconnections.

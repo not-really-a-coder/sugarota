@@ -63,9 +63,9 @@ Sugarota maintains an in-memory sorted circular buffer of `MAX_HISTORY = 48` glu
 
 ### 2.3 Connectivity & Power Architecture
 Sugarota supports three operating modes configured in `config.json`:
-1. **`AUTO` (Default)**: Prioritizes low-power BLE companion connectivity. Automatically switches Wi-Fi radio off when smartphone is actively streaming. If BLE stream is stale (>10 min), gracefully activates Wi-Fi to poll cloud servers directly.
+1. **`AUTO` (Default)**: Prioritizes low-power BLE companion connectivity. Puts the Wi-Fi radio into low-power modem sleep (`WiFi.setSleep(true)`) while the smartphone companion is actively streaming. If BLE stream is stale (>10 min), gracefully wakes Wi-Fi to poll cloud servers directly. To prevent 2.4GHz RF coexistence packet collisions during DHCP negotiation, BLE advertising is paused during association and resumed once connected.
 2. **`BLE_ONLY`**: Disables Wi-Fi permanently. Relies exclusively on the Android Companion background foreground service, extending battery life significantly.
-3. **`WIFI_ONLY`**: Disables BLE peripheral advertising. Directly contacts Dexcom Share or Nightscout APIs on a periodic interval (30s to 300s).
+3. **`WIFI_ONLY`**: Inhibits the BLE peripheral and NimBLE stack entirely at boot. Directly contacts Dexcom Share or Nightscout APIs on a periodic interval (30s to 300s), sleeping the Wi-Fi radio between polls.
 
 The Android companion app pairs with this architecture via a background foreground service (`SugarotaBleService`) and dynamic scan receiver (`SugarotaBleScanReceiver`), providing:
 - Real-time notification tray rendering with a custom 2-hour trend sparkline and delta indicators.
@@ -82,6 +82,7 @@ The Android companion app pairs with this architecture via a background foregrou
 
 ### 2.5 Wireless Over-The-Air (OTA) Flashing Subsystem
 - **Dual Application Partitions**: Dual 3MB OTA slots (`ota_0` and `ota_1`) configured in `partitions.csv` with rollback protection.
+- **Rollback Cancellation Validation**: Calls `esp_ota_mark_app_valid_cancel_rollback()` during boot `setup()`, validating running firmware and preventing the bootloader from reverting to the previous partition on subsequent restarts.
 - **Local Network HTTP Streaming**: Ingests multipart or binary chunk streams over local Wi-Fi via `POST /api/ota` or `POST /update` at speeds exceeding 300–500 KB/s (~3–5s for 1MB binary).
 - **Integrity Verification**: Supports optional `x-MD5` headers checked via Arduino `Update.setMD5()`, ensuring corrupted transfers abort before writing boot flags.
 - **Live On-Screen Telemetry**: Bypasses routine UI and sensor updates during flashing (`isOTAUpdating`), rendering a dedicated full-screen graphical progress bar and percentage directly on the 3.49" LCD (`drawOTAProgress`).

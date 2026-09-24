@@ -231,7 +231,9 @@ void checkTouch() {
       return; 
     }
     
-    if (lastRawX != -1 && (abs(tx - lastRawX) > 50 || abs(ty - lastRawY) > 50)) {
+    // For initial touch acquisition, filter out single-sample wild jumps (>100px).
+    // Once touch is actively being tracked (confidence >= 3), allow fast drag/swipe motion.
+    if (touchConfidence < 3 && lastRawX != -1 && (abs(tx - lastRawX) > 100 || abs(ty - lastRawY) > 80)) {
       lastRawX = tx; lastRawY = ty;
       touchConfidence = 1; 
       return; 
@@ -377,26 +379,33 @@ void checkTouch() {
         updateUI(); 
       }
 
+      // Only activate scrubber on deliberate tap/drag if horizontal motion is small
       if (touchX >= 300 && touchX <= 640 && touchY > 40) {
-        lastScrubberX = touchX;
-        lastScrubberTouchTime = millis();
+        if (touchStartX == -1 || abs(touchX - touchStartX) < 40) {
+          lastScrubberX = touchX;
+          lastScrubberTouchTime = millis();
+        }
       }
     }
 
   } else {
     // Touch released
-    if (isTouching) {
+    if (isTouching && touchStartX != -1) {
       // Check horizontal swipe gestures
       int deltaX = lastRawX - touchStartX;
       int deltaY = abs(lastRawY - touchStartY);
+      unsigned long duration = millis() - touchStartTime;
 
-      // Swipe Left (deltaX < -70, predominantly horizontal) -> Main Screen to Alarm Screen
-      if (currentScreen == SCREEN_MAIN && deltaX < -70 && deltaY < 80) {
+      DBG_PRINTF("TOUCH RELEASE: startX=%d startY=%d endX=%d endY=%d dX=%d dY=%d dur=%lums\n",
+                 touchStartX, touchStartY, lastRawX, lastRawY, deltaX, deltaY, duration);
+
+      // Swipe Left (finger moved right-to-left: deltaX < -50) -> Main Screen to Alarm Screen
+      if (currentScreen == SCREEN_MAIN && deltaX < -50 && deltaY < 100 && duration < 1200) {
         currentScreen = SCREEN_COUNTDOWN_ALARM;
         DBG_PRINTLN("NAV: Swiped left -> SCREEN_COUNTDOWN_ALARM");
       }
-      // Swipe Right (deltaX > 70, predominantly horizontal) -> Alarm Screen to Main Screen
-      else if (currentScreen == SCREEN_COUNTDOWN_ALARM && deltaX > 70 && deltaY < 80) {
+      // Swipe Right (finger moved left-to-right: deltaX > 50) -> Alarm Screen to Main Screen
+      else if (currentScreen == SCREEN_COUNTDOWN_ALARM && deltaX > 50 && deltaY < 100 && duration < 1200) {
         currentScreen = SCREEN_MAIN;
         DBG_PRINTLN("NAV: Swiped right -> SCREEN_MAIN");
       }

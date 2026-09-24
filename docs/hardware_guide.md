@@ -36,7 +36,7 @@ Waveshare updated the development board hardware after June 8, 2026:
 - **V2 (Rev 1.1)**: Has "Rev1.1" PCB silkscreen or "V2" QC sticker. Backlight PWM is routed to `GPIO 42`, and requires TCA9554 `EXIO1` (`BL_EN`) to be driven HIGH. `GPIO 8` is connected to `EXIO_INT`. `LCD_RST` is moved to TCA9554 `EXIO5`, and `GPIO 21` connects to `LCD_TE`.
 
 **Seamless Dual-Compatibility in Sugarota Firmware**:
-Sugarota automatically detects whether the board is V1 or V2 at boot by probing `GPIO 8`'s pull state (TCA9554 interrupt line pull-up on V2 vs backlight boost pull-down on V1), drives PWM on both pins in lockstep, and enables `EXIO1` (`BL_EN`) and `EXIO5` (`LCD_RST`) on TCA9554. Additionally, a manual override is supported in `/config.json` via `"hw_version": "auto" | "v1" | "v2"`.
+Sugarota automatically detects whether the board is V1 or V2 at boot by probing `GPIO 8`'s pull state (TCA9554 interrupt line pull-up on V2 vs backlight boost pull-down on V1), isolates backlight PWM exclusively to `GPIO 8` (V1) or `GPIO 42` (V2), holds `GPIO 8` as `OUTPUT HIGH` on V2 to prevent floating/PWM noise on the IO expander interrupt line, and enables `EXIO1` (`BL_EN`) and `EXIO5` (`LCD_RST`) on TCA9554. Additionally, a manual override is supported in `/config.json` via `"hw_version": "auto" | "v1" | "v2"`.
 
 ---
 

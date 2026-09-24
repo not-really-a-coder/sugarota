@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#define SUGAROTA_VERSION "v0.09.25.46"
+#define SUGAROTA_VERSION "v0.09.25.48"
 
 // --- Design System Colors (RGB565 matching Shadcn Zinc Dark & Telemetry Palette) ---
 #define BLACK   0x0841  // #09090B (OLED Zinc Dark Canvas)

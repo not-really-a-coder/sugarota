@@ -805,6 +805,9 @@ class SugarotaBleService : Service() {
     }
 
     fun startWifiOta(address: String, onComplete: ((Boolean) -> Unit)? = null) {
+        // Clear any queued history sync chunks so the BLE characteristic and channel are free
+        pendingWriteQueues.remove(address)?.clear()
+        
         val cmd = org.json.JSONObject().apply {
             put("cmd", "start_wifi_ota")
         }

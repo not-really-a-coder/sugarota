@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.24.3"
+#define SUGAROTA_VERSION "v0.09.24.11"
 
 #include "config.h"
 #include "storage.h"
@@ -8,6 +8,7 @@
 #include "display.h"
 #include "net_client.h"
 #include <Update.h>
+#include <esp_ota_ops.h>
 #include "web_portal.h"
 #include "ui.h"
 #include "input.h"
@@ -336,6 +337,9 @@ void setup() {
 
   DBG_PRINTLN("\n--- Sugarota " SUGAROTA_VERSION " Booting ---");
 
+  // Validate current firmware partition and cancel automatic rollback to previous partition
+  esp_ota_mark_app_valid_cancel_rollback();
+
   // Power Management & RTC
   Wire.begin(I2C_SDA, I2C_SCL);
   rtc.begin(Wire, I2C_SDA, I2C_SCL);
@@ -612,7 +616,7 @@ void loop() {
   if (pendingStartWifiOta) {
     pendingStartWifiOta = false;
     DBG_PRINTLN("OTA: Connecting Wi-Fi from main loop...");
-    connectWiFi();
+    connectWiFi(false); // Do not bailout on BLE connection since BLE is actively driving OTA
     if (WiFi.status() == WL_CONNECTED) {
       if (!MDNS.begin("sugarota")) {
         DBG_PRINTLN("[OTA] mDNS begin failed");

@@ -297,6 +297,9 @@ fun FirmwareUpdateScreen(
                                         downloadProgress = 0
                                         scope.launch {
                                             val cacheFile = File(context.cacheDir, "sugarota_update_${rel.version}.bin")
+                                            if (cacheFile.exists()) {
+                                                cacheFile.delete()
+                                            }
                                             val ok = updateManager.downloadFirmware(rel.downloadUrl, cacheFile) { pct, _, _ ->
                                                 downloadProgress = pct
                                             }

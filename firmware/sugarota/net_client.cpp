@@ -41,10 +41,12 @@ void restoreTimeFromRTC() {
   settimeofday(&tv, NULL);
 }
 
-void connectWiFi() {
+void connectWiFi(bool allowBleBailout) {
   if (WiFi.status() == WL_CONNECTED) return;
   
   int wifiRetryLoop = 0;
+  WiFi.disconnect(false, false);
+  delay(50);
   WiFi.mode(WIFI_STA);
   WiFi.setHostname("Sugarota");
   
@@ -122,20 +124,22 @@ void connectWiFi() {
       WiFi.disconnect();
     }
     
-    // BLE scan step at the end of each Wi-Fi loop
-    if (SugarotaBLE::getInstance().isConnected()) {
-      logBoot("BLE Companion Connected!");
-      return;
-    }
-    logBoot("Checking BLE...");
-    unsigned long bleScanStart = millis();
-    while (millis() - bleScanStart < 1500) {
-      SugarotaBLE::getInstance().update();
+    // BLE scan step at the end of each Wi-Fi loop (only during boot / auto detection)
+    if (allowBleBailout) {
       if (SugarotaBLE::getInstance().isConnected()) {
         logBoot("BLE Companion Connected!");
         return;
       }
-      delay(50);
+      logBoot("Checking BLE...");
+      unsigned long bleScanStart = millis();
+      while (millis() - bleScanStart < 1500) {
+        SugarotaBLE::getInstance().update();
+        if (SugarotaBLE::getInstance().isConnected()) {
+          logBoot("BLE Companion Connected!");
+          return;
+        }
+        delay(50);
+      }
     }
 
     wifiRetryLoop++;
@@ -373,7 +377,7 @@ void fetchData() {
 
   if (WiFi.status() != WL_CONNECTED) {
     logBoot("Fetch: Waking WiFi Radio...");
-    connectWiFi();
+    connectWiFi(false); // Don't abort on BLE during explicit data fetch fallback
     if (WiFi.status() != WL_CONNECTED) {
       logBoot("Fetch skipped: WiFi connect failed");
       isFetching = false;

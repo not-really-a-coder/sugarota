@@ -11,8 +11,8 @@ android {
         applicationId = "org.sugarota.companion"
         minSdk = 26
         targetSdk = 34
-        versionCode = 26092405
-        versionName = "v0.09.24.5"
+        versionCode = 26092408
+        versionName = "v0.09.24.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

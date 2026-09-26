@@ -1158,6 +1158,18 @@ class SugarotaBleService : Service() {
 
     fun getCachedConfig(address: String): String? = deviceConfigs[address]
 
+    fun readDeviceConfig(address: String): Boolean {
+        val gatt = connectedGatts[address] ?: return false
+        val service = gatt.getService(BleUuids.SUGAROTA_SERVICE) ?: return false
+        val configChar = service.getCharacteristic(BleUuids.CHAR_CONFIG) ?: return false
+        return try {
+            gatt.readCharacteristic(configChar)
+        } catch (e: Exception) {
+            Log.w("SugarotaBleService", "readDeviceConfig failed for $address: ${e.message}")
+            false
+        }
+    }
+
     fun triggerManualSync(onComplete: ((Boolean) -> Unit)? = null) {
         serviceScope.launch {
             var anySuccess = false

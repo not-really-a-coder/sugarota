@@ -558,12 +558,8 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                 }
             }
 
-            Text(
-                text = "Connected Displays",
-                style = typography.h3,
-                color = colors.mutedForeground
-            )
-            Spacer(modifier = Modifier.height(10.dp))
+                val pairedDisplays = remember(sortedDeviceList) { sortedDeviceList.filter { it.isBonded } }
+                val unpairedDisplays = remember(sortedDeviceList) { sortedDeviceList.filter { !it.isBonded } }
 
                 if (sortedDeviceList.isEmpty()) {
                     val context = androidx.compose.ui.platform.LocalContext.current
@@ -607,9 +603,10 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "Pull down or power on Sugarota to scan & pair.",
+                                text = "Power on Sugarota display near this smartphone to scan & pair.",
                                 style = typography.caption,
-                                color = colors.mutedForeground
+                                color = colors.mutedForeground,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                         }
                     }
@@ -620,17 +617,18 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                     var dragDisplacementY by remember { mutableFloatStateOf(0f) }
                     val settleOffsetY = remember { Animatable(0f) }
                     // Single stable state instance across re-renders to prevent pointerInput closure from holding a stale delegate
-                    var currentOrderList by remember { mutableStateOf(sortedDeviceList) }
+                    var currentOrderList by remember { mutableStateOf(pairedDisplays) }
                     var initialDragIndex by remember { mutableIntStateOf(-1) }
                     var initialItemCenters by remember { mutableStateOf<Map<Int, Float>>(emptyMap()) }
                     var initialItemOffsets by remember { mutableStateOf<Map<Int, Float>>(emptyMap()) }
                     val dragScope = rememberCoroutineScope()
-                    val currentSortedDeviceList by rememberUpdatedState(sortedDeviceList)
+                    val currentPairedDisplays by rememberUpdatedState(pairedDisplays)
+                    val listContext = androidx.compose.ui.platform.LocalContext.current
 
-                    // Sync when sortedDeviceList changes outside of active drag session
-                    LaunchedEffect(sortedDeviceList) {
+                    // Sync when pairedDisplays changes outside of active drag session
+                    LaunchedEffect(pairedDisplays) {
                         if (draggedDeviceAddress == null && settlingDeviceAddress == null) {
-                            currentOrderList = sortedDeviceList
+                            currentOrderList = pairedDisplays
                         }
                     }
 
@@ -715,12 +713,24 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                                     onDragCancel = {
                                         draggedDeviceAddress = null
                                         settlingDeviceAddress = null
-                                        currentOrderList = currentSortedDeviceList
+                                        currentOrderList = currentPairedDisplays
                                     }
                                 )
                             },
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        // Section 1: Paired displays
+                        if (currentOrderList.isNotEmpty()) {
+                            item(key = "header_paired") {
+                                Text(
+                                    text = "Paired displays",
+                                    style = typography.h3,
+                                    color = colors.mutedForeground,
+                                    modifier = Modifier.padding(bottom = 2.dp)
+                                )
+                            }
+                        }
+
                         items(
                             items = currentOrderList,
                             key = { it.address }
@@ -825,7 +835,6 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                                                 detectHorizontalDragGestures(
                                                     onDragEnd = {
                                                         swipeScope.launch {
-                                                            // Snap to revealed state (-90dp) if dragged past 50% threshold, else snap back to 0
                                                             if (swipeOffsetX.value <= maxSwipePx * 0.5f) {
                                                                 swipedDeviceAddress = device.address
                                                                 swipeOffsetX.animateTo(maxSwipePx, spring(stiffness = Spring.StiffnessMediumLow))
@@ -872,13 +881,27 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                                                     swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
                                                 }
                                             } else {
-                                                targetDeviceTab = DeviceScreenTab.CHART
-                                                selectedDeviceAddress = device.address
+                                                if (!device.isBonded) {
+                                                    android.widget.Toast.makeText(listContext, "Pair display first", android.widget.Toast.LENGTH_SHORT).show()
+                                                } else if (service?.getCachedConfig(device.address).isNullOrBlank()) {
+                                                    android.widget.Toast.makeText(listContext, "Waiting for device config...", android.widget.Toast.LENGTH_SHORT).show()
+                                                    service?.readDeviceConfig(device.address)
+                                                } else {
+                                                    targetDeviceTab = DeviceScreenTab.CHART
+                                                    selectedDeviceAddress = device.address
+                                                }
                                             }
                                         },
                                         onConfigureClick = {
-                                            targetDeviceTab = DeviceScreenTab.CONFIG
-                                            selectedDeviceAddress = device.address
+                                            if (!device.isBonded) {
+                                                android.widget.Toast.makeText(listContext, "Pair display first", android.widget.Toast.LENGTH_SHORT).show()
+                                            } else if (service?.getCachedConfig(device.address).isNullOrBlank()) {
+                                                android.widget.Toast.makeText(listContext, "Waiting for device config...", android.widget.Toast.LENGTH_SHORT).show()
+                                                service?.readDeviceConfig(device.address)
+                                            } else {
+                                                targetDeviceTab = DeviceScreenTab.CONFIG
+                                                selectedDeviceAddress = device.address
+                                            }
                                         },
                                         onConnect = { service?.connectDevice(device.address) },
                                         onSync = { service?.triggerManualSync() },
@@ -886,6 +909,45 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                                         onPair = { service?.pairDevice(device.address) }
                                     )
                                 }
+                            }
+                        }
+
+                        // Section 2: Unpaired displays
+                        if (unpairedDisplays.isNotEmpty()) {
+                            item(key = "header_unpaired") {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "Unpaired displays",
+                                    style = typography.h3,
+                                    color = colors.mutedForeground,
+                                    modifier = Modifier.padding(bottom = 2.dp)
+                                )
+                            }
+
+                            items(
+                                items = unpairedDisplays,
+                                key = { it.address }
+                            ) { device ->
+                                val devReading = deviceReadings[device.address]
+                                val isConfigured = deviceConfigured[device.address] ?: true
+                                val devUnits = devReading?.units?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
+                                DeviceCard(
+                                    device = device,
+                                    bridgeStatusText = bridgeStatusText,
+                                    lastReading = devReading,
+                                    units = devUnits,
+                                    isConfigured = isConfigured,
+                                    onClick = {
+                                        android.widget.Toast.makeText(listContext, "Pair display first", android.widget.Toast.LENGTH_SHORT).show()
+                                    },
+                                    onConfigureClick = {
+                                        android.widget.Toast.makeText(listContext, "Pair display first", android.widget.Toast.LENGTH_SHORT).show()
+                                    },
+                                    onConnect = { service?.connectDevice(device.address) },
+                                    onSync = { service?.triggerManualSync() },
+                                    onDisconnect = { service?.disconnectDevice(device.address) },
+                                    onPair = { service?.pairDevice(device.address) }
+                                )
                             }
                         }
                     }
@@ -1105,31 +1167,33 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                             style = typography.body.copy(fontWeight = FontWeight.SemiBold),
                             color = colors.primary
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        if (release.changelog.isNotBlank()) {
-                            Text(
-                                text = "What's New:",
-                                style = typography.caption.copy(fontWeight = FontWeight.Bold),
-                                color = colors.foreground
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clickable {
+                                    val changelogUrl = release.changelogUrl.ifBlank {
+                                        "https://github.com/not-really-a-coder/sugarota/blob/main/CHANGELOG.md"
+                                    }
+                                    uriHandler.openUri(changelogUrl)
+                                }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Description,
+                                contentDescription = "Changelog",
+                                tint = colors.primary,
+                                modifier = Modifier.size(16.dp)
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 180.dp)
-                                    .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusSmall))
-                                    .background(colors.background)
-                                    .verticalScroll(rememberScrollState())
-                                    .padding(10.dp)
-                            ) {
-                                Text(
-                                    text = release.changelog,
-                                    style = typography.caption,
-                                    color = colors.mutedForeground
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "View Changelog",
+                                style = typography.body.copy(fontWeight = FontWeight.Medium),
+                                color = colors.primary,
+                                textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
+                            )
                         }
+                        Spacer(modifier = Modifier.height(16.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End,
@@ -2185,11 +2249,11 @@ fun DeviceCard(
                         }
                     } else {
                         ShadcnButton(
-                            onClick = onConnect,
+                            onClick = if (!device.isBonded) onPair else onConnect,
                             variant = ShadcnButtonVariant.DEFAULT
                         ) {
                             Text(
-                                text = "Connect",
+                                text = if (!device.isBonded) "Pair" else "Connect",
                                 color = colors.primaryForeground,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp
@@ -2378,7 +2442,7 @@ fun CompanionAppPreview() {
                 .padding(16.dp)
         ) {
             Text(
-                text = "Connected Displays",
+                text = "Paired displays",
                 style = ShadcnTheme.typography.h3,
                 color = ShadcnTheme.colors.mutedForeground
             )

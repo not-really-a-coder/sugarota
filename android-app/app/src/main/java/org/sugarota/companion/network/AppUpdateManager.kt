@@ -11,7 +11,8 @@ import java.util.concurrent.TimeUnit
 data class AppReleaseInfo(
     val version: String,
     val changelog: String,
-    val downloadUrl: String
+    val downloadUrl: String,
+    val changelogUrl: String = "https://github.com/not-really-a-coder/sugarota/blob/main/CHANGELOG.md"
 )
 
 class AppUpdateManager(private val context: Context) {

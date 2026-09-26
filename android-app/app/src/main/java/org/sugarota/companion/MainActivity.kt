@@ -487,9 +487,10 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                 }
             }
 
-            // Display prompt banner if an unbonded device is connecting or pending pairing
-            val unbondedDevices = sortedDeviceList.filter { !it.isBonded }
-            if (unbondedDevices.isNotEmpty()) {
+            // Display prompt banner if an unbonded device is connected and awaiting pairing
+            val unbondedConnectedDevices = sortedDeviceList.filter { it.isConnected && !it.isBonded }
+            if (unbondedConnectedDevices.isNotEmpty()) {
+                val primaryUnbonded = unbondedConnectedDevices.first()
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                     border = BorderStroke(1.dp, Color(0xFF38BDF8)),
@@ -519,9 +520,21 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Check notifications or accept the Bluetooth pairing prompt to confirm pairing.",
+                                text = "Confirm 6-digit PIN on ${primaryUnbonded.name} display.",
                                 style = typography.caption,
                                 color = colors.mutedForeground
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        ShadcnButton(
+                            onClick = { service?.pairDevice(primaryUnbonded.address) },
+                            variant = ShadcnButtonVariant.DEFAULT
+                        ) {
+                            Text(
+                                text = "Pair",
+                                color = colors.primaryForeground,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
                             )
                         }
                     }
@@ -852,7 +865,8 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                                         },
                                         onConnect = { service?.connectDevice(device.address) },
                                         onSync = { service?.triggerManualSync() },
-                                        onDisconnect = { service?.disconnectDevice(device.address) }
+                                        onDisconnect = { service?.disconnectDevice(device.address) },
+                                        onPair = { service?.pairDevice(device.address) }
                                     )
                                 }
                             }
@@ -2072,7 +2086,8 @@ fun DeviceCard(
     onConfigureClick: () -> Unit = {},
     onConnect: () -> Unit,
     onSync: () -> Unit,
-    onDisconnect: () -> Unit
+    onDisconnect: () -> Unit,
+    onPair: () -> Unit = {}
 ) {
     val colors = ShadcnTheme.colors
     val typography = ShadcnTheme.typography
@@ -2187,16 +2202,28 @@ fun DeviceCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Pairing Required",
                             style = typography.body.copy(fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
                             color = colors.foreground
                         )
                         Text(
-                            text = "Confirm 6-digit PIN on display to view glucose",
+                            text = "Confirm 6-digit PIN on display",
                             style = typography.caption.copy(fontSize = 11.sp),
                             color = colors.mutedForeground
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    ShadcnButton(
+                        onClick = onPair,
+                        variant = ShadcnButtonVariant.DEFAULT
+                    ) {
+                        Text(
+                            text = "Pair",
+                            color = colors.primaryForeground,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
                         )
                     }
                 }

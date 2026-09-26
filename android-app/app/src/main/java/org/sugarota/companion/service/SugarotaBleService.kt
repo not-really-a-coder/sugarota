@@ -626,22 +626,30 @@ class SugarotaBleService : Service() {
                 }
             }
 
-            // When connecting an unbonded device, explicitly initiate createBond()
-            // This forces Samsung One UI and Android stacks to trigger pairing immediately
-            if (device.bondState == BluetoothDevice.BOND_NONE) {
-                try {
-                    val bonding = device.createBond()
-                    Log.i("SugarotaBleService", "Explicit device.createBond() invoked for ${device.address}: started=$bonding")
-                    appendDeviceLog(device.address, "Initiated BLE pairing (createBond: $bonding)")
-                } catch (e: Exception) {
-                    Log.w("SugarotaBleService", "device.createBond() exception for ${device.address}: ${e.message}")
-                }
-            }
-
-            // When user taps connect, autoConnect=false forces immediate direct connection attempt
+            // Direct connect to device without aggressively forcing createBond()
+            // Android OS triggers pairing automatically when reading/writing encrypted characteristics,
+            // or when the user explicitly triggers pairing via pairDevice().
             device.connectGatt(this@SugarotaBleService, false, gattCallback)
         }
     }
+
+    /**
+     * Explicitly initiate OS Bluetooth pairing for an unbonded device upon user request.
+     */
+    fun pairDevice(address: String) {
+        val device = bluetoothAdapter?.getRemoteDevice(address) ?: return
+        if (device.bondState == BluetoothDevice.BOND_NONE) {
+            try {
+                val started = device.createBond()
+                Log.i("SugarotaBleService", "Explicit pairDevice() createBond started=$started for $address")
+                appendDeviceLog(address, "Requested BLE pairing (createBond: $started)")
+            } catch (e: Exception) {
+                Log.w("SugarotaBleService", "Error initiating createBond for $address: ${e.message}")
+                appendDeviceLog(address, "BLE pairing request error: ${e.message}")
+            }
+        }
+    }
+
 
     private fun updateDeviceConfiguredStatus(address: String, isConfigured: Boolean) {
         val current = _deviceConfigured.value.toMutableMap()

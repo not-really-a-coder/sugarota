@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.26.1"
+#define SUGAROTA_VERSION "v0.09.27.0"
 
 #include "config.h"
 #include "storage.h"
@@ -467,11 +467,11 @@ void setup() {
     if (connectionMode == "AUTO") {
       logBoot("Mode: AUTO (Checking BLE)...");
       bool hasWifiConfigured = (primarySSID.length() > 0 || secondarySSID.length() > 0);
-      bool isFirstLaunch = (!hasWifiConfigured && NimBLEDevice::getNumBonds() == 0);
+      bool isUnpaired = (NimBLEDevice::getNumBonds() == 0);
       
-      unsigned long bleCheckDuration = isFirstLaunch ? 15000 : 8000;
-      if (isFirstLaunch) {
-        logBoot("First Launch: Pairing Mode");
+      unsigned long bleCheckDuration = isUnpaired ? 15000 : 8000;
+      if (isUnpaired) {
+        logBoot("Pairing Mode Active");
         logBoot("Open App & Tap Scan to Pair");
       }
 

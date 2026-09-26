@@ -212,6 +212,7 @@ fun CompanionAppContent(service: SugarotaBleService?) {
 
     // Dialog state for confirming Forget scenario
     var deviceToForget by remember { mutableStateOf<SugarotaDevice?>(null) }
+    var dismissedPairingAddresses by remember { mutableStateOf(setOf<String>()) }
 
     // Top menu and App Update dialog state
     var showTopMenu by remember { mutableStateOf(false) }
@@ -488,7 +489,9 @@ fun CompanionAppContent(service: SugarotaBleService?) {
             }
 
             // Display prompt banner if an unbonded device is connected and awaiting pairing
-            val unbondedConnectedDevices = sortedDeviceList.filter { it.isConnected && !it.isBonded }
+            val unbondedConnectedDevices = sortedDeviceList.filter { 
+                it.isConnected && !it.isBonded && !dismissedPairingAddresses.contains(it.address) 
+            }
             if (unbondedConnectedDevices.isNotEmpty()) {
                 val primaryUnbonded = unbondedConnectedDevices.first()
                 Card(
@@ -535,6 +538,20 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                                 color = colors.primaryForeground,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = {
+                                dismissedPairingAddresses = dismissedPairingAddresses + primaryUnbonded.address
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Dismiss",
+                                tint = colors.mutedForeground,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }

@@ -116,15 +116,16 @@ class SugarotaBleService : Service() {
                 Log.i("SugarotaBleService", "Bond state changed for $addr: prev=$prevBondState, new=$bondState")
                 updateDeviceBondState(addr, bondState == BluetoothDevice.BOND_BONDED)
                 if (bondState == BluetoothDevice.BOND_BONDED) {
-                    Log.i("SugarotaBleService", "Device $addr successfully bonded! Re-triggering config sync.")
+                    Log.i("SugarotaBleService", "Device $addr successfully bonded! Refreshing services and config.")
+                    appendDeviceLog(addr, "Bonding successful, refreshing services & config")
                     val gatt = connectedGatts[addr]
                     if (gatt != null) {
                         serviceScope.launch {
-                            delay(500)
-                            val service = gatt.getService(BleUuids.SUGAROTA_SERVICE)
-                            val configChar = service?.getCharacteristic(BleUuids.CHAR_CONFIG)
-                            if (configChar != null) {
-                                gatt.readCharacteristic(configChar)
+                            delay(600)
+                            try {
+                                gatt.discoverServices()
+                            } catch (e: Exception) {
+                                Log.w("SugarotaBleService", "Error discovering services post-bond for $addr: ${e.message}")
                             }
                         }
                     }
@@ -375,8 +376,9 @@ class SugarotaBleService : Service() {
                     current[addr] = existing.copy(name = resolvedName, isBonded = isBonded)
                     _devices.value = current
                 }
-                // If user explicitly disconnected or already connecting/connected, don't auto-reconnect from scan
-                if (!manuallyDisconnected.contains(addr) && !connectedGatts.containsKey(addr) && !connectingDevices.contains(addr)) {
+                // Only auto-connect to already BONDED devices during scans.
+                // Unbonded devices are discovered and added to UI for explicit user connection/pairing.
+                if (isBonded && !manuallyDisconnected.contains(addr) && !connectedGatts.containsKey(addr) && !connectingDevices.contains(addr)) {
                     connectDevice(addr)
                 }
             }
@@ -574,6 +576,15 @@ class SugarotaBleService : Service() {
                             } else if (characteristic.uuid == BleUuids.CHAR_CONFIG) {
                                 handleConfigReceived(addr, payload)
                             }
+                        } else {
+                            Log.w("SugarotaBleService", "onCharacteristicRead error status=$status for ${characteristic.uuid}")
+                            if (characteristic.uuid == BleUuids.CHAR_CONFIG && (status == 15 || status == 5 || status == 137)) {
+                                serviceScope.launch {
+                                    delay(700)
+                                    val retryChar = gatt.getService(BleUuids.SUGAROTA_SERVICE)?.getCharacteristic(BleUuids.CHAR_CONFIG)
+                                    if (retryChar != null) gatt.readCharacteristic(retryChar)
+                                }
+                            }
                         }
                     }
                 }
@@ -590,6 +601,15 @@ class SugarotaBleService : Service() {
                             }
                         } else if (characteristic.uuid == BleUuids.CHAR_CONFIG) {
                             handleConfigReceived(addr, payload)
+                        }
+                    } else {
+                        Log.w("SugarotaBleService", "onCharacteristicRead (API 33+) error status=$status for ${characteristic.uuid}")
+                        if (characteristic.uuid == BleUuids.CHAR_CONFIG && (status == 15 || status == 5 || status == 137)) {
+                            serviceScope.launch {
+                                delay(700)
+                                val retryChar = gatt.getService(BleUuids.SUGAROTA_SERVICE)?.getCharacteristic(BleUuids.CHAR_CONFIG)
+                                if (retryChar != null) gatt.readCharacteristic(retryChar)
+                            }
                         }
                     }
                 }
@@ -1157,6 +1177,12 @@ class SugarotaBleService : Service() {
         val configJson = deviceConfigs[address]
         if (configJson.isNullOrBlank()) {
             _bridgeStatus.value = "Waiting for device config..."
+            val gatt = connectedGatts[address]
+            val configChar = gatt?.getService(BleUuids.SUGAROTA_SERVICE)?.getCharacteristic(BleUuids.CHAR_CONFIG)
+            if (gatt != null && configChar != null) {
+                Log.i("SugarotaBleService", "fetchAndPushForDevice: Missing config for $address, requesting GATT read")
+                gatt.readCharacteristic(configChar)
+            }
             return false
         }
 

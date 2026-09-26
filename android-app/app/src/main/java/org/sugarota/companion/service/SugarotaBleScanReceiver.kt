@@ -108,11 +108,17 @@ class SugarotaBleScanReceiver : BroadcastReceiver() {
         // Track last seen time for nearby check
         lastSeenNearbyTime[address] = now
 
+        val isBonded = try {
+            device.bondState == BluetoothDevice.BOND_BONDED
+        } catch (e: SecurityException) {
+            false
+        }
+
         // Check if device was manually disconnected by the user
         val isManuallyDisconnected = SugarotaBleService.isDeviceManuallyDisconnected(address)
 
-        // Tell SugarotaBleService to auto-connect to this device (unless manually disconnected)
-        if (!isManuallyDisconnected) {
+        // Only auto-connect to BONDED devices. Unbonded devices should only connect when explicitly tapped by user.
+        if (isBonded && !isManuallyDisconnected) {
             try {
                 val connectIntent = Intent(context, SugarotaBleService::class.java).apply {
                     action = SugarotaBleService.ACTION_CONNECT_DEVICE
@@ -124,10 +130,15 @@ class SugarotaBleScanReceiver : BroadcastReceiver() {
             }
         }
 
-        // Requirement 5: Do not show "Sugarota Detected Nearby" notification if the device is already connected
+        // Do not show "Sugarota Detected Nearby" notification if device is already connected or unbonded
         if (SugarotaBleService.isDeviceConnected(address)) {
             Log.d(TAG, "Suppressing nearby notification: $address is already connected")
             clearNotificationForDevice(context, address)
+            return
+        }
+
+        // Suppress nearby notification if device is not bonded (to avoid spamming unbonded devices)
+        if (!isBonded) {
             return
         }
 

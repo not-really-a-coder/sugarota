@@ -58,6 +58,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import org.sugarota.companion.model.SugarotaDevice
+import org.sugarota.companion.network.AppReleaseInfo
+import org.sugarota.companion.network.AppUpdateManager
 import org.sugarota.companion.service.SugarotaBleScanReceiver
 import org.sugarota.companion.service.SugarotaBleService
 import org.sugarota.companion.ui.*
@@ -211,6 +213,23 @@ fun CompanionAppContent(service: SugarotaBleService?) {
     // Dialog state for confirming Forget scenario
     var deviceToForget by remember { mutableStateOf<SugarotaDevice?>(null) }
 
+    // Top menu and App Update dialog state
+    var showTopMenu by remember { mutableStateOf(false) }
+    var isCheckingAppUpdate by remember { mutableStateOf(false) }
+    var appUpdateResult by remember { mutableStateOf<AppReleaseInfo?>(null) }
+    var hasCheckedAppUpdate by remember { mutableStateOf(false) }
+    var appUpdateError by remember { mutableStateOf<String?>(null) }
+    val appContext = androidx.compose.ui.platform.LocalContext.current
+    val appUpdateManager = remember(appContext) { AppUpdateManager(appContext) }
+    val installedAppVersion = remember(appContext) {
+        try {
+            val pInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+            pInfo.versionName ?: "v0.09.26.4"
+        } catch (e: Exception) {
+            "v0.09.26.4"
+        }
+    }
+
     val colors = ShadcnTheme.colors
     val typography = ShadcnTheme.typography
 
@@ -292,7 +311,55 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                     }
                 },
                 actions = {
-                    // Scan icon removed per requirement
+                    Box {
+                        IconButton(onClick = { showTopMenu = !showTopMenu }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Menu",
+                                tint = colors.foreground
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showTopMenu,
+                            onDismissRequest = { showTopMenu = false },
+                            modifier = Modifier.background(colors.card)
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.SystemUpdate,
+                                            contentDescription = null,
+                                            tint = colors.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = "Check for updates",
+                                            style = typography.body,
+                                            color = colors.foreground
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    showTopMenu = false
+                                    isCheckingAppUpdate = true
+                                    hasCheckedAppUpdate = true
+                                    appUpdateError = null
+                                    coroutineScope.launch {
+                                        try {
+                                            val release = appUpdateManager.checkForUpdates(installedAppVersion)
+                                            appUpdateResult = release
+                                        } catch (e: Exception) {
+                                            appUpdateError = e.message ?: "Failed to check for updates"
+                                        } finally {
+                                            isCheckingAppUpdate = false
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = colors.background,
@@ -416,6 +483,47 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                             ),
                             color = colors.primary
                         )
+                    }
+                }
+            }
+
+            // Display prompt banner if an unbonded device is connecting or pending pairing
+            val unbondedDevices = sortedDeviceList.filter { !it.isBonded }
+            if (unbondedDevices.isNotEmpty()) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                    border = BorderStroke(1.dp, Color(0xFF38BDF8)),
+                    shape = RoundedCornerShape(ShadcnTheme.shapes.radiusMedium),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Bluetooth,
+                            contentDescription = "Pairing Required",
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Pairing Required",
+                                style = typography.caption.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Check notifications or accept the Bluetooth pairing prompt to confirm pairing.",
+                                style = typography.caption,
+                                color = colors.mutedForeground
+                            )
+                        }
                     }
                 }
             }
@@ -842,6 +950,185 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold
                             )
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // App Update Dialog
+    if (hasCheckedAppUpdate) {
+        val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+        val release = appUpdateResult
+        val isNewer = if (release != null) appUpdateManager.compareCalVer(release.version, installedAppVersion) > 0 else false
+
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { hasCheckedAppUpdate = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.75f))
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusLarge))
+                        .background(colors.card)
+                        .border(
+                            BorderStroke(1.dp, colors.border),
+                            RoundedCornerShape(ShadcnTheme.shapes.radiusLarge)
+                        )
+                        .padding(20.dp)
+                ) {
+                    if (isCheckingAppUpdate) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(vertical = 16.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                color = colors.primary,
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.5.dp
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(
+                                text = "Checking for updates...",
+                                style = typography.body,
+                                color = colors.foreground
+                            )
+                        }
+                    } else if (appUpdateError != null) {
+                        Text(
+                            text = "Check Failed",
+                            style = typography.h2,
+                            color = colors.foreground
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Could not check for app updates: $appUpdateError. Please check your internet connection.",
+                            style = typography.body,
+                            color = colors.mutedForeground
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            ShadcnButton(
+                                onClick = { hasCheckedAppUpdate = false },
+                                variant = ShadcnButtonVariant.DEFAULT
+                            ) {
+                                Text("Close", color = colors.primaryForeground)
+                            }
+                        }
+                    } else if (release == null || !isNewer) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = Color(0xFF00E676),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "App is Up to Date",
+                                style = typography.h2,
+                                color = colors.foreground
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "You are running the latest version of Sugarota Companion ($installedAppVersion).",
+                            style = typography.body,
+                            color = colors.mutedForeground
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            ShadcnButton(
+                                onClick = { hasCheckedAppUpdate = false },
+                                variant = ShadcnButtonVariant.DEFAULT
+                            ) {
+                                Text("OK", color = colors.primaryForeground)
+                            }
+                        }
+                    } else {
+                        // Newer version available
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.NewReleases,
+                                contentDescription = null,
+                                tint = Color(0xFF38BDF8),
+                                modifier = Modifier.size(26.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "New Version Available!",
+                                style = typography.h2,
+                                color = colors.foreground
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "A new version ${release.version} is available (Current: $installedAppVersion).",
+                            style = typography.body.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.primary
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        if (release.changelog.isNotBlank()) {
+                            Text(
+                                text = "What's New:",
+                                style = typography.caption.copy(fontWeight = FontWeight.Bold),
+                                color = colors.foreground
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 180.dp)
+                                    .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusSmall))
+                                    .background(colors.background)
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(10.dp)
+                            ) {
+                                Text(
+                                    text = release.changelog,
+                                    style = typography.caption,
+                                    color = colors.mutedForeground
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            ShadcnButton(
+                                onClick = { hasCheckedAppUpdate = false },
+                                variant = ShadcnButtonVariant.GHOST
+                            ) {
+                                Text("Later", color = colors.mutedForeground)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            ShadcnButton(
+                                onClick = {
+                                    hasCheckedAppUpdate = false
+                                    uriHandler.openUri(release.downloadUrl)
+                                },
+                                variant = ShadcnButtonVariant.DEFAULT
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.OpenInNew,
+                                        contentDescription = null,
+                                        tint = colors.primaryForeground,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Download Release", color = colors.primaryForeground, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
                 }

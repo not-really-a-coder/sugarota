@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.25.48"
+#define SUGAROTA_VERSION "v0.09.26.1"
 
 #include "config.h"
 #include "storage.h"
@@ -598,9 +598,9 @@ void loop() {
   SugarotaBLE::getInstance().update();
   checkSerialConsole();
 
-  // Auto-disable boot pairing mode after 60 seconds of uptime unless in config mode (shake)
+  // Auto-disable boot pairing mode after 120 seconds (2 minutes) of uptime unless in config mode (shake)
   static bool bootPairingEnded = false;
-  if (!bootPairingEnded && !isConfigMode && millis() > 60000) {
+  if (!bootPairingEnded && !isConfigMode && millis() > 120000) {
     bootPairingEnded = true;
     SugarotaBLE::getInstance().enablePairingMode(false);
     DBG_PRINTLN("BLE: Boot pairing window closed. Subsequent connections require prior bonding or Config Mode (shake).");

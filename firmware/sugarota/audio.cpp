@@ -9,8 +9,9 @@ esp_codec_dev_handle_t record = NULL;
 void checkSerialConsole();
 void updateUI();
 
-// PSRAM Voice Recording Buffer (Up to 10 seconds at 24000 Hz 16-bit mono = 480,000 bytes)
-// 24000 samples/sec * 2 bytes/sample * 1 channel * 10 sec = 480,000 bytes
+// PSRAM Voice Recording Buffer (Up to 10 seconds at 24000 Hz 16-bit mono =
+// 480,000 bytes) 24000 samples/sec * 2 bytes/sample * 1 channel * 10 sec =
+// 480,000 bytes
 static const uint32_t MAX_AUDIO_BYTES = 480000;
 static uint8_t *voiceBuffer = NULL;
 static uint32_t voiceRecordedLength = 0;
@@ -24,8 +25,9 @@ void spinnerDelay(unsigned long ms) {
     if (isBooting) {
       checkBootButtons();
     }
-    if (!deviceOn) return;
-    
+    if (!deviceOn)
+      return;
+
     if (isFetching) {
       if (isTimerMode) {
         if (!isTimerStopped) {
@@ -59,17 +61,20 @@ void initAudioCodec() {
   }
   if (record) {
     esp_codec_dev_set_in_gain(record, 35.0);
-    DBG_PRINTLN("Audio Codec Initialized (Record Gain: 35dB)");
+    // Explicitly power down microphone ADC on startup to prevent battery drain
+    esp_codec_dev_close(record);
+    DBG_PRINTLN("Audio Codec Initialized (Record Gain: 35dB, Mic in Sleep)");
   }
 }
 
 void codecBeep(int durationMs) {
-  if (!playback) return;
-  
+  if (!playback)
+    return;
+
   const int chunkFrames = 1200;
   static int16_t buf[chunkFrames * 2];
   static bool bufInitialized = false;
-  
+
   if (!bufInitialized) {
     for (int i = 0; i < chunkFrames; i++) {
       int16_t val = ((i / 6) % 2 == 0) ? 15000 : -15000;
@@ -78,14 +83,14 @@ void codecBeep(int durationMs) {
     }
     bufInitialized = true;
   }
-  
+
   esp_codec_dev_sample_info_t fs;
   memset(&fs, 0, sizeof(fs));
   fs.sample_rate = 24000;
   fs.channel = 2;
   fs.bits_per_sample = 16;
   esp_codec_dev_open(playback, &fs);
-  
+
   int elapsed = 0;
   while (elapsed < durationMs) {
     int playMs = min(50, durationMs - elapsed);
@@ -94,31 +99,34 @@ void codecBeep(int durationMs) {
     elapsed += playMs;
     spinnerDelay(playMs);
   }
-  
+
   esp_codec_dev_close(playback);
 }
 
-// Generates tone with custom halfPeriodFrames (e.g. 4 => 3000 Hz tone, distinct from 2000 Hz timer beep)
+// Generates tone with custom halfPeriodFrames (e.g. 4 => 3000 Hz tone, distinct
+// from 2000 Hz timer beep)
 void codecBeepTone(int durationMs, int halfPeriodFrames) {
-  if (!playback) return;
-  if (halfPeriodFrames < 1) halfPeriodFrames = 4;
-  
+  if (!playback)
+    return;
+  if (halfPeriodFrames < 1)
+    halfPeriodFrames = 4;
+
   const int chunkFrames = 1200;
   int16_t toneBuf[chunkFrames * 2];
-  
+
   for (int i = 0; i < chunkFrames; i++) {
     int16_t val = ((i / halfPeriodFrames) % 2 == 0) ? 28000 : -28000;
     toneBuf[i * 2] = val;     // Left
     toneBuf[i * 2 + 1] = val; // Right
   }
-  
+
   esp_codec_dev_sample_info_t fs;
   memset(&fs, 0, sizeof(fs));
   fs.sample_rate = 24000;
   fs.channel = 2;
   fs.bits_per_sample = 16;
   esp_codec_dev_open(playback, &fs);
-  
+
   int elapsed = 0;
   while (elapsed < durationMs) {
     int playMs = min(50, durationMs - elapsed);
@@ -127,43 +135,45 @@ void codecBeepTone(int durationMs, int halfPeriodFrames) {
     elapsed += playMs;
     spinnerDelay(playMs);
   }
-  
+
   esp_codec_dev_close(playback);
 }
 
 void playWav(const char *path) {
-  if (!playback) return;
-  
+  if (!playback)
+    return;
+
   File f = LittleFS.open(path, "r");
   if (!f) {
     DBG_PRINTLN("Failed to open WAV file!");
     return;
   }
-  
+
   uint8_t header[44];
   if (f.read(header, 44) != 44) {
     f.close();
     return;
   }
-  
+
   const int bufSize = 4096;
   static uint8_t buf[bufSize];
-  
+
   esp_codec_dev_sample_info_t fs;
   memset(&fs, 0, sizeof(fs));
   fs.sample_rate = 24000;
   fs.channel = 2;
   fs.bits_per_sample = 16;
   esp_codec_dev_open(playback, &fs);
-  
+
   while (f.available()) {
     int bytesRead = f.read(buf, bufSize);
-    if (bytesRead <= 0) break;
-    
+    if (bytesRead <= 0)
+      break;
+
     esp_codec_dev_write(playback, buf, bytesRead);
     spinnerDelay(5);
   }
-  
+
   esp_codec_dev_close(playback);
   f.close();
 }
@@ -207,7 +217,8 @@ void startFindDeviceAlert() {
   findDeviceBeepInRep = 0;
   findDeviceIsBeeping = false;
   findDeviceNextActionTime = millis();
-  DBG_PRINTLN("FIND DEVICE: Alert started (5 beeps x 3 reps, 3s pause, 100% volume)");
+  DBG_PRINTLN(
+      "FIND DEVICE: Alert started (5 beeps x 3 reps, 3s pause, 100% volume)");
 }
 
 void stopFindDeviceAlert() {
@@ -220,15 +231,15 @@ void stopFindDeviceAlert() {
   }
 }
 
-bool isFindDeviceActive() {
-  return findDeviceRunning;
-}
+bool isFindDeviceActive() { return findDeviceRunning; }
 
 void updateFindDevice() {
-  if (!findDeviceRunning) return;
+  if (!findDeviceRunning)
+    return;
 
   unsigned long now = millis();
-  if (now < findDeviceNextActionTime) return;
+  if (now < findDeviceNextActionTime)
+    return;
 
   if (findDeviceIsBeeping) {
     // Current beep just finished (it was played synchronously in codecBeepTone)
@@ -259,7 +270,8 @@ void updateFindDevice() {
       return;
     }
   } else {
-    // Start next beep: 100ms duration at 3000 Hz tone (halfPeriodFrames = 4 at 24kHz)
+    // Start next beep: 100ms duration at 3000 Hz tone (halfPeriodFrames = 4 at
+    // 24kHz)
     findDeviceIsBeeping = true;
     codecBeepTone(100, 4);
     // Beep took 100ms; next action checks right away
@@ -282,7 +294,8 @@ bool startVoiceRecording() {
 
   // Allocate PSRAM buffer if not yet allocated
   if (!voiceBuffer) {
-    voiceBuffer = (uint8_t *)heap_caps_malloc(MAX_AUDIO_BYTES, MALLOC_CAP_SPIRAM);
+    voiceBuffer =
+        (uint8_t *)heap_caps_malloc(MAX_AUDIO_BYTES, MALLOC_CAP_SPIRAM);
     if (!voiceBuffer) {
       DBG_PRINTLN("RECORD: Failed to allocate PSRAM voice buffer!");
       return false;
@@ -297,7 +310,7 @@ bool startVoiceRecording() {
   fs.sample_rate = 24000;
   fs.channel = 2; // ES7210 TDM config uses 2/4 channel capture
   fs.bits_per_sample = 16;
-  
+
   if (esp_codec_dev_open(record, &fs) != ESP_CODEC_DEV_OK) {
     DBG_PRINTLN("RECORD: Failed to open record device");
     return false;
@@ -308,7 +321,8 @@ bool startVoiceRecording() {
 }
 
 bool recordVoiceChunk() {
-  if (!record || !recordDeviceOpened || !voiceBuffer) return false;
+  if (!record || !recordDeviceOpened || !voiceBuffer)
+    return false;
   if (voiceRecordedLength >= MAX_AUDIO_BYTES) {
     stopVoiceRecording();
     return false;
@@ -316,7 +330,8 @@ bool recordVoiceChunk() {
 
   const uint32_t chunkSize = 2048;
   uint32_t toRead = min(chunkSize, MAX_AUDIO_BYTES - voiceRecordedLength);
-  int res = esp_codec_dev_read(record, voiceBuffer + voiceRecordedLength, toRead);
+  int res =
+      esp_codec_dev_read(record, voiceBuffer + voiceRecordedLength, toRead);
   if (res == ESP_CODEC_DEV_OK) {
     voiceRecordedLength += toRead;
     return (voiceRecordedLength < MAX_AUDIO_BYTES);
@@ -329,7 +344,8 @@ void stopVoiceRecording() {
     esp_codec_dev_close(record);
     recordDeviceOpened = false;
   }
-  DBG_PRINTF("RECORD: Stopped voice recording. Bytes recorded: %u\n", voiceRecordedLength);
+  DBG_PRINTF("RECORD: Stopped voice recording. Bytes recorded: %u\n",
+             voiceRecordedLength);
 }
 
 bool hasVoiceRecording() {
@@ -345,7 +361,8 @@ void deleteVoiceRecording() {
 }
 
 void playVoiceRecording() {
-  if (!playback || !hasVoiceRecording()) return;
+  if (!playback || !hasVoiceRecording())
+    return;
 
   esp_codec_dev_sample_info_t fs = {};
   fs.sample_rate = 24000;
@@ -376,14 +393,16 @@ void playVoiceRecording() {
 // 4) Pause 1 sec
 // 5) 3 descending tones
 void playAlarmAudioSequence() {
-  if (!playback) return;
+  if (!playback)
+    return;
 
   int originalVol = 75;
   esp_codec_dev_get_out_vol(playback, &originalVol);
   esp_codec_dev_set_out_vol(playback, 100.0); // Full volume for alarm
 
   // 1) Three ascending tones
-  // Frequencies: ~1500 Hz (halfPeriod 8), ~2200 Hz (halfPeriod 5), ~3000 Hz (halfPeriod 4)
+  // Frequencies: ~1500 Hz (halfPeriod 8), ~2200 Hz (halfPeriod 5), ~3000 Hz
+  // (halfPeriod 4)
   codecBeepTone(150, 8);
   spinnerDelay(100);
   codecBeepTone(150, 5);
@@ -402,7 +421,8 @@ void playAlarmAudioSequence() {
   spinnerDelay(1000);
 
   // 5) Three descending tones
-  // Frequencies: ~3000 Hz (halfPeriod 4), ~2200 Hz (halfPeriod 5), ~1500 Hz (halfPeriod 8)
+  // Frequencies: ~3000 Hz (halfPeriod 4), ~2200 Hz (halfPeriod 5), ~1500 Hz
+  // (halfPeriod 8)
   codecBeepTone(150, 4);
   spinnerDelay(100);
   codecBeepTone(150, 5);
@@ -411,4 +431,3 @@ void playAlarmAudioSequence() {
 
   esp_codec_dev_set_out_vol(playback, (float)originalVol);
 }
-

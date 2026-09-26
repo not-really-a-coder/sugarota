@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Binder
 import android.os.Build
+import android.os.DeadObjectException
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -128,6 +129,18 @@ class SugarotaBleService : Service() {
                         }
                     }
                 }
+            } else if (action == BluetoothDevice.ACTION_PAIRING_REQUEST) {
+                val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                }
+                val addr = device?.address ?: return
+                Log.i("SugarotaBleService", "ACTION_PAIRING_REQUEST received for $addr")
+                appendDeviceLog(addr, "Pairing request received from OS - prompt active")
+                // Post high-priority alert notification so user immediately sees pairing prompt even if shade minimized
+                showPairingAlertNotification(addr, device.name ?: getDefaultDeviceName(addr))
             }
         }
     }
@@ -613,6 +626,18 @@ class SugarotaBleService : Service() {
                 }
             }
 
+            // When connecting an unbonded device, explicitly initiate createBond()
+            // This forces Samsung One UI and Android stacks to trigger pairing immediately
+            if (device.bondState == BluetoothDevice.BOND_NONE) {
+                try {
+                    val bonding = device.createBond()
+                    Log.i("SugarotaBleService", "Explicit device.createBond() invoked for ${device.address}: started=$bonding")
+                    appendDeviceLog(device.address, "Initiated BLE pairing (createBond: $bonding)")
+                } catch (e: Exception) {
+                    Log.w("SugarotaBleService", "device.createBond() exception for ${device.address}: ${e.message}")
+                }
+            }
+
             // When user taps connect, autoConnect=false forces immediate direct connection attempt
             device.connectGatt(this@SugarotaBleService, false, gattCallback)
         }
@@ -696,6 +721,31 @@ class SugarotaBleService : Service() {
         refreshNotificationState()
     }
 
+    private fun handleDeadGatt(address: String, reason: String) {
+        Log.w("SugarotaBleService", "Handling dead GATT connection for $address: $reason")
+        appendDeviceLog(address, "GATT dead ($reason). Resetting connection and auto-reconnecting...")
+        connectingDevices.remove(address)
+        syncingDevices.remove(address)
+        val gatt = connectedGatts.remove(address)
+        lastPushedTimestamps.remove(address)
+        currentMtu.remove(address)
+        pendingWriteQueues.remove(address)
+        updateDeviceState(address, isConnected = false)
+        try {
+            gatt?.disconnect()
+            gatt?.close()
+        } catch (_: Exception) {}
+        refreshNotificationState()
+
+        // Trigger clean reconnect attempt after 2 seconds
+        serviceScope.launch {
+            delay(2000)
+            if (!manuallyDisconnected.contains(address)) {
+                connectDevice(address)
+            }
+        }
+    }
+
     // Send a remote JSON command packet to the device over CHAR_GLUCOSE
     fun sendDeviceCommand(address: String, cmdObj: org.json.JSONObject, onComplete: ((Boolean) -> Unit)? = null) {
         val gatt = connectedGatts[address]
@@ -733,6 +783,9 @@ class SugarotaBleService : Service() {
         } catch (e: Exception) {
             Log.e("SugarotaBleService", "sendDeviceCommand to $address failed", e)
             appendDeviceLog(address, "BLE command [$cmdName] error: ${e.message}")
+            if (e is DeadObjectException || e.cause is DeadObjectException) {
+                handleDeadGatt(address, "DeadObjectException on command [$cmdName]")
+            }
             onComplete?.invoke(false)
         }
     }
@@ -842,18 +895,7 @@ class SugarotaBleService : Service() {
         val glucoseChar = service.getCharacteristic(BleUuids.CHAR_GLUCOSE) ?: return
         val syncJson = GlucoseData.createTimeSyncJson()
         val bytes = syncJson.toByteArray(Charsets.UTF_8)
-        val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val res = gatt.writeCharacteristic(glucoseChar, bytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-            res == BluetoothStatusCodes.SUCCESS
-        } else {
-            @Suppress("DEPRECATION")
-            glucoseChar.value = bytes
-            @Suppress("DEPRECATION")
-            glucoseChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-            @Suppress("DEPRECATION")
-            gatt.writeCharacteristic(glucoseChar)
-        }
-        Log.i("SugarotaBleService", "pushTimeSyncToDevice to $address: write initiated=$success")
+        writeCharacteristicSafe(gatt, glucoseChar, bytes, "time_sync")
     }
 
     // Push API OK status packet when server was queried successfully but has no new reading
@@ -950,6 +992,9 @@ class SugarotaBleService : Service() {
         } catch (e: Exception) {
             Log.e("SugarotaBleService", "writeCharacteristic [$label] failed", e)
             appendDeviceLog(gatt.device.address, "BLE write [$label] error: ${e.message}")
+            if (e is DeadObjectException || e.cause is DeadObjectException) {
+                handleDeadGatt(gatt.device.address, "DeadObjectException on write [$label]")
+            }
         }
     }
 
@@ -1076,6 +1121,9 @@ class SugarotaBleService : Service() {
             }
         } catch (e: Exception) {
             Log.e("SugarotaBleService", "writeConfigCharacteristicDirect error", e)
+            if (e is DeadObjectException || e.cause is DeadObjectException) {
+                handleDeadGatt(gatt.device.address, "DeadObjectException on writeConfig")
+            }
             false
         }
     }
@@ -1482,6 +1530,37 @@ class SugarotaBleService : Service() {
         }
 
         return builder.build()
+    }
+
+    private fun showPairingAlertNotification(address: String, deviceName: String) {
+        try {
+            val launchIntent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(SugarotaBleScanReceiver.EXTRA_DEVICE_ADDRESS, address)
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                this,
+                address.hashCode(),
+                launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val alertBuilder = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+                .setContentTitle("Bluetooth Pairing Required")
+                .setContentText("Pairing requested for $deviceName. Tap to complete pairing.")
+                .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .setFullScreenIntent(pendingIntent, true)
+
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(address.hashCode(), alertBuilder.build())
+            wakeScreenBriefly()
+        } catch (e: Exception) {
+            Log.w("SugarotaBleService", "Error showing pairing alert notification: ${e.message}")
+        }
     }
 
     private fun updateNotification(text: String, isNewData: Boolean = false, reading: GlucoseData? = null) {

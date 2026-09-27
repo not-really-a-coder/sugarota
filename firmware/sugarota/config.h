@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#define SUGAROTA_VERSION "v0.09.27.0"
+#define SUGAROTA_VERSION "v0.09.27.39"
 
 // --- Design System Colors (RGB565 matching Shadcn Zinc Dark & Telemetry Palette) ---
 #define BLACK   0x0841  // #09090B (OLED Zinc Dark Canvas)
@@ -112,6 +112,20 @@ inline unsigned long getFetchIntervalMs() {
 extern unsigned long nextFetchIntervalMs;
 extern long long lastKnownReadingTs;
 
+inline time_t computeNextFetchTargetSec(long long readingTs, unsigned long intervalSec) {
+  unsigned long pSec = (intervalSec >= 30 && intervalSec <= 600) ? intervalSec : 60;
+  time_t now = time(NULL);
+  if (now < 1700000000LL || readingTs <= 0) {
+    return now + (time_t)pSec;
+  }
+  const unsigned long PROVIDER_LAG_SEC = 3UL;
+  long long nextTarget = readingTs + pSec + PROVIDER_LAG_SEC;
+  while (nextTarget <= (long long)now) {
+    nextTarget += pSec;
+  }
+  return (time_t)nextTarget;
+}
+
 inline unsigned long computeNextFetchDelayMs(long long readingTs, unsigned long intervalSec) {
   unsigned long pSec = (intervalSec >= 30 && intervalSec <= 600) ? intervalSec : 60;
   time_t now = time(NULL);
@@ -120,11 +134,7 @@ inline unsigned long computeNextFetchDelayMs(long long readingTs, unsigned long 
     return pSec * 1000UL;
   }
 
-  long long nextTarget = readingTs + pSec;
-  while (nextTarget <= (long long)now) {
-    nextTarget += pSec;
-  }
-
+  long long nextTarget = (long long)computeNextFetchTargetSec(readingTs, intervalSec);
   long long diff = nextTarget - (long long)now;
   if (diff < 10) diff = 10;
   if (diff > (long long)pSec) diff = (long long)pSec;
@@ -191,19 +201,6 @@ extern unsigned long lastHarveyBallTapTime;
 extern bool showHarveyBallInfo;
 extern unsigned long lastScrubberTouchTime;
 extern int lastScrubberX;
-// Active Screen
-enum DeviceScreen { SCREEN_MAIN = 0, SCREEN_COUNTDOWN_ALARM = 1 };
-extern DeviceScreen currentScreen;
-
-// Countdown Alarm states
-extern int alarmSetHours;
-extern int alarmSetMinutes;
-extern bool isAlarmRunning;
-extern unsigned long alarmEndMillis;
-extern bool isAlarmRinging;
-extern bool isRecordingAudio;
-extern unsigned long audioRecordingStartTime;
-
 extern ButtonState pwrBtn;
 extern ButtonState bootBtn;
 

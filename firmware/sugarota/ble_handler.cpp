@@ -49,7 +49,12 @@ void insertOrUpdateReading(long long tsVal, int sgvVal, const char* dirVal, int 
 void handleBLEGlucose(const JsonDocument& doc) {
   if (doc.containsKey("time")) {
     long long phoneEpoch = doc["time"].as<long long>();
-    if (phoneEpoch > 1700000000LL && isBooting) {
+    const char* pTypeStr = doc["type"] | "";
+    bool isExplicitTimeSync = (strcmp(pTypeStr, "time_sync") == 0);
+    time_t curTime = time(NULL);
+    bool significantDrift = (labs((long)(curTime - (time_t)phoneEpoch)) >= 2);
+
+    if (phoneEpoch > 1700000000LL && (isBooting || isExplicitTimeSync || significantDrift)) {
       struct timeval tv = { .tv_sec = (time_t)phoneEpoch, .tv_usec = 0 };
       settimeofday(&tv, NULL);
       struct tm utc_tm;
@@ -63,7 +68,8 @@ void handleBLEGlucose(const JsonDocument& doc) {
         daylightOffset_sec = doc["dst_offset"] | 0;
         configTime(gmtOffset_sec, daylightOffset_sec, "");
       }
-      DBG_PRINTF("BLE: Clock and RTC synchronized to phone time (boot): %lld (TZ offset: %ld)\n", phoneEpoch, gmtOffset_sec);
+      DBG_PRINTF("BLE: Clock and RTC synchronized to phone time: %lld (TZ offset: %ld, drift: %ld)\n",
+                 phoneEpoch, gmtOffset_sec, (long)(curTime - (time_t)phoneEpoch));
     }
   }
 
@@ -74,11 +80,22 @@ void handleBLEGlucose(const JsonDocument& doc) {
   }
 
   if (strcmp(pType, "api_ok") == 0) {
-    DBG_PRINTLN("BLE: Companion checked remote API (no new reading yet). Maintaining BLE connection.");
     isFetching = false;
     fetchStartTime = 0;
     lastDataFetch = millis();
-    nextFetchIntervalMs = getFetchIntervalMs();
+    long long baseTs = (historyCount > 0) ? bgHistory[0].timestamp : lastKnownReadingTs;
+    time_t targetSec = computeNextFetchTargetSec(baseTs, pollIntervalSec);
+    nextFetchIntervalMs = computeNextFetchDelayMs(baseTs, pollIntervalSec);
+
+    struct tm* ti = localtime(&targetSec);
+    char nextBuf[32];
+    if (ti != nullptr) {
+      snprintf(nextBuf, sizeof(nextBuf), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+    } else {
+      snprintf(nextBuf, sizeof(nextBuf), "--:--:--");
+    }
+
+    DBG_PRINTF("BLE: Companion checked remote API (no new reading yet). Next reading at %s\n", nextBuf);
     bleUIUpdatePending = true;
     return;
   }
@@ -168,17 +185,41 @@ void handleBLEGlucose(const JsonDocument& doc) {
   isFetching = false;
   fetchStartTime = 0;
   lastDataFetch = millis();
-  if (historyCount > 0 && bgHistory[0].timestamp > lastKnownReadingTs) {
-    lastKnownReadingTs = bgHistory[0].timestamp;
+  if (historyCount > 0) {
+    if (bgHistory[0].timestamp > lastKnownReadingTs) {
+      lastKnownReadingTs = bgHistory[0].timestamp;
+    }
     nextFetchIntervalMs = computeNextFetchDelayMs(bgHistory[0].timestamp, pollIntervalSec);
+  } else {
+    nextFetchIntervalMs = getFetchIntervalMs();
   }
+
   if (!isChunk) {
     bleGlucoseReceived = true;
-    DBG_PRINTF("BLE: Ingested glucose successfully. Readings: %d, Latest SGV: %d (%s, delta: %+d, ts: %lld)\n",
+    time_t targetSec = computeNextFetchTargetSec(bgHistory[0].timestamp, pollIntervalSec);
+    struct tm* ti = localtime(&targetSec);
+    char nextBuf[32];
+    if (ti != nullptr) {
+      snprintf(nextBuf, sizeof(nextBuf), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+    } else {
+      snprintf(nextBuf, sizeof(nextBuf), "--:--:--");
+    }
+
+    time_t readingTime = (time_t)(historyCount > 0 ? bgHistory[0].timestamp : 0LL);
+    struct tm* rti = localtime(&readingTime);
+    char tsBuf[32];
+    if (rti != nullptr && readingTime > 0) {
+      snprintf(tsBuf, sizeof(tsBuf), "%02d:%02d:%02d", rti->tm_hour, rti->tm_min, rti->tm_sec);
+    } else {
+      snprintf(tsBuf, sizeof(tsBuf), "--:--:--");
+    }
+
+    DBG_PRINTF("BLE: Ingested glucose successfully. Readings: %d, Latest SGV: %d (%s, delta: %+d, ts: %s). Next reading at %s\n",
                historyCount, (historyCount > 0 ? bgHistory[0].sgv : 0),
                (historyCount > 0 ? bgHistory[0].direction : "--"),
                (historyCount > 0 ? bgHistory[0].delta : 0),
-               (historyCount > 0 ? bgHistory[0].timestamp : 0LL));
+               tsBuf,
+               nextBuf);
     bleUIUpdatePending = true;
   } else {
     DBG_PRINTF("BLE: Ingested history chunk (%d readings cached)\n", historyCount);

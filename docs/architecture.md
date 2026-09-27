@@ -71,6 +71,8 @@ The Android companion app pairs with this architecture via a background foregrou
 - Real-time notification tray rendering with a custom 2-hour trend sparkline and delta indicators.
 - Proximity-aware discovery with auto-dismissing notifications when Sugarota displays leave radio range.
 - Explicit manual disconnect suppression preventing unwanted automatic reconnections.
+- Timestamp-aligned polling synchronized with reading epochs and a 3-second provider buffer to minimize latency and avoid stale fetches.
+- Differentiated single-packet routine polling from multi-chunk 48-reading historical backfills on force-refresh or detected data gaps.
 
 ### 2.4 Power Management & Sensors
 - **Battery Monitoring**: High-accuracy ESP32-S3 internal ADC calibration scheme (`adc_oneshot` with curve fitting). Employs rolling median and slope detection to filter out USB charging noise.

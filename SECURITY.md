@@ -20,6 +20,7 @@ Key architectural tenets:
 | Rogue device BLE pairing / hijacking | LE Secure Connections (SC) with Numeric Comparison (`BLE_HS_IO_DISPLAY_YESNO`); unbonded pairing is restricted to designated time-bounded windows (boot and manual config mode) |
 | Eavesdropping on wireless BLE telemetry | AES-128 link encryption with authenticated 128-bit Long Term Keys (LTK) negotiated during numeric pairing |
 | Rogue BLE control / unwanted commands | All writable characteristics (`CHAR_GLUCOSE`, `CHAR_CONFIG`, `CHAR_OTA`) enforce authenticated encryption (`WRITE_ENC`); unauthenticated writes are rejected at the GATT layer |
+| Denial of service via repeated refresh requests | Routine telemetry poll requests (`request_refresh`) are restricted to single-packet syncs; multi-packet historical backfills (`force_refresh`) require authenticated initial pairing, user button intervention, or verified data gaps (>6 min) |
 | Unsolicited pairing spam in public | Pairing mode auto-closes 60 seconds after boot; subsequent pairing attempts from unknown devices are rejected immediately unless device is shaken into Config Mode |
 | Unwanted background auto-reconnections | Explicit manual disconnect in the Android companion app suppresses passive reconnect scans and BLE auto-connect loops until explicitly initiated by the user |
 | Wi-Fi credential exfiltration via local installer | WebSerial installer runs 100% client-side in the browser via Web Serial API; `utils/run_web_installer.py` serves static files locally on loopback (`127.0.0.1`) with zero telemetry |

@@ -49,7 +49,7 @@ public:
     void confirmPairing(bool accept);
     void updateAdvertising();
 
-    void notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness = -1, int darkTheme = -1, bool requestRefresh = false, int debug = -1);
+    void notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness = -1, int darkTheme = -1, bool requestRefresh = false, int debug = -1, bool forceRefresh = false);
     void notifyWifiOTAStatus(const char* status, const char* ip, const char* mdns);
     void disconnect();
 

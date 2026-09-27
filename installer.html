@@ -489,6 +489,38 @@
             gap: 6px;
         }
 
+        .terminal-filter-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .terminal-filter-input {
+            width: 170px;
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 0.72rem;
+            color: var(--text-primary);
+            font-family: 'Fira Code', monospace;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .terminal-filter-input:focus {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 8px rgba(0, 240, 255, 0.25);
+            width: 210px;
+        }
+
+        .terminal-filter-input::placeholder {
+            color: var(--text-secondary);
+            opacity: 0.65;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.7rem;
+        }
+
         .terminal-wrapper {
             position: relative;
             border-radius: 14px;
@@ -727,7 +759,7 @@
                     style="width: 58px; height: 58px; image-rendering: pixelated; filter: drop-shadow(0 4px 16px rgba(0, 240, 255, 0.4));">
                 <h1 class="logo-title" style="margin: 0;">SUGAROTA CONTROL CENTER</h1>
             </div>
-            <div><span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.09.18.3</span></div>
+            <div><span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.09.27.5</span></div>
         </header>
 
         <!-- Global Connection Status Banner -->
@@ -785,6 +817,9 @@
                     <div class="terminal-header-row">
                         <label>Console & Log Output</label>
                         <div class="terminal-actions-right">
+                            <div class="terminal-filter-wrapper">
+                                <input type="text" id="terminal-filter-input" placeholder="Filter logs (min 3 chars)..." autocomplete="off" spellcheck="false" class="terminal-filter-input">
+                            </div>
                             <button class="btn-icon-micro" id="quick-btn-copy" title="Copy log to clipboard">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -792,11 +827,10 @@
                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                                 </svg>
                             </button>
-                            <button class="btn-icon-micro" id="quick-btn-pause" title="Pause log output">
+                            <button class="btn-icon-micro" id="quick-btn-pause" title="Disable auto-scroll">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                                    <rect x="6" y="4" width="4" height="16"></rect>
-                                    <rect x="14" y="4" width="4" height="16"></rect>
+                                    <path d="M12 5v14M19 12l-7 7-7-7"></path>
                                 </svg>
                             </button>
                             <button class="btn-icon-micro danger" id="quick-btn-reboot" disabled
@@ -818,8 +852,7 @@
                         </div>
                     </div>
                     <div class="terminal-wrapper">
-                        <div class="terminal" id="terminal-log">Console system ready. Pair your USB device to sync
-                            settings or deploy new software...</div>
+                        <div class="terminal" id="terminal-log"></div>
                     </div>
                 </div>
 
@@ -1116,7 +1149,7 @@
     </div>
 
     <script>
-        const INSTALLER_VERSION = "v0.09.18.3";
+        const INSTALLER_VERSION = "v0.09.27.5";
 
         // Toggle Password Visibility Reveal Icon Logic
         function togglePasswordVisibility(inputId, btn) {
@@ -1190,8 +1223,9 @@
         let keepReading = false;
         let readBuffer = "";
         let isBrandNewDevice = false;
-        let isLogPaused = false;
-        let pendingLogBuffer = "";
+        let isAutoScrollEnabled = true;
+        let logEntries = [];
+        let logFilterQuery = "";
 
         // Tab Navigation Switcher
         function switchTab(tabName) {
@@ -1214,6 +1248,7 @@
 
         // DOM Elements
         const terminalEl = document.getElementById("terminal-log");
+        const terminalFilterInput = document.getElementById("terminal-filter-input");
         const pairBtn = document.getElementById("btn-pair");
         const disconnectBtn = document.getElementById("btn-disconnect");
         const flashBtn = document.getElementById("btn-flash");
@@ -1237,30 +1272,47 @@
         const metricBaud = document.getElementById("metric-baud");
         const metricChip = document.getElementById("metric-chip");
 
-        // Print logs to styled terminal container in 24-hour time format (preserves scroll position if scrolled up)
+        function filterMatches(rawText) {
+            if (!logFilterQuery || logFilterQuery.length < 3) return true;
+            return rawText.toLowerCase().includes(logFilterQuery.toLowerCase());
+        }
+
+        function renderTerminalLogs() {
+            const activeFilter = logFilterQuery && logFilterQuery.length >= 3;
+            const entriesToDisplay = activeFilter
+                ? logEntries.filter(e => filterMatches(e.raw))
+                : logEntries;
+            terminalEl.innerHTML = entriesToDisplay.map(e => e.html).join("");
+            if (isAutoScrollEnabled) {
+                terminalEl.scrollTop = terminalEl.scrollHeight;
+            }
+        }
+
+        // Print logs to styled terminal container in 24-hour time format
         function log(message, color = null) {
             const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
             let displayMessage = message;
             if (color) {
                 displayMessage = `<span style="color: ${color};">${message}</span>`;
             }
-            const logEntry = `[${time}] ${displayMessage}\n`;
+            const logEntryHtml = `[${time}] ${displayMessage}\n`;
+            const entry = {
+                raw: `[${time}] ${message}\n`,
+                html: logEntryHtml
+            };
+            logEntries.push(entry);
 
-            if (isLogPaused) {
-                pendingLogBuffer += logEntry;
-                return;
-            }
-
-            const isNearBottom = (terminalEl.scrollHeight - terminalEl.scrollTop - terminalEl.clientHeight) <= 45;
-            terminalEl.innerHTML += logEntry;
-            if (isNearBottom) {
-                terminalEl.scrollTop = terminalEl.scrollHeight;
+            if (filterMatches(entry.raw)) {
+                terminalEl.innerHTML += logEntryHtml;
+                if (isAutoScrollEnabled) {
+                    terminalEl.scrollTop = terminalEl.scrollHeight;
+                }
             }
         }
 
         function clearLog() {
             terminalEl.innerHTML = "";
-            pendingLogBuffer = "";
+            logEntries = [];
         }
 
 
@@ -1451,16 +1503,19 @@
                                 continue;
                             }
 
-                            // Print standard debug lines with timestamp, preserving scroll if user scrolled up
+                            // Print standard debug lines with timestamp
                             const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
-                            const logEntry = `[${time}] ${line.replace(/\r/g, "")}`;
+                            const cleanText = line.replace(/\r/g, "");
+                            const logEntry = `[${time}] ${cleanText}`;
+                            const entry = {
+                                raw: logEntry,
+                                html: logEntry
+                            };
+                            logEntries.push(entry);
 
-                            if (isLogPaused) {
-                                pendingLogBuffer += logEntry;
-                            } else {
-                                const isNearBottom = (terminalEl.scrollHeight - terminalEl.scrollTop - terminalEl.clientHeight) <= 45;
+                            if (filterMatches(entry.raw)) {
                                 terminalEl.innerHTML += logEntry;
-                                if (isNearBottom) {
+                                if (isAutoScrollEnabled) {
                                     terminalEl.scrollTop = terminalEl.scrollHeight;
                                 }
                             }
@@ -1759,37 +1814,21 @@
             }
         });
 
+        terminalFilterInput.addEventListener("input", (e) => {
+            logFilterQuery = e.target.value.trim();
+            renderTerminalLogs();
+        });
+
         quickPauseBtn.addEventListener("click", () => {
             SoundEffects.click();
-            isLogPaused = !isLogPaused;
-            if (isLogPaused) {
+            isAutoScrollEnabled = !isAutoScrollEnabled;
+            if (!isAutoScrollEnabled) {
                 quickPauseBtn.classList.add("active");
-                quickPauseBtn.setAttribute("title", "Resume log output (Paused)");
-                quickPauseBtn.innerHTML = `
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                    </svg>
-                `;
+                quickPauseBtn.setAttribute("title", "Enable auto-scroll (Paused)");
             } else {
                 quickPauseBtn.classList.remove("active");
-                quickPauseBtn.setAttribute("title", "Pause log output");
-                quickPauseBtn.innerHTML = `
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="6" y="4" width="4" height="16"></rect>
-                        <rect x="14" y="4" width="4" height="16"></rect>
-                    </svg>
-                `;
-                // Flush retrospectively buffered log items
-                if (pendingLogBuffer.length > 0) {
-                    const isNearBottom = (terminalEl.scrollHeight - terminalEl.scrollTop - terminalEl.clientHeight) <= 45;
-                    terminalEl.innerHTML += pendingLogBuffer;
-                    pendingLogBuffer = "";
-                    if (isNearBottom) {
-                        terminalEl.scrollTop = terminalEl.scrollHeight;
-                    }
-                }
+                quickPauseBtn.setAttribute("title", "Disable auto-scroll");
+                terminalEl.scrollTop = terminalEl.scrollHeight;
             }
         });
 
@@ -1848,10 +1887,11 @@
                         return;
                     }
 
+                    const bootApp0Data = await fetchBin("boot_app0.bin");
+
                     if (mode === "bundled-full") {
                         const bootloaderData = await fetchBin("sugarota.ino.bootloader.bin");
                         const partitionsData = await fetchBin("sugarota.ino.partitions.bin");
-                        const bootApp0Data = await fetchBin("boot_app0.bin");
 
                         filesToFlash = [
                             { data: bootloaderData, address: 0x0 },
@@ -1864,10 +1904,11 @@
                         log("All bundled firmware partitions downloaded successfully!", "var(--accent-green)");
                     } else {
                         filesToFlash = [
+                            { data: bootApp0Data, address: 0xe000 },
                             { data: appData, address: 0x10000 }
                         ];
                         firmwareFileName = `Sugarota Main App (${detectedVersion})`;
-                        log(`Main firmware application (${detectedVersion}) downloaded successfully!`, "var(--accent-green)");
+                        log(`Main firmware application (${detectedVersion}) + boot selector downloaded successfully!`, "var(--accent-green)");
                     }
                 } catch (err) {
                     SoundEffects.warning();
@@ -1901,9 +1942,18 @@
                     return;
                 }
 
-                filesToFlash = [
-                    { data: customFirmwareData, address: 0x10000 }
-                ];
+                let bootApp0Data = null;
+                try {
+                    const cacheBuster = `?t=${Date.now()}`;
+                    let resp = await fetch(`build/esp32.esp32.esp32s3/boot_app0.bin${cacheBuster}`, { cache: "no-store" });
+                    if (resp.ok) bootApp0Data = new Uint8Array(await resp.arrayBuffer());
+                } catch (e) { }
+
+                filesToFlash = [];
+                if (bootApp0Data) {
+                    filesToFlash.push({ data: bootApp0Data, address: 0xe000 });
+                }
+                filesToFlash.push({ data: customFirmwareData, address: 0x10000 });
                 firmwareFileName = customFileInput.files[0] ? customFileInput.files[0].name : "custom_firmware.bin";
             }
 

@@ -59,16 +59,18 @@ The local setup center requires **zero external python packages** (no `requireme
 - **Long Battery Autonomy**: Up to **18 hours of autonomous operation** without recharging on a single battery charge when using Bluetooth Low Energy (BLE) connection with the companion app.
 - **Dual Hardware Compatibility**: Automatically detects and drives both Waveshare ESP32-S3-Touch-LCD-3.49 Hardware V1 and V2 (Rev1.1) revisions with dynamic backlight boost control.
 - **Real-Time CGM Monitoring**: Native support for Dexcom Share and Nightscout REST APIs with delta display and direction trend arrows.
-- **Smart Timestamp-Aligned Fetching**: Subsequent data polls align precisely to your CGM reading timestamps, minimizing radio airtime and stale fetches.
+- **Smart Timestamp-Aligned Fetching**: Subsequent data polls align precisely to your CGM reading timestamps with a 3-second lag buffer, minimizing radio airtime, avoiding stale API queries, and eliminating redundant historical sync loops during routine updates.
 - **Display & Touch Controls**:
   - **Double-Press (PWR Button)**: Instantly toggles display and touchscreen ON/OFF while preserving current brightness level.
   - **Single-Press (PWR Button)**: Cycles through active brightness levels (`76 -> 153 -> 204 -> 255`) without turning off, or wakes the screen if off. Also operates during boot sequences.
   - **Long-Press (PWR Button)**: Cleanly powers down the device (supported during normal operation and boot).
   - **Theme Toggle (BOOT Button)**: Switches between high-contrast pixelated dark console and soft flashlight light theme.
+  - **Force Refresh (BOOT Button Short Press)**: Requests an immediate fresh reading and full historical backfill from the companion app or Wi-Fi.
   - **Unit Configuration**: Configurable via Web Installer or Android Companion App settings.
 - **Companion App Remote Control & Find Device**: Control brightness, toggle dark/light theme, trigger acoustic Find Device locator alarm with loud distinct beeps, or remotely reboot and power off the device directly over BLE.
 - **High-DPI Interactive Historical Chart**: 4-hour historical CGM graph with touch scrubber for inspecting past readings.
 - **High-Speed Wi-Fi OTA Flashing**: Update firmware wirelessly over your local Wi-Fi network (`http://sugarota.local/api/ota` or local IP) in 3–5 seconds with live on-screen flashing progress, MD5 verification, and automatic rollback-safe reboot into the new partition.
+- **WebSerial Control Center**: Browser-based flashing and real-time serial monitor with live text filtering, auto-scroll toggle, and automatic boot_app0 partition recovery.
 - **Orientation & Gesture Sensing**: QMI8658 6-axis IMU enables sustained shake-to-toggle setup/pairing config mode, face-down auto-sleep gesture, and automatic 180° rotation into injection-to-meal stopwatch timer mode.
 - **Privacy & Security**: Link-encrypted BLE pairing with numeric passkey verification; credentials are saved purely on-device in encrypted LittleFS flash with zero cloud reliance.
 

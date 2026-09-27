@@ -471,16 +471,22 @@ class SugarotaBleService : Service() {
         }
     }
 
-    fun connectDevice(address: String) {
+    fun connectDevice(address: String, force: Boolean = false) {
         manuallyDisconnected.remove(address)
-        if (connectedGatts.containsKey(address) || connectingDevices.contains(address)) {
-            Log.i("SugarotaBleService", "connectDevice: $address already connected or connecting")
-            return
-        }
-        val lastDisc = lastDisconnectTime[address] ?: 0L
-        if (System.currentTimeMillis() - lastDisc < 2500L) {
-            Log.i("SugarotaBleService", "Debouncing connect for $address, recently disconnected")
-            return
+        if (!force) {
+            if (connectedGatts.containsKey(address) || connectingDevices.contains(address)) {
+                Log.i("SugarotaBleService", "connectDevice: $address already connected or connecting")
+                return
+            }
+            val lastDisc = lastDisconnectTime[address] ?: 0L
+            if (System.currentTimeMillis() - lastDisc < 2500L) {
+                Log.i("SugarotaBleService", "Debouncing connect for $address, recently disconnected")
+                return
+            }
+        } else {
+            // Close any existing stale GATT before forcing reconnect
+            connectedGatts.remove(address)?.close()
+            connectingDevices.remove(address)
         }
         val device = bluetoothAdapter?.getRemoteDevice(address) ?: return
         connectingDevices.add(address)
@@ -649,7 +655,12 @@ class SugarotaBleService : Service() {
             // Direct connect to device without aggressively forcing createBond()
             // Android OS triggers pairing automatically when reading/writing encrypted characteristics,
             // or when the user explicitly triggers pairing via pairDevice().
-            device.connectGatt(this@SugarotaBleService, false, gattCallback)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                device.connectGatt(this@SugarotaBleService, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+            } else {
+                @Suppress("DEPRECATION")
+                device.connectGatt(this@SugarotaBleService, false, gattCallback)
+            }
         }
     }
 
@@ -658,15 +669,33 @@ class SugarotaBleService : Service() {
      */
     fun pairDevice(address: String) {
         val device = bluetoothAdapter?.getRemoteDevice(address) ?: return
-        if (device.bondState == BluetoothDevice.BOND_NONE) {
-            try {
-                val started = device.createBond()
-                Log.i("SugarotaBleService", "Explicit pairDevice() createBond started=$started for $address")
-                appendDeviceLog(address, "Requested BLE pairing (createBond: $started)")
-            } catch (e: Exception) {
-                Log.w("SugarotaBleService", "Error initiating createBond for $address: ${e.message}")
-                appendDeviceLog(address, "BLE pairing request error: ${e.message}")
+        Log.i("SugarotaBleService", "pairDevice invoked for $address (bondState=${device.bondState})")
+        appendDeviceLog(address, "Initiating pairing sequence")
+        
+        val gatt = connectedGatts[address]
+        if (gatt != null) {
+            // If already connected over GATT, trigger pairing via protected characteristic read AND createBond fallback
+            val service = gatt.getService(BleUuids.SUGAROTA_SERVICE)
+            val configChar = service?.getCharacteristic(BleUuids.CHAR_CONFIG)
+            if (configChar != null) {
+                Log.i("SugarotaBleService", "pairDevice: Reading encrypted config to trigger pairing")
+                gatt.readCharacteristic(configChar)
             }
+            if (device.bondState == BluetoothDevice.BOND_NONE) {
+                device.createBond()
+            }
+        } else {
+            // Not connected yet: first initiate createBond() so Android OS associates pairing with the incoming connection,
+            // then force connect over GATT using TRANSPORT_LE
+            if (device.bondState == BluetoothDevice.BOND_NONE) {
+                try {
+                    val started = device.createBond()
+                    Log.i("SugarotaBleService", "pairDevice: createBond started=$started for $address")
+                } catch (e: Exception) {
+                    Log.w("SugarotaBleService", "pairDevice: createBond error: ${e.message}")
+                }
+            }
+            connectDevice(address, force = true)
         }
     }
 
@@ -1302,7 +1331,7 @@ class SugarotaBleService : Service() {
         }
     }
 
-    private fun computeNextDelayMs(): Long {
+    private fun computeNextDelayMs(isApiRetry: Boolean = false): Long {
         // Find configured poll interval from connected device configs (fallback 60s)
         var pollSec = 60L
         for (cfg in deviceConfigs.values) {
@@ -1321,12 +1350,14 @@ class SugarotaBleService : Service() {
         val nowSec = System.currentTimeMillis() / 1000L
 
         if (reading != null && reading.timestamp > 0) {
-            var targetTs = reading.timestamp + pollSec
+            // Check immediately after the reading timestamp + configured interval + 3s lag buffer
+            val PROVIDER_LAG_SEC = 3L
+            var targetTs = reading.timestamp + pollSec + PROVIDER_LAG_SEC
             while (targetTs <= nowSec) {
                 targetTs += pollSec
             }
             val delaySec = (targetTs - nowSec).coerceIn(10L, pollSec)
-            Log.i("SugarotaBleService", "Timestamp-aligned schedule: readingTs=${reading.timestamp}, nowSec=$nowSec, nextTargetTs=$targetTs, delaySec=$delaySec")
+            Log.i("SugarotaBleService", "Timestamp-aligned schedule: readingTs=${reading.timestamp}, nowSec=$nowSec, nextTargetTs=$targetTs (lag=${PROVIDER_LAG_SEC}s), delaySec=$delaySec, isApiRetry=$isApiRetry")
             return delaySec * 1000L
         }
 
@@ -1345,18 +1376,31 @@ class SugarotaBleService : Service() {
                 }
                 targetAddresses.addAll(configuredOffline)
 
+                var anyNewData = false
+                var anyStaleOk = false
+
                 if (targetAddresses.isNotEmpty()) {
                     for (address in targetAddresses) {
                         if (connectedGatts.containsKey(address) && (!deviceConfigs.containsKey(address) || deviceConfigs[address].isNullOrBlank())) {
                             readConfig(address) { /* handleConfigReceived takes care of caching and trigger */ }
                         }
-                        fetchAndPushForDevice(address)
+                        val fetchResult = fetchAndPushForDevice(address)
+                        if (fetchResult == true) {
+                            val lastTs = lastPushedTimestamps[address]
+                            val readingTs = _lastReading.value?.timestamp
+                            if (lastTs != null && readingTs != null && lastTs == readingTs) {
+                                anyNewData = true
+                            } else {
+                                anyStaleOk = true
+                            }
+                        }
                     }
                 } else {
                     _bridgeStatus.value = "Idle · Waiting for displays"
                 }
 
-                val delayMs = computeNextDelayMs()
+                // If remote query succeeded but didn't have a fresh reading yet, retry soon (15s)
+                val delayMs = computeNextDelayMs(isApiRetry = (!anyNewData && anyStaleOk))
                 // Auto-dismiss "Sugarota Detected Nearby" notification when device is no longer nearby or now connected
                 SugarotaBleScanReceiver.dismissStaleNearbyNotifications(this@SugarotaBleService)
                 delay(delayMs)
@@ -1428,13 +1472,15 @@ class SugarotaBleService : Service() {
                 }
             }
 
-            // 2. Trigger sync if requested by device (force refresh from BOOT button) or on initial connect
-            val requestRefresh = obj.optBoolean("request_refresh", false)
+            // 2. Trigger sync if requested by device (force refresh from BOOT button) or routine refresh
+            val forceRefresh = obj.optBoolean("force_refresh", false)
+            val requestRefresh = obj.optBoolean("request_refresh", false) || forceRefresh
             serviceScope.launch {
                 val isInitial = !lastPushedTimestamps.containsKey(address)
                 if ((requestRefresh || isInitial) && deviceConfigs.containsKey(address) && !syncingDevices.contains(address)) {
-                    Log.i("SugarotaBleService", "Triggering sync for $address (requestRefresh=$requestRefresh, isInitial=$isInitial)")
-                    fetchAndPushForDevice(address, forcePush = true)
+                    val force = isInitial || forceRefresh
+                    Log.i("SugarotaBleService", "Triggering sync for $address (requestRefresh=$requestRefresh, forceRefresh=$forceRefresh, isInitial=$isInitial, forcePush=$force)")
+                    fetchAndPushForDevice(address, forcePush = force)
                 }
             }
         } catch (e: Exception) {

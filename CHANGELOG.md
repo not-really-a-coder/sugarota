@@ -2,6 +2,34 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.27.39] — Countdown Alarm Decommission, Smart Poll Alignment & Sync Optimization (2026-09-27)
+
+This release decommissions the experimental countdown alarm feature, introduces deterministic timestamp-aligned polling across both firmware and Android Companion app, eliminates redundant full historical backfill loops, ensures WebSerial flashing cleanly clears OTA boot states, and adds log filtering and auto-scroll controls to the Web Installer.
+
+### Features & Decommissioning
+
+- Decommissioned the experimental countdown alarm screen, digit adjustment controls, and voice recording/playback subroutines
+- Restored streamlined horizontal gesture flow dedicated to primary continuous glucose monitoring
+- Cleaned audio pipeline by removing microphone recording memory buffers while retaining audio alerts and find-device locator chimes
+
+### Telemetry & Sync Scheduling
+
+- Aligned fetch scheduling strictly to CGM reading timestamps with a 3-second provider lag buffer
+- Synchronized subsequent poll delays from the latest reading epoch across both ESP32 firmware and Android Companion app
+- Differentiated routine poll interval requests from manual force-refresh commands in status notifications
+- Restricted 48-reading multi-chunk historical backfills to initial pairing, user button presses, or genuine data gaps (>6 min)
+- Formatted next scheduled reading time in debug output directly from deterministic target calculations to prevent rounding drift
+- Preserved single-packet updates during routine polls to minimize BLE airtime and optimize power consumption
+
+### Web Installer & Flashing
+
+- Added boot_app0.bin partition flashing at offset 0xe000 in Web Installer to clear otadata and enforce clean app0 boot after cable flashing
+- Added real-time text filter input with three-character threshold to the console log viewer
+- Replaced pause control with auto-scroll toggle icon in the terminal output interface
+- Initialized terminal console with clean empty state ready for USB connection output
+
+---
+
 ## [v0.09.25.48] — Countdown Alarm, OTA Rollback Protection & Hardware Pin Isolation (2026-09-25)
 
 This release adds a dedicated postprandial countdown alarm with built-in voice reminders, resolves wireless OTA rollback reversions, prevents Wi-Fi driver de-initialization timeouts, isolates V2 hardware pin conflicts, and improves RF coexistence during DHCP acquisition.

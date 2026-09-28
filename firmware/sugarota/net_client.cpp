@@ -102,12 +102,15 @@ void initWiFiEvents() {
 }
 
 void sleepWiFi() {
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFi.disconnect(false, false);
+  if (WiFi.getMode() != WIFI_OFF) {
+    if (WiFi.status() == WL_CONNECTED) {
+      WiFi.disconnect(true, false);
+    }
+    delay(30);
+    WiFi.mode(WIFI_OFF);
+    DBG_PRINTLN("Power Saving: WiFi Radio OFF");
   }
   apConnected = false;
-  // Put radio into modem sleep without de-initializing the PHY/MAC driver (avoids type=13 un-init timeout)
-  WiFi.setSleep(true);
 }
 
 void connectWiFi(bool allowBleBailout) {

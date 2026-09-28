@@ -70,6 +70,45 @@ class MainActivity : ComponentActivity() {
 
     private var bleService by mutableStateOf<SugarotaBleService?>(null)
     private var isBound by mutableStateOf(false)
+    var isInPipMode by mutableStateOf(false)
+
+    fun enterPipMode() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val dm = resources.displayMetrics
+            val screenW = dm.widthPixels
+            val screenH = (screenW * 9) / 16
+            val top = (dm.heightPixels - screenH) / 2
+            val sourceRect = android.graphics.Rect(0, top, screenW, top + screenH)
+
+            val builder = android.app.PictureInPictureParams.Builder()
+                .setAspectRatio(android.util.Rational(16, 9))
+                .setSourceRectHint(sourceRect)
+
+            enterPictureInPictureMode(builder.build())
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        android.util.Log.d("SugarotaPip", "onPictureInPictureModeChanged(Boolean, Config): $isInPictureInPictureMode")
+        isInPipMode = isInPictureInPictureMode
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode)
+        android.util.Log.d("SugarotaPip", "onPictureInPictureModeChanged(Boolean): $isInPictureInPictureMode")
+        isInPipMode = isInPictureInPictureMode
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val pip = isInPictureInPictureMode
+            android.util.Log.d("SugarotaPip", "onConfigurationChanged pip=$pip")
+            isInPipMode = pip
+        }
+    }
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -100,6 +139,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            isInPipMode = isInPictureInPictureMode
+            addOnPictureInPictureModeChangedListener { info ->
+                android.util.Log.d("SugarotaPip", "addOnPictureInPictureModeChangedListener: ${info.isInPictureInPictureMode}")
+                isInPipMode = info.isInPictureInPictureMode
+            }
+        }
+
         checkAndRequestPermissions()
 
         setContent {
@@ -117,21 +164,35 @@ class MainActivity : ComponentActivity() {
                         onSurface = Color(0xFFFAFAFA)
                     )
                 ) {
-                    var showSplash by remember { mutableStateOf(true) }
+                    if (isInPipMode) {
+                        val reading by bleService?.lastReading?.collectAsState() ?: remember { mutableStateOf(null) }
+                        val primaryAddr = bleService?.getPrimaryDeviceAddress()
+                        val units = reading?.units?.takeIf { it.isNotBlank() } ?: bleService?.getDeviceUnits(primaryAddr) ?: "mg/dL"
+                        PipGlucoseChartContent(
+                            reading = reading,
+                            units = units,
+                            service = bleService
+                        )
+                    } else {
+                        var showSplash by remember { mutableStateOf(true) }
 
-                    LaunchedEffect(Unit) {
-                        kotlinx.coroutines.delay(1000L)
-                        showSplash = false
-                    }
+                        LaunchedEffect(Unit) {
+                            kotlinx.coroutines.delay(1000L)
+                            showSplash = false
+                        }
 
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = ShadcnTheme.colors.background
-                    ) {
-                        if (showSplash) {
-                            SplashWelcomeScreen()
-                        } else {
-                            CompanionAppContent(bleService)
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = ShadcnTheme.colors.background
+                        ) {
+                            if (showSplash) {
+                                SplashWelcomeScreen()
+                            } else {
+                                CompanionAppContent(
+                                    service = bleService,
+                                    onEnterPip = { enterPipMode() }
+                                )
+                            }
                         }
                     }
                 }
@@ -172,6 +233,17 @@ class MainActivity : ComponentActivity() {
         bleService?.connectDevice(address)
     }
 
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Automatically transition to PiP if the user has a reading or is connected
+            val hasReading = bleService?.lastReading?.value != null
+            if (hasReading) {
+                enterPipMode()
+            }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         if (isBound) {
@@ -183,7 +255,10 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun CompanionAppContent(service: SugarotaBleService?) {
+fun CompanionAppContent(
+    service: SugarotaBleService?,
+    onEnterPip: (() -> Unit)? = null
+) {
     val currentService by rememberUpdatedState(service)
     val devicesMap by service?.devices?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
     val deviceOrder by service?.deviceOrder?.collectAsState() ?: remember { mutableStateOf(emptyList()) }
@@ -210,12 +285,16 @@ fun CompanionAppContent(service: SugarotaBleService?) {
     val bridgeStatusText by service?.bridgeStatus?.collectAsState() ?: remember { mutableStateOf("Idle") }
     val lastReading by service?.lastReading?.collectAsState() ?: remember { mutableStateOf(null) }
 
+    val connectingDevices by service?.connectingDevicesState?.collectAsState() ?: remember { mutableStateOf(emptySet()) }
+    val pairingDevices by service?.pairingDevicesState?.collectAsState() ?: remember { mutableStateOf(emptySet()) }
+
     // Dialog state for confirming Forget scenario
     var deviceToForget by remember { mutableStateOf<SugarotaDevice?>(null) }
     var dismissedPairingAddresses by remember { mutableStateOf(setOf<String>()) }
 
     // Top menu and App Update dialog state
     var showTopMenu by remember { mutableStateOf(false) }
+    var showAppSettings by remember { mutableStateOf(false) }
     var isCheckingAppUpdate by remember { mutableStateOf(false) }
     var appUpdateResult by remember { mutableStateOf<AppReleaseInfo?>(null) }
     var hasCheckedAppUpdate by remember { mutableStateOf(false) }
@@ -325,6 +404,52 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                             onDismissRequest = { showTopMenu = false },
                             modifier = Modifier.background(colors.card)
                         ) {
+                            if (onEnterPip != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.PictureInPictureAlt,
+                                                contentDescription = null,
+                                                tint = colors.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text(
+                                                text = "Picture-in-Picture",
+                                                style = typography.body,
+                                                color = colors.foreground
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        showTopMenu = false
+                                        onEnterPip()
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Settings,
+                                            contentDescription = null,
+                                            tint = colors.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = "App Settings",
+                                            style = typography.body,
+                                            color = colors.foreground
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    showTopMenu = false
+                                    showAppSettings = true
+                                }
+                            )
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -529,9 +654,12 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                             )
                         }
                         Spacer(modifier = Modifier.width(8.dp))
+                        val isPairingBanner = pairingDevices.contains(primaryUnbonded.address) || connectingDevices.contains(primaryUnbonded.address)
                         ShadcnButton(
                             onClick = { service?.pairDevice(primaryUnbonded.address) },
-                            variant = ShadcnButtonVariant.DEFAULT
+                            variant = ShadcnButtonVariant.DEFAULT,
+                            isLoading = isPairingBanner,
+                            modifier = Modifier.defaultMinSize(minWidth = 84.dp)
                         ) {
                             Text(
                                 text = "Pair",
@@ -869,12 +997,16 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                                         }
                                 ) {
                                     val devUnits = devReading?.units?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
+                                    val isConnecting = connectingDevices.contains(device.address)
+                                    val isPairing = pairingDevices.contains(device.address)
                                     DeviceCard(
                                         device = device,
                                         bridgeStatusText = bridgeStatusText,
                                         lastReading = devReading,
                                         units = devUnits,
                                         isConfigured = isConfigured,
+                                        isConnecting = isConnecting,
+                                        isPairing = isPairing,
                                         onClick = {
                                             if (swipeOffsetX.value < -5f) {
                                                 swipeScope.launch {
@@ -931,12 +1063,16 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                                 val devReading = deviceReadings[device.address]
                                 val isConfigured = deviceConfigured[device.address] ?: true
                                 val devUnits = devReading?.units?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
+                                val isConnecting = connectingDevices.contains(device.address)
+                                val isPairing = pairingDevices.contains(device.address)
                                 DeviceCard(
                                     device = device,
                                     bridgeStatusText = bridgeStatusText,
                                     lastReading = devReading,
                                     units = devUnits,
                                     isConfigured = isConfigured,
+                                    isConnecting = isConnecting,
+                                    isPairing = isPairing,
                                     onClick = {
                                         android.widget.Toast.makeText(listContext, "Pair display first", android.widget.Toast.LENGTH_SHORT).show()
                                     },
@@ -1242,9 +1378,22 @@ fun CompanionAppContent(service: SugarotaBleService?) {
                 deviceAddress = targetAddress,
                 initialTab = targetDeviceTab,
                 service = service,
+                onEnterPip = onEnterPip,
                 onDismiss = { selectedDeviceAddress = null }
             )
         }
+    }
+
+    // App Settings Screen (animated full screen overlay)
+    AnimatedVisibility(
+        visible = showAppSettings,
+        enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+        exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+    ) {
+        org.sugarota.companion.ui.AppSettingsScreen(
+            service = service,
+            onDismiss = { showAppSettings = false }
+        )
     }
 }
 
@@ -2089,12 +2238,15 @@ fun TrendArrowIcon(
         else -> 0f // flat or unknown
     }
 
-    // Keep within 22.dp bounding box in all orientations so vertical and diagonal arrows don't exceed font height
-    val canvasWidth = if (isDouble) 22.dp else 20.dp
-    val canvasHeight = if (isDouble) 20.dp else 16.dp
+    // For double vertical arrows (up/down), rotation ±90 causes width to become visual height.
+    // Making it square (20x20) and applying a vertical translation offset aligns it with text baseline.
+    val canvasWidth = 20.dp
+    val canvasHeight = 20.dp
+    val verticalShiftY = if (isDouble && (dir.contains("up") || dir.contains("down"))) (-2.5).dp else 0.dp
 
     androidx.compose.foundation.Canvas(
         modifier = modifier
+            .offset(y = verticalShiftY)
             .size(width = canvasWidth, height = canvasHeight)
             .graphicsLayer { rotationZ = rotation }
     ) {
@@ -2163,6 +2315,8 @@ fun DeviceCard(
     lastReading: org.sugarota.companion.model.GlucoseData? = null,
     units: String = "mg/dL",
     isConfigured: Boolean = true,
+    isConnecting: Boolean = false,
+    isPairing: Boolean = false,
     onClick: () -> Unit = {},
     onConfigureClick: () -> Unit = {},
     onConnect: () -> Unit,
@@ -2248,12 +2402,21 @@ fun DeviceCard(
                             )
                         }
                     } else {
+                        val isActionLoading = if (!device.isBonded) isPairing else isConnecting
+                        val actionButtonText = when {
+                            !device.isBonded && isPairing -> "Pairing"
+                            !device.isBonded -> "Pair"
+                            isConnecting -> "Connecting"
+                            else -> "Connect"
+                        }
                         ShadcnButton(
                             onClick = if (!device.isBonded) onPair else onConnect,
-                            variant = ShadcnButtonVariant.DEFAULT
+                            variant = ShadcnButtonVariant.DEFAULT,
+                            isLoading = isActionLoading,
+                            modifier = Modifier.defaultMinSize(minWidth = 100.dp)
                         ) {
                             Text(
-                                text = if (!device.isBonded) "Pair" else "Connect",
+                                text = actionButtonText,
                                 color = colors.primaryForeground,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp
@@ -2298,7 +2461,9 @@ fun DeviceCard(
                     Spacer(modifier = Modifier.width(8.dp))
                     ShadcnButton(
                         onClick = onPair,
-                        variant = ShadcnButtonVariant.DEFAULT
+                        variant = ShadcnButtonVariant.DEFAULT,
+                        isLoading = isPairing,
+                        modifier = Modifier.defaultMinSize(minWidth = 84.dp)
                     ) {
                         Text(
                             text = "Pair",
@@ -2364,6 +2529,7 @@ fun DeviceCard(
                 val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
                     .format(java.util.Date(lastReading.timestamp * 1000))
                 val minsAgo = ((System.currentTimeMillis() / 1000 - lastReading.timestamp) / 60).coerceAtLeast(0)
+                val agoText = if (minsAgo == 0L) "now" else "$minsAgo min ago"
 
                 // Prominent one line display: {last BG_value} {trend_icon} (color coded)  {delta_value} {units}
                 Row(
@@ -2391,9 +2557,9 @@ fun DeviceCard(
 
                 Spacer(modifier = Modifier.height(3.dp))
 
-                // "Synced on {HH:mm:ss} ({M} min ago)" in smaller font
+                // "Synced on {HH:mm:ss} ({agoText})" in smaller font
                 Text(
-                    text = "Synced on $timeStr ($minsAgo min ago)",
+                    text = "Synced on $timeStr ($agoText)",
                     style = typography.caption,
                     color = colors.mutedForeground
                 )

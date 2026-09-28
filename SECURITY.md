@@ -28,6 +28,8 @@ Key architectural tenets:
 | Malicious firmware tampering / OTA corruption | Dual-partition A/B scheme (`ota_0` / `ota_1`) with CRC and optional MD5 hash verification; incomplete or corrupted images abort before boot flag commitment, preventing bricking |
 | Remote Wi-Fi attack surface | Web portal and OTA HTTP endpoints operate strictly on the local area network subnet without opening UPnP, WAN port forwards, or public internet listeners |
 | Third-party tracking or data harvesting | No analytics SDKs, trackers, crash reporting libraries, or advertising identifiers are included in either the firmware or Android companion app |
+| Unintended medical data exposure on lock screen | Android companion App Settings allow configuring lock screen notification visibility (Private/Redacted, Public, or Secret) to prevent bystanders from viewing glucose levels |
+| Local companion preferences exfiltration | Companion app notification and layout preferences are stored purely in private Android SharedPreferences sandboxed per application UID with zero external export |
 
 ---
 

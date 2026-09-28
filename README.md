@@ -68,6 +68,7 @@ The local setup center requires **zero external python packages** (no `requireme
   - **Force Refresh (BOOT Button Short Press)**: Requests an immediate fresh reading and full historical backfill from the companion app or Wi-Fi.
   - **Unit Configuration**: Configurable via Web Installer or Android Companion App settings.
 - **Companion App Remote Control & Find Device**: Control brightness, toggle dark/light theme, trigger acoustic Find Device locator alarm with loud distinct beeps, or remotely reboot and power off the device directly over BLE.
+- **Picture-in-Picture Floating Monitor**: Monitor real-time glucose and trend charts continuously across any app via Android Picture-in-Picture (PiP) window mode with proportional auto-scaling.
 - **High-DPI Interactive Historical Chart**: 4-hour historical CGM graph with touch scrubber for inspecting past readings.
 - **High-Speed Wi-Fi OTA Flashing**: Update firmware wirelessly over your local Wi-Fi network (`http://sugarota.local/api/ota` or local IP) in 3–5 seconds with live on-screen flashing progress, MD5 verification, and automatic rollback-safe reboot into the new partition.
 - **WebSerial Control Center**: Browser-based flashing and real-time serial monitor with live text filtering, auto-scroll toggle, and automatic boot_app0 partition recovery.

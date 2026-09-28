@@ -659,19 +659,28 @@ void drawStatusBar() {
   gfx->setCursor(15, 7);
   gfx->print(timeStr);
 
+  int leftOffset = 15 + strlen(timeStr) * 12 + 4; // ~79px
+  if (isConfigMode) {
+    gfx->setTextColor(ORANGE);
+    gfx->setCursor(leftOffset, 7);
+    gfx->print("*");
+    gfx->setTextColor(textColor);
+    leftOffset += 14;
+  }
+
   bool showSpinner = isFetching && !offlineMode;
   if (showSpinner) {
     gfx->setTextColor(ORANGE);
     const char spinnerFrames[] = {'|', '/', '-', '\\'};
     char spinnerChar = spinnerFrames[(millis() / 150) % 4];
-    int spinnerX = isTimerMode ? 85 : 90;
+    int spinnerX = isConfigMode ? (leftOffset + 2) : (isTimerMode ? 85 : 90);
     gfx->setCursor(spinnerX, 7);
     gfx->print(spinnerChar);
     gfx->setTextColor(textColor);
   }
 
   bool showBG = false;
-  int bgX = 110;
+  int bgX = isConfigMode ? (leftOffset + (showSpinner ? 20 : 6)) : 110;
 
   if (isTimerMode) {
     if (!offlineMode) {
@@ -735,14 +744,24 @@ void drawStatusBar() {
 
     cursorX = (640 - 15) - indicatorWidth;
 
+    bool isBtConnected = SugarotaBLE::getInstance().isConnected();
+    bool isBtPairing = SugarotaBLE::getInstance().isPairingModeEnabled();
+    // If pairing mode is enabled: ALWAYS flash at 1s cadence (even if already connected to a device)
+    // If connected and pairing mode is not enabled: solid icon
+    // If not connected and pairing mode is not enabled: hide icon
+    bool showBtIcon = false;
+    if (isBtPairing) {
+      showBtIcon = ((millis() / 1000) % 2 == 0);
+    } else if (isBtConnected) {
+      showBtIcon = true;
+    }
+
     bool isWifiActive = (WiFi.status() == WL_CONNECTED || isConfigMode);
     int batLeftX = cursorX;
-    if (SugarotaBLE::getInstance().isConnected())
+    if (isBtConnected || isBtPairing)
       batLeftX -= 18;
     if (isWifiActive)
       batLeftX -= 18;
-    if (isConfigMode)
-      batLeftX -= 15;
 
     if (offlineMode && !SugarotaBLE::getInstance().isConnected()) {
       gfx->setTextColor(RED);
@@ -783,10 +802,12 @@ void drawStatusBar() {
 
     int currentLeftX = cursorX;
 
-    if (SugarotaBLE::getInstance().isConnected()) {
+    if (isBtConnected || isBtPairing) {
       currentLeftX -= 18;
-      uint16_t btColor = isDarkTheme ? CYAN : BLUE;
-      drawBluetoothIcon(currentLeftX + 3, 7, btColor);
+      if (showBtIcon) {
+        uint16_t btColor = isDarkTheme ? CYAN : BLUE;
+        drawBluetoothIcon(currentLeftX + 3, 7, btColor);
+      }
     }
 
     if (isWifiActive) {
@@ -798,42 +819,40 @@ void drawStatusBar() {
     }
 
     if (isConfigMode) {
-      currentLeftX -= 15;
-      gfx->setTextColor(ORANGE);
-      gfx->setCursor(currentLeftX, 7);
-      gfx->print("*");
-
-      String ipMsg;
+      String ipMsg = "";
       if (WiFi.status() == WL_CONNECTED) {
         ipMsg = "IP: " + WiFi.localIP().toString();
-      } else {
+      } else if (!isBtConnected) {
         ipMsg = "IP: Connecting...";
       }
-      int16_t x1, y1;
-      uint16_t w, h;
-      gfx->getTextBounds(ipMsg.c_str(), 0, 0, &x1, &y1, &w, &h);
 
-      int textX = (640 - w) / 2;
-      gfx->setCursor(textX, 7);
-      gfx->print(ipMsg);
+      if (ipMsg.length() > 0) {
+        int16_t x1, y1;
+        uint16_t w, h;
+        gfx->getTextBounds(ipMsg.c_str(), 0, 0, &x1, &y1, &w, &h);
 
-      if (WiFi.status() == WL_CONNECTED) {
-        String url = "http://" + WiFi.localIP().toString();
+        int textX = (640 - w) / 2;
+        gfx->setCursor(textX, 7);
+        gfx->print(ipMsg);
 
-        QRCode qrcode;
-        uint8_t qrcodeData[qrcode_getBufferSize(2)];
-        qrcode_initText(&qrcode, qrcodeData, 2, 0, url.c_str());
+        if (WiFi.status() == WL_CONNECTED) {
+          String url = "http://" + WiFi.localIP().toString();
 
-        int qrSize = qrcode.size;
-        int qrX = textX + w + 10;
-        int qrY = 2;
+          QRCode qrcode;
+          uint8_t qrcodeData[qrcode_getBufferSize(2)];
+          qrcode_initText(&qrcode, qrcodeData, 2, 0, url.c_str());
 
-        gfx->fillRect(qrX - 2, qrY - 2, qrSize + 4, qrSize + 4, WHITE);
+          int qrSize = qrcode.size;
+          int qrX = textX + w + 10;
+          int qrY = 2;
 
-        for (uint8_t y = 0; y < qrSize; y++) {
-          for (uint8_t x = 0; x < qrSize; x++) {
-            if (qrcode_getModule(&qrcode, x, y)) {
-              gfx->drawPixel(qrX + x, qrY + y, BLACK);
+          gfx->fillRect(qrX - 2, qrY - 2, qrSize + 4, qrSize + 4, WHITE);
+
+          for (uint8_t y = 0; y < qrSize; y++) {
+            for (uint8_t x = 0; x < qrSize; x++) {
+              if (qrcode_getModule(&qrcode, x, y)) {
+                gfx->drawPixel(qrX + x, qrY + y, BLACK);
+              }
             }
           }
         }

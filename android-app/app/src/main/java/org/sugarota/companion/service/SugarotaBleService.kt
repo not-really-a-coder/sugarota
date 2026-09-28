@@ -24,6 +24,10 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.sugarota.companion.data.AppNotificationSettings
+import org.sugarota.companion.data.AppSettingsPreferences
+import org.sugarota.companion.data.NotificationImportanceLevel
+import org.sugarota.companion.data.NotificationLockScreenVisibility
 import org.sugarota.companion.model.*
 import org.sugarota.companion.network.GlucoseBridgeClient
 import java.util.concurrent.ConcurrentHashMap
@@ -40,6 +44,12 @@ class SugarotaBleService : Service() {
 
     private val connectedGatts = ConcurrentHashMap<String, BluetoothGatt>()
     private val connectingDevices = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+    private val _connectingDevicesState = MutableStateFlow<Set<String>>(emptySet())
+    val connectingDevicesState: StateFlow<Set<String>> = _connectingDevicesState.asStateFlow()
+
+    private val _pairingDevicesState = MutableStateFlow<Set<String>>(emptySet())
+    val pairingDevicesState: StateFlow<Set<String>> = _pairingDevicesState.asStateFlow()
+
     private val syncingDevices = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
     private val lastDisconnectTime = ConcurrentHashMap<String, Long>()
     private val pendingConfigReads = ConcurrentHashMap<String, (String) -> Unit>()
@@ -114,6 +124,9 @@ class SugarotaBleService : Service() {
                 val addr = device?.address ?: return
 
                 Log.i("SugarotaBleService", "Bond state changed for $addr: prev=$prevBondState, new=$bondState")
+                if (bondState == BluetoothDevice.BOND_BONDED || bondState == BluetoothDevice.BOND_NONE) {
+                    _pairingDevicesState.value = _pairingDevicesState.value - addr
+                }
                 updateDeviceBondState(addr, bondState == BluetoothDevice.BOND_BONDED)
                 if (bondState == BluetoothDevice.BOND_BONDED) {
                     Log.i("SugarotaBleService", "Device $addr successfully bonded! Refreshing services and config.")
@@ -140,8 +153,7 @@ class SugarotaBleService : Service() {
                 val addr = device?.address ?: return
                 Log.i("SugarotaBleService", "ACTION_PAIRING_REQUEST received for $addr")
                 appendDeviceLog(addr, "Pairing request received from OS - prompt active")
-                // Post high-priority alert notification so user immediately sees pairing prompt even if shade minimized
-                showPairingAlertNotification(addr, device.name ?: getDefaultDeviceName(addr))
+                // Notification suppressed per user requirement
             }
         }
     }
@@ -291,6 +303,8 @@ class SugarotaBleService : Service() {
         Log.i("SugarotaBleService", "forgetDevice requested for $address")
         manuallyDisconnected.add(address)
         connectingDevices.remove(address)
+        _connectingDevicesState.value = connectingDevices.toSet()
+        _pairingDevicesState.value = _pairingDevicesState.value - address
         syncingDevices.remove(address)
 
         // Disconnect and close GATT
@@ -487,15 +501,18 @@ class SugarotaBleService : Service() {
             // Close any existing stale GATT before forcing reconnect
             connectedGatts.remove(address)?.close()
             connectingDevices.remove(address)
+            _connectingDevicesState.value = connectingDevices.toSet()
         }
         val device = bluetoothAdapter?.getRemoteDevice(address) ?: return
         connectingDevices.add(address)
+        _connectingDevicesState.value = connectingDevices.toSet()
         serviceScope.launch {
             val gattCallback = object : BluetoothGattCallback() {
                 override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
                     val addr = gatt.device.address
                     if (newState == BluetoothProfile.STATE_CONNECTED) {
                         connectingDevices.remove(addr)
+                        _connectingDevicesState.value = connectingDevices.toSet()
                         connectedGatts[addr] = gatt
                         markDeviceConnected(addr, true)
                         val bonded = gatt.device.bondState == BluetoothDevice.BOND_BONDED
@@ -507,6 +524,8 @@ class SugarotaBleService : Service() {
                         updateNotification("Connected to ${connectedGatts.size} device(s)")
                     } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                         connectingDevices.remove(addr)
+                        _connectingDevicesState.value = connectingDevices.toSet()
+                        _pairingDevicesState.value = _pairingDevicesState.value - addr
                         syncingDevices.remove(addr)
                         lastDisconnectTime[addr] = System.currentTimeMillis()
                         connectedGatts.remove(addr)
@@ -671,6 +690,7 @@ class SugarotaBleService : Service() {
         val device = bluetoothAdapter?.getRemoteDevice(address) ?: return
         Log.i("SugarotaBleService", "pairDevice invoked for $address (bondState=${device.bondState})")
         appendDeviceLog(address, "Initiating pairing sequence")
+        _pairingDevicesState.value = _pairingDevicesState.value + address
         
         val gatt = connectedGatts[address]
         if (gatt != null) {
@@ -1579,6 +1599,33 @@ class SugarotaBleService : Service() {
         return bitmap
     }
 
+    private val appSettingsPrefs by lazy { AppSettingsPreferences(this) }
+    private var currentAppSettings: AppNotificationSettings? = null
+
+    fun getNotificationSettings(): AppNotificationSettings {
+        if (currentAppSettings == null) {
+            currentAppSettings = appSettingsPrefs.loadSettings()
+        }
+        return currentAppSettings!!
+    }
+
+    fun applyNotificationSettings(settings: AppNotificationSettings) {
+        currentAppSettings = settings
+        // Update notification channel importance if running on Android O+
+        createNotificationChannel()
+        // Refresh active notification
+        val reading = _lastReading.value
+        val primaryAddr = getPrimaryDeviceAddress()
+        val text = if (primaryAddr != null) {
+            val dev = devices.value[primaryAddr]
+            val devName = dev?.name ?: getDefaultDeviceName(primaryAddr)
+            if (dev?.isConnected == true) "Connected to $devName" else "Disconnected from $devName"
+        } else {
+            "Sugarota Service Running"
+        }
+        updateNotification(text, false, reading)
+    }
+
     private fun buildNotification(text: String, reading: GlucoseData? = null): Notification {
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -1593,12 +1640,15 @@ class SugarotaBleService : Service() {
         val primaryAddr = getPrimaryDeviceAddress()
         val units = reading?.units?.takeIf { it.isNotBlank() } ?: getDeviceUnits(primaryAddr)
         val chartReading = reading ?: _lastReading.value
+        val settings = getNotificationSettings()
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Sugarota Companion")
             .setContentText(text)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .setVisibility(settings.visibility.value)
+            .setPriority(settings.importance.priority)
 
         if (chartReading != null) {
             val iconText = formatGlucoseValue(chartReading.sgv, units)
@@ -1611,11 +1661,27 @@ class SugarotaBleService : Service() {
         if (chartReading != null) {
             try {
                 val chartBitmap = org.sugarota.companion.ui.notification.NotificationChartRenderer.renderTwoHourChart(chartReading, units)
-                builder.setStyle(
-                    NotificationCompat.BigPictureStyle()
-                        .bigPicture(chartBitmap)
-                        .setSummaryText(text)
-                )
+                val bigPicStyle = NotificationCompat.BigPictureStyle()
+                    .bigPicture(chartBitmap)
+                    .setSummaryText(text)
+                builder.setStyle(bigPicStyle)
+
+                // Explicitly provide a publicVersion configured with the chart so that the lock screen
+                // displays the rich expanded view rather than falling back to a collapsed/redacted template
+                val publicBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setContentTitle("Sugarota Companion")
+                    .setContentText(text)
+                    .setContentIntent(pendingIntent)
+                    .setSmallIcon(androidx.core.graphics.drawable.IconCompat.createWithBitmap(createGlucoseIconBitmap(formatGlucoseValue(chartReading.sgv, units))))
+                    .setStyle(
+                        NotificationCompat.BigPictureStyle()
+                            .bigPicture(chartBitmap)
+                            .setSummaryText(text)
+                    )
+                    .setOngoing(true)
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                    .setPriority(settings.importance.priority)
+                builder.setPublicVersion(publicBuilder.build())
             } catch (e: Exception) {
                 Log.w("SugarotaBleService", "Error generating notification chart: ${e.message}")
             }
@@ -1624,36 +1690,6 @@ class SugarotaBleService : Service() {
         return builder.build()
     }
 
-    private fun showPairingAlertNotification(address: String, deviceName: String) {
-        try {
-            val launchIntent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra(SugarotaBleScanReceiver.EXTRA_DEVICE_ADDRESS, address)
-            }
-            val pendingIntent = PendingIntent.getActivity(
-                this,
-                address.hashCode(),
-                launchIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val alertBuilder = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
-                .setContentTitle("Bluetooth Pairing Required")
-                .setContentText("Pairing requested for $deviceName. Tap to complete pairing.")
-                .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_CALL)
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent)
-                .setFullScreenIntent(pendingIntent, true)
-
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.notify(address.hashCode(), alertBuilder.build())
-            wakeScreenBriefly()
-        } catch (e: Exception) {
-            Log.w("SugarotaBleService", "Error showing pairing alert notification: ${e.message}")
-        }
-    }
 
     private fun updateNotification(text: String, isNewData: Boolean = false, reading: GlucoseData? = null) {
         if (isNewData) {
@@ -1665,11 +1701,17 @@ class SugarotaBleService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val settings = getNotificationSettings()
             val bridgeChannel = NotificationChannel(
                 CHANNEL_ID,
                 "Sugarota BLE Bridge",
-                NotificationManager.IMPORTANCE_LOW
-            )
+                settings.importance.importance
+            ).apply {
+                description = "Shows live glucose chart and device status"
+                setSound(null, null)
+                enableVibration(false)
+                lockscreenVisibility = settings.visibility.value
+            }
             val alertChannel = NotificationChannel(
                 ALERT_CHANNEL_ID,
                 "Sugarota Device Alerts",

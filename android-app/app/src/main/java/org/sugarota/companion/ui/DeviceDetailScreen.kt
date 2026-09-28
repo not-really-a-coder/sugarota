@@ -48,6 +48,7 @@ fun DeviceDetailScreen(
     deviceAddress: String,
     initialTab: DeviceScreenTab = DeviceScreenTab.CHART,
     service: SugarotaBleService?,
+    onEnterPip: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     BackHandler(onBack = onDismiss)
@@ -210,7 +211,17 @@ fun DeviceDetailScreen(
                         )
                     }
                 },
-                actions = {},
+                actions = {
+                    if (onEnterPip != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        IconButton(onClick = onEnterPip) {
+                            Icon(
+                                imageVector = Icons.Default.PictureInPictureAlt,
+                                contentDescription = "Picture in Picture",
+                                tint = colors.primary
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = colors.card,
                     titleContentColor = colors.foreground,
@@ -505,9 +516,10 @@ fun DeviceChartContent(
                 "${if (lastReading.delta > 0) "+" else ""}${lastReading.delta}"
             }
             val bgCol = getGlucoseColor(lastReading.sgv)
-            val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+            val timeStr = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
                 .format(java.util.Date(lastReading.timestamp * 1000))
             val minsAgo = ((System.currentTimeMillis() / 1000 - lastReading.timestamp) / 60).coerceAtLeast(0)
+            val agoText = if (minsAgo == 0L) "now" else "$minsAgo min ago"
 
             val syncRotation = remember { androidx.compose.animation.core.Animatable(0f) }
             val syncScope = rememberCoroutineScope()
@@ -535,7 +547,7 @@ fun DeviceChartContent(
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
-                    text = "$timeStr ($minsAgo min ago)",
+                    text = "$timeStr ($agoText)",
                     style = typography.caption,
                     color = colors.mutedForeground
                 )

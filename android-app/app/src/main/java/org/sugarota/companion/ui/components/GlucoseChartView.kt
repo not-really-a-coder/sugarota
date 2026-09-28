@@ -36,7 +36,8 @@ fun GlucoseChartView(
     history: List<GlucoseData>,
     modifier: Modifier = Modifier,
     units: String = "mg/dL",
-    isDarkTheme: Boolean = true
+    isDarkTheme: Boolean = true,
+    enableInteraction: Boolean = true
 ) {
     val colors = ShadcnTheme.colors
     val typography = ShadcnTheme.typography
@@ -81,9 +82,8 @@ fun GlucoseChartView(
             )
             .padding(top = 16.dp, bottom = 12.dp, start = 8.dp, end = 12.dp)
     ) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
+        val interactionModifier = if (enableInteraction) {
+            Modifier
                 .pointerInput(sortedHistory) {
                     detectTapGestures(
                         onPress = { offset ->
@@ -113,6 +113,14 @@ fun GlucoseChartView(
                         }
                     )
                 }
+        } else {
+            Modifier
+        }
+
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(interactionModifier)
         ) {
             val totalW = size.width
             val totalH = size.height

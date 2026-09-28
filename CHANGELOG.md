@@ -2,6 +2,39 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.28.4] — Picture-in-Picture Mode, App Settings & Companion UI Refinements (2026-09-28)
+
+This release introduces native Picture-in-Picture (PiP) support for real-time floating glucose monitoring on Android, a dedicated App Settings configuration screen with notification customization, animated connection status indications, and typography alignment refinements.
+
+### Android Companion App
+
+- Added Picture-in-Picture (PiP) window mode accessible from the top-right menu, allowing continuous floating glucose and trend chart monitoring over other applications
+- Configured PiP entry with 16:9 aspect ratio and full-width source rect hint for maximized initial display
+- Integrated proportional canvas scaling to ensure text, trend icons, and chart elements scale smoothly across any window size
+- Added dedicated App Settings screen to configure persistent notification preferences, importance levels, lock screen visibility, and background behavior
+- Added animated Connecting status label on the device card during active Bluetooth connection attempts
+- Adjusted vertical alignment and baseline offset for double vertical trend arrow indicators
+- Disabled touch scrubber and force refresh actions inside PiP mode to preserve clean non-interactive display
+
+---
+
+## [v0.09.28.3] — Power Consumption Optimization & BLE Pairing Indication (2026-09-28)
+
+This release resolves the battery consumption regression on both V1 and V2 devices by cleanly de-energizing the Wi-Fi baseband during sleep, disabling background BLE advertising once connected, optimizing BLE slave latency, and introducing a flashing Bluetooth pairing indicator.
+
+### Power & Battery Optimization
+
+- **Complete Wi-Fi Power Down**: Restored `WiFi.mode(WIFI_OFF)` inside `sleepWiFi()`, eliminating an ~18–25 mA continuous baseline radio current leak caused by keeping STA mode in modem sleep.
+- **BLE Advertising Conservation**: Halted background BLE advertising automatically whenever a Central device is connected, unless Pairing Mode is explicitly enabled. Automatically resumes advertising when a client disconnects.
+- **BLE Connection Latency**: Updated BLE connection parameter negotiation to a slave latency of 4 intervals, allowing the radio to sleep through empty keepalives while responding instantaneously to incoming glucose data pushes.
+- **Hardware Pin Isolation**: Verified clean separation of V1 (GPIO 8 PWM) and V2 (GPIO 42 PWM + EXIO 1 power rail) to ensure minimal backlight power draw.
+
+### Interface & Indicators
+
+- **Flashing Bluetooth Pairing Icon**: Added a 1 Hz flashing Bluetooth status icon (matching the low battery cadence) whenever the device is in pairing mode and awaiting a companion connection. Icon displays solid once connected.
+
+---
+
 ## [v0.09.27.39] — Countdown Alarm Decommission, Smart Poll Alignment & Sync Optimization (2026-09-27)
 
 This release decommissions the experimental countdown alarm feature, introduces deterministic timestamp-aligned polling across both firmware and Android Companion app, eliminates redundant full historical backfill loops, ensures WebSerial flashing cleanly clears OTA boot states, and adds log filtering and auto-scroll controls to the Web Installer.

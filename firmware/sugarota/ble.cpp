@@ -16,12 +16,12 @@ public:
         m_ble->m_connectedCount = pServer->getConnectedCount();
         BLE_DBG_PRINTF("[BLE] Central connected: %s (total clients: %d)\n", connInfo.getAddress().toString().c_str(), m_ble->m_connectedCount);
         
-        // Adjust advertising: switch to low-duty cycle if 1 slot remains, or stop if full
+        // Update advertising: stop advertising unless pairing mode is explicitly active
         m_ble->updateAdvertising();
 
-        // Negotiate reliable BLE connection parameters:
-        // minInterval = 80 (100ms), maxInterval = 120 (150ms), latency = 2 intervals, timeout = 600 (6.0s)
-        pServer->updateConnParams(connInfo.getConnHandle(), 80, 120, 2, 600);
+        // Negotiate power-efficient BLE connection parameters:
+        // minInterval = 80 (100ms), maxInterval = 120 (150ms), latency = 4 intervals, timeout = 600 (6.0s)
+        pServer->updateConnParams(connInfo.getConnHandle(), 80, 120, 4, 600);
     }
 
     void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
@@ -482,12 +482,20 @@ void SugarotaBLE::updateAdvertising() {
         return;
     }
 
-    // When 0 clients connected: fast advertising (100-150ms) for snappy first connection.
-    // When 1 client connected: slow low-duty cycle advertising (1000-1280ms).
-    // This allows a second bonded device to connect while avoiding spamming
-    // the already-connected phone's OS Nearby scanner with rapid beacons.
-    uint16_t minInt = (m_connectedCount == 0 || m_pairingModeEnabled) ? 0x00A0 : 0x0640; // 100ms vs 1000ms
-    uint16_t maxInt = (m_connectedCount == 0 || m_pairingModeEnabled) ? 0x00F0 : 0x0800; // 150ms vs 1280ms
+    // Power saving: When at least 1 client is connected, stop background advertising
+    // UNLESS pairing mode is explicitly active (e.g. boot pairing window or Shake Config mode).
+    // This allows a second device to pair when requested, while conserving radio power during normal operation.
+    if (m_connectedCount > 0 && !m_pairingModeEnabled) {
+        if (pAdvertising->isAdvertising()) {
+            NimBLEDevice::stopAdvertising();
+            BLE_DBG_PRINTLN("[BLE] Client connected & pairing mode idle. Advertising stopped to conserve battery.");
+        }
+        return;
+    }
+
+    // Fast advertising (100-150ms) for snappy discovery when pairing or awaiting initial connection
+    uint16_t minInt = 0x00A0; // 100ms
+    uint16_t maxInt = 0x00F0; // 150ms
 
     // If currently advertising, stop briefly to apply updated interval
     if (pAdvertising->isAdvertising()) {
@@ -497,8 +505,8 @@ void SugarotaBLE::updateAdvertising() {
     pAdvertising->setMinInterval(minInt);
     pAdvertising->setMaxInterval(maxInt);
     pAdvertising->start();
-    BLE_DBG_PRINTF("[BLE] Advertising active (clients: %d/%d, interval: %s)\n",
-        m_connectedCount, MAX_BLE_CLIENTS, (m_connectedCount == 0 || m_pairingModeEnabled) ? "fast" : "low-duty");
+    BLE_DBG_PRINTF("[BLE] Advertising active (clients: %d/%d, pairingMode: %d)\n",
+        m_connectedCount, MAX_BLE_CLIENTS, m_pairingModeEnabled ? 1 : 0);
 }
 
 void SugarotaBLE::disconnect() {

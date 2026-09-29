@@ -2,6 +2,18 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.29.3] — V1 Hardware Power Optimizations & Backlight Polarity Calibration (2026-09-29)
+
+This release resolves the accelerated battery drain observed on V1 devices by properly calibrating the backlight PWM polarity, isolating unneeded peripheral boost power controls, and completely de-energizing the display backlight driver during deep sleep.
+
+### Firmware & Hardware Calibration
+
+- **V1 Backlight PWM Polarity Fix**: Corrected backlight PWM duty cycle calculation for V1 hardware (`PIN_BL_V1` / GPIO 8). V1 utilizes a direct linear LED backlight driver (0 = off, 255 = max), whereas V2 utilizes an AP3032 boost converter with inverted logic (0 = max, 255 = off). This eliminates the bug where low brightness settings (e.g. 30%) previously drove V1 displays at ~70% duty cycle, drastically reducing display power consumption.
+- **Deep Sleep Backlight De-energization**: Configured `powerOffDevice()` to drive `PIN_BL_V1` LOW on V1 hardware prior to entering deep sleep, preventing the backlight boost circuit from remaining energized or leaking current while powered off.
+- **TCA9554 EXIO Pin 1 (`BL_EN`) Isolation**: Guarded `updateBacklightPower()` and initialization sequence so `EXIO_PIN_BL_EN` is kept LOW on V1 hardware where it is unrouted, asserting it only on V2 hardware where it powers the AP3032 boost converter.
+
+---
+
 ## [v0.09.28.4] — Picture-in-Picture Mode, App Settings & Companion UI Refinements (2026-09-28)
 
 This release introduces native Picture-in-Picture (PiP) support for real-time floating glucose monitoring on Android, a dedicated App Settings configuration screen with notification customization, animated connection status indications, and typography alignment refinements.

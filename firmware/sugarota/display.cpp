@@ -28,6 +28,9 @@ void setScreenRotation(uint8_t r) {
 #include <Wire.h>
 
 void updateBacklightPower(bool enable) {
+  // Backlight boost enable on TCA9554 EXIO_PIN_BL_EN is only present and wired on V2 hardware
+  if (hwVersion != 2) return;
+
   // On V2 hardware, EXIO_PIN_BL_EN (Bit 1 of TCA9554) enables the AP3032 boost converter.
   // We read the current TCA9554 output register (0x01), modify bit 1, and write it back.
   Wire.beginTransmission(TCA9554_ADDR);
@@ -48,11 +51,10 @@ void updateBacklightPower(bool enable) {
 
 void setBrightness(int level) {
   brightnessLevel = level;
-  // AXS15231B backlight is inverted (0 = max, 255 = off)
-  int val = 255 - level;
 
   if (hwVersion == 2) {
-    // On V2 hardware, backlight PWM is on GPIO 42
+    // AXS15231B backlight on V2 (AP3032 boost converter with inverted PWM on GPIO 42: 0 = max, 255 = off)
+    int val = 255 - level;
     analogWrite(PIN_BL_V2, val);
     // Ensure GPIO 8 (EXIO INT / Wi-Fi stability pin) is kept HIGH as required by Waveshare V2 hardware
     pinMode(PIN_BL_V1, OUTPUT);
@@ -60,8 +62,8 @@ void setBrightness(int level) {
     // Enable boost converter on V2 when screen is on
     updateBacklightPower(level > 0);
   } else {
-    // On V1 hardware, backlight PWM is on GPIO 8
-    analogWrite(PIN_BL_V1, val);
+    // On V1 hardware, backlight PWM is on GPIO 8 directly driving LED backlight driver (0 = off, 255 = max)
+    analogWrite(PIN_BL_V1, level);
   }
   
   if (level == 0) {

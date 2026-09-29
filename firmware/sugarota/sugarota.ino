@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.28.9"
+#define SUGAROTA_VERSION "v0.09.29.3"
 
 #include "config.h"
 #include "storage.h"
@@ -245,14 +245,16 @@ void powerOffDevice() {
   Wire.write(0x00);
   Wire.endTransmission();
   
-  // Set active backlight PWM pin to inactive (HIGH for inverted AXS15231B boost) and hold state
+  // Set active backlight PWM pin to inactive and hold state:
+  // On V2 (inverted PWM on GPIO 42): set HIGH (off)
+  // On V1 (direct PWM on GPIO 8): set LOW (off)
   if (hwVersion == 2) {
     pinMode(PIN_BL_V2, OUTPUT);
     digitalWrite(PIN_BL_V2, HIGH);
     gpio_hold_en((gpio_num_t)PIN_BL_V2);
   } else {
     pinMode(PIN_BL_V1, OUTPUT);
-    digitalWrite(PIN_BL_V1, HIGH);
+    digitalWrite(PIN_BL_V1, LOW);
     gpio_hold_en((gpio_num_t)PIN_BL_V1);
   }
   
@@ -380,6 +382,12 @@ void setup() {
   // Probe hardware revision (uses config override if specified, otherwise auto-detected)
   detectHardwareVersion();
   DBG_PRINTF("Hardware Revision: V%d (config: %s)\n", hwVersion, hwVersionConfig.c_str());
+
+  // On V1 hardware, EXIO_PIN_BL_EN (Bit 1) is not used for backlight and should be kept LOW.
+  // On V2 hardware, EXIO_PIN_BL_EN enables the AP3032 boost converter.
+  if (hwVersion != 2) {
+    updateBacklightPower(false);
+  }
 
   // Audio Codec
   initAudioCodec();

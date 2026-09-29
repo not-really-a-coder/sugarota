@@ -1,8 +1,8 @@
 {
   "firmware": {
-    "last_date": "2026-09-28",
-    "build_increment": 9,
-    "version": "v0.09.28.9"
+    "last_date": "2026-09-29",
+    "build_increment": 3,
+    "version": "v0.09.29.3"
   },
   "installer": {
     "last_date": "2026-09-27",

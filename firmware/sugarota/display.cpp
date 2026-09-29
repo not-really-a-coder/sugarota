@@ -52,9 +52,12 @@ void updateBacklightPower(bool enable) {
 void setBrightness(int level) {
   brightnessLevel = level;
 
+  // Both V1 (GPIO 8) and V2 (GPIO 42) hardware utilize inverted PWM logic:
+  // 0 = max brightness (0% high duty / full pull-down), 255 = fully off (0% LED drive / 100% off).
+  // Reference: Waveshare official BSP (LCD_PWM_MODE_0 = 255, LCD_PWM_MODE_255 = 0).
+  int val = 255 - level;
+
   if (hwVersion == 2) {
-    // AXS15231B backlight on V2 (AP3032 boost converter with inverted PWM on GPIO 42: 0 = max, 255 = off)
-    int val = 255 - level;
     analogWrite(PIN_BL_V2, val);
     // Ensure GPIO 8 (EXIO INT / Wi-Fi stability pin) is kept HIGH as required by Waveshare V2 hardware
     pinMode(PIN_BL_V1, OUTPUT);
@@ -62,8 +65,7 @@ void setBrightness(int level) {
     // Enable boost converter on V2 when screen is on
     updateBacklightPower(level > 0);
   } else {
-    // On V1 hardware, backlight PWM is on GPIO 8 directly driving LED backlight driver (0 = off, 255 = max)
-    analogWrite(PIN_BL_V1, level);
+    analogWrite(PIN_BL_V1, val);
   }
   
   if (level == 0) {

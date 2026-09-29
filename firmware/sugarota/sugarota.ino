@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.29.3"
+#define SUGAROTA_VERSION "v0.09.29.7"
 
 #include "config.h"
 #include "storage.h"
@@ -246,15 +246,14 @@ void powerOffDevice() {
   Wire.endTransmission();
   
   // Set active backlight PWM pin to inactive and hold state:
-  // On V2 (inverted PWM on GPIO 42): set HIGH (off)
-  // On V1 (direct PWM on GPIO 8): set LOW (off)
+  // Both V1 (GPIO 8) and V2 (GPIO 42) have inverted backlight drivers (HIGH = off)
   if (hwVersion == 2) {
     pinMode(PIN_BL_V2, OUTPUT);
     digitalWrite(PIN_BL_V2, HIGH);
     gpio_hold_en((gpio_num_t)PIN_BL_V2);
   } else {
     pinMode(PIN_BL_V1, OUTPUT);
-    digitalWrite(PIN_BL_V1, LOW);
+    digitalWrite(PIN_BL_V1, HIGH);
     gpio_hold_en((gpio_num_t)PIN_BL_V1);
   }
   

@@ -2,6 +2,19 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## [v0.09.29.7] — V1 Display Brightness Cycle & Display-Off Fixes (2026-09-29)
+
+This release resolves brightness cycling and display toggle issues when using the hardware power button on V1 devices, ensuring correct inverted PWM control across all levels and eliminating unintended canvas redraw wakeups when the screen is powered down.
+
+### Firmware & Display Controls
+
+- **V1 Inverted PWM Backlight Calibration**: Corrected backlight PWM duty cycle for V1 hardware (`PIN_BL_V1` / GPIO 8). Both V1 and V2 employ inverted PWM control (`val = 255 - level`), where `level = 0` outputs duty cycle `255` (fully off) and `level = 255` outputs `0` (100% max brightness). This resolves the issue where single clicks inverted the cycle or left the screen glaring bright, and ensures level `0` properly shuts off the backlight.
+- **Deep Sleep Inverted Backlight Pin Hold**: Updated deep sleep configuration in `powerOffDevice()` to hold `PIN_BL_V1` HIGH upon sleep entry, maintaining the active-low backlight driver in its fully de-energized off state.
+- **Display-Off Redraw Guard**: Added guards to `updateUI()` and loop intervals to immediately bypass periodic 1-second clock tick refreshes when the screen is manually turned off (`screenManuallyOff == true` or `brightnessLevel == 0`), preventing canvas redraws and bus writes from waking or desyncing the panel while off.
+- **Hardware Power Button Behavior**: Verified single short-click cycles smoothly through the 4 calibrated brightness levels (`76 -> 153 -> 204 -> 255 -> 76`), and double push cleanly toggles screen and touch off/on.
+
+---
+
 ## [v0.09.29.3] — V1 Hardware Power Optimizations & Backlight Polarity Calibration (2026-09-29)
 
 This release resolves the accelerated battery drain observed on V1 devices by properly calibrating the backlight PWM polarity, isolating unneeded peripheral boost power controls, and completely de-energizing the display backlight driver during deep sleep.

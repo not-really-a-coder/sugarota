@@ -5,7 +5,7 @@
 #include <WiFi.h>
 
 void updateUI() {
-  if (isBooting)
+  if (isBooting || screenManuallyOff || brightnessLevel == 0)
     return;
   uint16_t bgColor = isDarkTheme ? BLACK : WHITE;
 

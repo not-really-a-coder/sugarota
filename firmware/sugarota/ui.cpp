@@ -7,6 +7,12 @@
 void updateUI() {
   if (isBooting || screenManuallyOff || brightnessLevel == 0)
     return;
+
+  if (isVerticalMode) {
+    drawVerticalScreen();
+    return;
+  }
+
   uint16_t bgColor = isDarkTheme ? BLACK : WHITE;
 
   gfx->fillScreen(bgColor);
@@ -923,6 +929,372 @@ void drawOTAProgress(int percent, const char* statusMsg) {
     gfx->getTextBounds(warn, 0, 0, &x1, &y1, &w, &h);
     gfx->setCursor((640 - w) / 2, 138);
     gfx->print(warn);
+  }
+
+  gfx->flush();
+}
+
+void drawVerticalScreen() {
+  uint16_t bgColor = isDarkTheme ? BLACK : WHITE;
+  uint16_t fgColor = isDarkTheme ? WHITE : BLACK;
+  uint16_t cardBg  = isDarkTheme ? 0x18E3 : 0xDEFB; // Dark card / Light card
+  uint16_t cardBorder = isDarkTheme ? ZINC_BORDER : 0xC618;
+  uint16_t activeCardBg = isDarkTheme ? 0x2965 : 0xBDF7;
+
+  gfx->fillScreen(bgColor);
+
+  if (verticalSubscreen == 0) {
+    // === VERTICAL MENU (172 x 640) ===
+    // Title
+    gfx->setTextColor(fgColor);
+    gfx->setTextSize(3);
+    int16_t x1, y1;
+    uint16_t tw, th;
+    const char* title = "MENU";
+    gfx->getTextBounds(title, 0, 0, &x1, &y1, &tw, &th);
+    gfx->setCursor((172 - tw) / 2, 28);
+    gfx->print(title);
+
+    gfx->drawFastHLine(14, 60, 144, cardBorder);
+
+    // Option A: Find Phone (y: 80 to 220)
+    int btnX = 14, btnW = 144, btnH = 130;
+    int yA = 80;
+    gfx->fillRoundRect(btnX, yA, btnW, btnH, 8, cardBg);
+    gfx->drawRoundRect(btnX, yA, btnW, btnH, 8, cardBorder);
+    gfx->fillCircle(86, yA + 38, 18, 0x1A2F);
+    gfx->setTextColor(CYAN);
+    gfx->setTextSize(2);
+    gfx->setCursor(86 - 5, yA + 30);
+    gfx->print("P");
+    gfx->setTextColor(fgColor);
+    gfx->setTextSize(2);
+    const char* txtA1 = "Find Phone";
+    gfx->getTextBounds(txtA1, 0, 0, &x1, &y1, &tw, &th);
+    gfx->setCursor((172 - tw) / 2, yA + 70);
+    gfx->print(txtA1);
+    gfx->setTextColor(GRAY);
+    gfx->setTextSize(1);
+    char txtA2[32];
+    if (bondedPhoneCount > 0) {
+      int connectedCount = 0;
+      for (int i = 0; i < bondedPhoneCount; i++) {
+        if (bondedPhones[i].connected) connectedCount++;
+      }
+      if (connectedCount > 0) {
+        snprintf(txtA2, sizeof(txtA2), "%d Online", connectedCount);
+        gfx->setTextColor(GREEN);
+      } else {
+        snprintf(txtA2, sizeof(txtA2), "%d Offline", bondedPhoneCount);
+        gfx->setTextColor(GRAY);
+      }
+    } else {
+      snprintf(txtA2, sizeof(txtA2), "No paired phone");
+      gfx->setTextColor(GRAY);
+    }
+    gfx->getTextBounds(txtA2, 0, 0, &x1, &y1, &tw, &th);
+    gfx->setCursor((172 - tw) / 2, yA + 98);
+    gfx->print(txtA2);
+
+    // Option B: Countdown Alarm (y: 230 to 370)
+    int yB = 230;
+    gfx->fillRoundRect(btnX, yB, btnW, btnH, 8, cardBg);
+    gfx->drawRoundRect(btnX, yB, btnW, btnH, 8, cardBorder);
+    gfx->fillCircle(86, yB + 38, 18, 0x2A20);
+    gfx->setTextColor(ORANGE);
+    gfx->setTextSize(2);
+    gfx->setCursor(86 - 5, yB + 30);
+    gfx->print("T");
+    gfx->setTextColor(fgColor);
+    gfx->setTextSize(2);
+    const char* txtB1 = "Countdown";
+    gfx->getTextBounds(txtB1, 0, 0, &x1, &y1, &tw, &th);
+    gfx->setCursor((172 - tw) / 2, yB + 70);
+    gfx->print(txtB1);
+    gfx->setTextColor(GRAY);
+    gfx->setTextSize(1);
+    const char* txtB2 = "Alarm (Soon)";
+    gfx->getTextBounds(txtB2, 0, 0, &x1, &y1, &tw, &th);
+    gfx->setCursor((172 - tw) / 2, yB + 98);
+    gfx->print(txtB2);
+
+    // Option C: Settings (y: 380 to 520)
+    int yC = 380;
+    gfx->fillRoundRect(btnX, yC, btnW, btnH, 8, cardBg);
+    gfx->drawRoundRect(btnX, yC, btnW, btnH, 8, cardBorder);
+    gfx->fillCircle(86, yC + 38, 18, 0x12E8);
+    gfx->setTextColor(GREEN);
+    gfx->setTextSize(2);
+    gfx->setCursor(86 - 5, yC + 30);
+    gfx->print("S");
+    gfx->setTextColor(fgColor);
+    gfx->setTextSize(2);
+    const char* txtC1 = "Settings";
+    gfx->getTextBounds(txtC1, 0, 0, &x1, &y1, &tw, &th);
+    gfx->setCursor((172 - tw) / 2, yC + 70);
+    gfx->print(txtC1);
+    gfx->setTextColor(GRAY);
+    gfx->setTextSize(1);
+    const char* txtC2 = "Sound & Display";
+    gfx->getTextBounds(txtC2, 0, 0, &x1, &y1, &tw, &th);
+    gfx->setCursor((172 - tw) / 2, yC + 98);
+    gfx->print(txtC2);
+
+    // Footer Hint (y: 575)
+    gfx->setTextColor(GRAY);
+    gfx->setTextSize(1);
+    const char* hint = "Rotate horizontal to exit";
+    gfx->getTextBounds(hint, 0, 0, &x1, &y1, &tw, &th);
+    gfx->setCursor((172 - tw) / 2, 580);
+    gfx->print(hint);
+
+  } else if (verticalSubscreen == 1) {
+    // === SETTINGS SCREEN (172 x 640) ===
+    // Header title centered without top back button (y: 18 to 44)
+    gfx->setTextColor(fgColor);
+    gfx->setTextSize(2);
+    const char* settTitle = "Settings";
+    int16_t x1, y1; uint16_t tw, th;
+    gfx->getTextBounds(settTitle, 0, 0, &x1, &y1, &tw, &th);
+    gfx->setCursor((172 - tw) / 2, 22);
+    gfx->print(settTitle);
+
+    gfx->drawFastHLine(14, 52, 144, cardBorder);
+
+    // --- Section 1: Speaker Volume (y: 65 to 195) ---
+    gfx->setTextColor(fgColor);
+    gfx->setTextSize(2);
+    gfx->setCursor(14, 65);
+    gfx->print("Volume");
+
+    const char* volLabels[4] = {"Off", "35%", "70%", "100%"};
+    int pillW = 68, pillH = 36, pillGapX = 8, pillGapY = 8, startX = 14;
+    int volBaseY = 92;
+    for (int i = 0; i < 4; i++) {
+      int col = i % 2;
+      int row = i / 2;
+      int px = startX + col * (pillW + pillGapX);
+      int py = volBaseY + row * (pillH + pillGapY);
+      bool isSel = (volumeLevel == i);
+      gfx->fillRoundRect(px, py, pillW, pillH, 6, isSel ? activeCardBg : cardBg);
+      gfx->drawRoundRect(px, py, pillW, pillH, 6, isSel ? GREEN : cardBorder);
+      gfx->setTextColor(isSel ? GREEN : fgColor);
+      gfx->setTextSize(2);
+      int16_t bx, by; uint16_t bw, bh;
+      gfx->getTextBounds(volLabels[i], 0, 0, &bx, &by, &bw, &bh);
+      gfx->setCursor(px + (pillW - bw) / 2, py + (pillH - bh) / 2);
+      gfx->print(volLabels[i]);
+    }
+
+    gfx->drawFastHLine(14, 185, 144, cardBorder);
+
+    // --- Section 2: Display Brightness (y: 198 to 330) ---
+    gfx->setTextColor(fgColor);
+    gfx->setTextSize(2);
+    gfx->setCursor(14, 198);
+    gfx->print("Brightness");
+
+    int brightPresets[4] = {76, 153, 204, 255};
+    const char* brightLabels[4] = {"30%", "60%", "80%", "100%"};
+    int brightBaseY = 225;
+    for (int i = 0; i < 4; i++) {
+      int col = i % 2;
+      int row = i / 2;
+      int px = startX + col * (pillW + pillGapX);
+      int py = brightBaseY + row * (pillH + pillGapY);
+      bool isSel = (brightnessLevel == brightPresets[i]);
+      gfx->fillRoundRect(px, py, pillW, pillH, 6, isSel ? activeCardBg : cardBg);
+      gfx->drawRoundRect(px, py, pillW, pillH, 6, isSel ? CYAN : cardBorder);
+      gfx->setTextColor(isSel ? CYAN : fgColor);
+      gfx->setTextSize(2);
+      int16_t bx, by; uint16_t bw, bh;
+      gfx->getTextBounds(brightLabels[i], 0, 0, &bx, &by, &bw, &bh);
+      gfx->setCursor(px + (pillW - bw) / 2, py + (pillH - bh) / 2);
+      gfx->print(brightLabels[i]);
+    }
+
+    gfx->drawFastHLine(14, 320, 144, cardBorder);
+
+    // --- Section 3: Night-mode Switch (y: 335 to 455) ---
+    gfx->setTextColor(fgColor);
+    gfx->setTextSize(2);
+    gfx->setCursor(14, 335);
+    gfx->print("Night Mode");
+
+    // Toggle container
+    int togW = 144, togH = 46, togX = 14, togY = 368;
+    gfx->fillRoundRect(togX, togY, togW, togH, 8, cardBg);
+    gfx->drawRoundRect(togX, togY, togW, togH, 8, nightModeEnabled ? 0x3CFE : cardBorder);
+
+    gfx->setTextColor(nightModeEnabled ? 0x3CFE : fgColor);
+    gfx->setTextSize(2);
+    gfx->setCursor(togX + 16, togY + 14);
+    gfx->print(nightModeEnabled ? "On" : "Off");
+
+    // Switch pill inside container
+    int swW = 44, swH = 24, swX = togX + togW - swW - 12, swY = togY + 11;
+    gfx->fillRoundRect(swX, swY, swW, swH, 12, nightModeEnabled ? 0x3CFE : 0x4208);
+    int knobX = nightModeEnabled ? (swX + swW - 20) : (swX + 4);
+    gfx->fillCircle(knobX + 8, swY + 12, 8, WHITE);
+
+    gfx->setTextColor(GRAY);
+    gfx->setTextSize(1);
+    int16_t bx, by; uint16_t bw, bh;
+    const char* nmNote = "(Placeholder for now)";
+    gfx->getTextBounds(nmNote, 0, 0, &bx, &by, &bw, &bh);
+    gfx->setCursor((172 - bw) / 2, 428);
+    gfx->print(nmNote);
+
+    gfx->drawFastHLine(14, 460, 144, cardBorder);
+
+    // Full-width Bottom Back Button (y: 565 to 613)
+    int backBtnX = 14, backBtnY = 565, backBtnW = 144, backBtnH = 48;
+    gfx->fillRoundRect(backBtnX, backBtnY, backBtnW, backBtnH, 8, cardBg);
+    gfx->drawRoundRect(backBtnX, backBtnY, backBtnW, backBtnH, 8, cardBorder);
+    gfx->setTextColor(CYAN);
+    gfx->setTextSize(2);
+    const char* backTxt = "< Back";
+    gfx->getTextBounds(backTxt, 0, 0, &bx, &by, &bw, &bh);
+    gfx->setCursor(backBtnX + (backBtnW - bw) / 2, backBtnY + (backBtnH - bh) / 2);
+    gfx->print(backTxt);
+
+  } else if (verticalSubscreen == 2) {
+    // === FIND PHONE SCREEN (172 x 640) ===
+    // Header title centered without top back button (y: 18 to 44)
+    gfx->setTextColor(fgColor);
+    gfx->setTextSize(2);
+    const char* fpTitle = "Find Phone";
+    int16_t x1, y1; uint16_t tw, th;
+    gfx->getTextBounds(fpTitle, 0, 0, &x1, &y1, &tw, &th);
+    gfx->setCursor((172 - tw) / 2, 22);
+    gfx->print(fpTitle);
+
+    gfx->drawFastHLine(14, 52, 144, cardBorder);
+
+    // List up to 3 bonded phones (y: 70, 215, 360)
+    int cardX = 14, cardW = 144, cardH = 130;
+    int startY = 70;
+
+    if (bondedPhoneCount == 0) {
+      gfx->fillRoundRect(cardX, startY, cardW, 115, 8, cardBg);
+      gfx->drawRoundRect(cardX, startY, cardW, 115, 8, cardBorder);
+      gfx->setTextColor(GRAY);
+      gfx->setTextSize(2);
+      const char* noPh1 = "No Paired";
+      int16_t bx, by; uint16_t bw, bh;
+      gfx->getTextBounds(noPh1, 0, 0, &bx, &by, &bw, &bh);
+      gfx->setCursor((172 - bw) / 2, startY + 35);
+      gfx->print(noPh1);
+      const char* noPh2 = "Phones Yet";
+      gfx->getTextBounds(noPh2, 0, 0, &bx, &by, &bw, &bh);
+      gfx->setCursor((172 - bw) / 2, startY + 60);
+      gfx->print(noPh2);
+    } else {
+      for (int i = 0; i < bondedPhoneCount && i < 3; i++) {
+        int cy = startY + i * (cardH + 15);
+        bool isConn = bondedPhones[i].connected;
+        bool isAlerting = (activeFindPhoneAddr.length() > 0 && activeFindPhoneAddr.equalsIgnoreCase(bondedPhones[i].address));
+
+        uint16_t cBg = cardBg;
+        uint16_t cBorder = cardBorder;
+        if (isAlerting) {
+          cBg = ((millis() / 400) % 2 == 0) ? 0x2800 : cardBg;
+          cBorder = RED;
+        } else if (isConn) {
+          cBorder = 0x0400; // Subtle emerald border
+        }
+
+        gfx->fillRoundRect(cardX, cy, cardW, cardH, 8, cBg);
+        gfx->drawRoundRect(cardX, cy, cardW, cardH, 8, cBorder);
+
+        // Status indicator dot (Left: x = cardX + 14, cy + 18)
+        int dotColor = isConn ? GREEN : GRAY;
+        gfx->fillCircle(cardX + 14, cy + 18, 4, dotColor);
+
+        // Phone Name next to circle indicator (Aligned to Left, Size 1 like Online badge)
+        gfx->setTextColor(isConn ? fgColor : GRAY);
+        gfx->setTextSize(1);
+        char dispName[32];
+        strncpy(dispName, bondedPhones[i].name, sizeof(dispName) - 1);
+        dispName[sizeof(dispName) - 1] = '\0';
+        int16_t bx, by; uint16_t bw, bh;
+        gfx->getTextBounds(dispName, 0, 0, &bx, &by, &bw, &bh);
+
+        // Available width next to dot
+        int maxNameW = cardW - 32;
+        if (bw > maxNameW) {
+          int len = strlen(dispName);
+          while (len > 3 && bw > maxNameW) {
+            len--;
+            dispName[len] = '\0';
+            char temp[36];
+            snprintf(temp, sizeof(temp), "%s..", dispName);
+            gfx->getTextBounds(temp, 0, 0, &bx, &by, &bw, &bh);
+          }
+          strncat(dispName, "..", sizeof(dispName) - strlen(dispName) - 1);
+        }
+        gfx->setCursor(cardX + 24, cy + 15);
+        gfx->print(dispName);
+
+        // Action button or offline label
+        // Button is double height (h = 64) with two strings
+        int pillW = 124, pillH = 64, pillX = cardX + (cardW - pillW) / 2, pillY = cy + 45;
+        if (isAlerting) {
+          // Red Stop button pill
+          gfx->fillRoundRect(pillX, pillY, pillW, pillH, 8, RED);
+          gfx->setTextColor(WHITE);
+          gfx->setTextSize(2);
+          const char* s1 = "STOP";
+          const char* s2 = "ALARM";
+          gfx->getTextBounds(s1, 0, 0, &bx, &by, &bw, &bh);
+          gfx->setCursor(pillX + (pillW - bw) / 2, pillY + 14);
+          gfx->print(s1);
+          gfx->getTextBounds(s2, 0, 0, &bx, &by, &bw, &bh);
+          gfx->setCursor(pillX + (pillW - bw) / 2, pillY + 38);
+          gfx->print(s2);
+        } else if (isConn) {
+          // Cyan Ring Phone button pill (Double height: 64, two strings)
+          gfx->fillRoundRect(pillX, pillY, pillW, pillH, 8, 0x1A2F);
+          gfx->drawRoundRect(pillX, pillY, pillW, pillH, 8, CYAN);
+          gfx->setTextColor(CYAN);
+          gfx->setTextSize(2);
+          const char* s1 = "Ring";
+          const char* s2 = "Phone";
+          gfx->getTextBounds(s1, 0, 0, &bx, &by, &bw, &bh);
+          gfx->setCursor(pillX + (pillW - bw) / 2, pillY + 14);
+          gfx->print(s1);
+          gfx->getTextBounds(s2, 0, 0, &bx, &by, &bw, &bh);
+          gfx->setCursor(pillX + (pillW - bw) / 2, pillY + 38);
+          gfx->print(s2);
+        } else {
+          // Offline container
+          gfx->fillRoundRect(pillX, pillY, pillW, pillH, 8, 0x18E3);
+          gfx->drawRoundRect(pillX, pillY, pillW, pillH, 8, cardBorder);
+          gfx->setTextColor(0x632C); // Muted gray
+          gfx->setTextSize(1);
+          const char* disTxt1 = "Phone";
+          const char* disTxt2 = "Offline";
+          gfx->getTextBounds(disTxt1, 0, 0, &bx, &by, &bw, &bh);
+          gfx->setCursor(pillX + (pillW - bw) / 2, pillY + 20);
+          gfx->print(disTxt1);
+          gfx->getTextBounds(disTxt2, 0, 0, &bx, &by, &bw, &bh);
+          gfx->setCursor(pillX + (pillW - bw) / 2, pillY + 36);
+          gfx->print(disTxt2);
+        }
+      }
+    }
+
+    // Full-width Bottom Back Button (y: 565 to 613)
+    int backBtnX = 14, backBtnY = 565, backBtnW = 144, backBtnH = 48;
+    gfx->fillRoundRect(backBtnX, backBtnY, backBtnW, backBtnH, 8, cardBg);
+    gfx->drawRoundRect(backBtnX, backBtnY, backBtnW, backBtnH, 8, cardBorder);
+    gfx->setTextColor(CYAN);
+    gfx->setTextSize(2);
+    const char* backTxt = "< Back";
+    int16_t bx, by; uint16_t bw, bh;
+    gfx->getTextBounds(backTxt, 0, 0, &bx, &by, &bw, &bh);
+    gfx->setCursor(backBtnX + (backBtnW - bw) / 2, backBtnY + (backBtnH - bh) / 2);
+    gfx->print(backTxt);
   }
 
   gfx->flush();

@@ -9,6 +9,7 @@
 extern esp_codec_dev_handle_t playback;
 
 void initAudioCodec();
+void setVolume(int level);
 void codecBeep(int durationMs);
 void codecBeepTone(int durationMs, int halfPeriodFrames);
 void playWav(const char *path);

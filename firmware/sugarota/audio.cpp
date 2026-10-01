@@ -36,6 +36,20 @@ void spinnerDelay(unsigned long ms) {
   }
 }
 
+void setVolume(int level) {
+  if (level < 0) level = 0;
+  if (level > 3) level = 3;
+  volumeLevel = level;
+  if (playback) {
+    float volFloat = 0.0;
+    if (level == 1) volFloat = 35.0;
+    else if (level == 2) volFloat = 70.0;
+    else if (level == 3) volFloat = 100.0;
+    esp_codec_dev_set_out_vol(playback, volFloat);
+    DBG_PRINTF("Audio: Volume preset set to %d (%.1f%%)\n", volumeLevel, volFloat);
+  }
+}
+
 void initAudioCodec() {
   set_codec_board_type("S3_LCD_3_49");
   codec_init_cfg_t codec_cfg;
@@ -46,8 +60,8 @@ void initAudioCodec() {
   init_codec(&codec_cfg);
   playback = get_playback_handle();
   if (playback) {
-    esp_codec_dev_set_out_vol(playback, 75.0);
-    DBG_PRINTLN("Audio Codec Initialized (Playback Volume: 75%)");
+    setVolume(volumeLevel);
+    DBG_PRINTLN("Audio Codec Initialized");
   }
 }
 
@@ -208,9 +222,7 @@ void startFindDeviceAlert() {
 void stopFindDeviceAlert() {
   if (findDeviceRunning) {
     findDeviceRunning = false;
-    if (playback) {
-      esp_codec_dev_set_out_vol(playback, 75.0);
-    }
+    setVolume(volumeLevel);
     DBG_PRINTLN("FIND DEVICE: Alert cancelled");
   }
 }
@@ -238,9 +250,7 @@ void updateFindDevice() {
       if (findDeviceRepetition >= 3) {
         // Finished all 3 repetitions!
         findDeviceRunning = false;
-        if (playback) {
-          esp_codec_dev_set_out_vol(playback, 75.0);
-        }
+        setVolume(volumeLevel);
         DBG_PRINTLN("FIND DEVICE: Alert pattern complete");
         return;
       } else {

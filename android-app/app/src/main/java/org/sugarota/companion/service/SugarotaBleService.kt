@@ -9,6 +9,11 @@ import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.MediaPlayer
+import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.DeadObjectException
@@ -109,6 +114,15 @@ class SugarotaBleService : Service() {
     private val _bridgeStatus = MutableStateFlow("Idle")
     val bridgeStatus: StateFlow<String> = _bridgeStatus.asStateFlow()
 
+    // Find Phone ringing alert state
+    private val _isRinging = MutableStateFlow(false)
+    val isRinging: StateFlow<Boolean> = _isRinging.asStateFlow()
+    private var alertPlayer: MediaPlayer? = null
+    private var originalAlarmVolume: Int? = null
+    private var originalRingVolume: Int? = null
+    private var ringJob: Job? = null
+    private var activeRingingDeviceAddress: String? = null
+
     private val bondStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val action = intent?.action
@@ -197,6 +211,9 @@ class SugarotaBleService : Service() {
                     connectDevice(address)
                 }
             }
+        } else if (action == ACTION_STOP_FIND_PHONE) {
+            Log.i("SugarotaBleService", "onStartCommand: ACTION_STOP_FIND_PHONE received")
+            stopFindPhoneAlert(sendBleConfirmation = true)
         }
         return START_STICKY
     }
@@ -582,6 +599,11 @@ class SugarotaBleService : Service() {
                     if (status == BluetoothGatt.GATT_SUCCESS && descriptor.characteristic.uuid == BleUuids.CHAR_STATUS) {
                         // Read status sequentially once CCCD notification descriptor write is confirmed
                         gatt.readCharacteristic(descriptor.characteristic)
+                        // Push phone identity so Sugarota registers bonded/connected phone short name
+                        serviceScope.launch {
+                            delay(500)
+                            pushPhoneInfoToDevice(gatt.device.address)
+                        }
                     }
                 }
 
@@ -883,6 +905,22 @@ class SugarotaBleService : Service() {
         }
     }
 
+    fun setDeviceVolume(address: String, level: Int) {
+        val clamped = level.coerceIn(0, 3)
+        val cmd = org.json.JSONObject().apply {
+            put("cmd", "set_volume")
+            put("val", clamped)
+        }
+        sendDeviceCommand(address, cmd)
+        // Optimistically update device model state in app
+        val current = _devices.value.toMutableMap()
+        val dev = current[address]
+        if (dev != null) {
+            current[address] = dev.copy(status = dev.status.copy(volume = clamped))
+            _devices.value = current
+        }
+    }
+
     fun setDeviceTheme(address: String, isDark: Boolean) {
         val cmd = org.json.JSONObject().apply {
             put("cmd", "set_theme")
@@ -973,6 +1011,215 @@ class SugarotaBleService : Service() {
         val syncJson = GlucoseData.createTimeSyncJson()
         val bytes = syncJson.toByteArray(Charsets.UTF_8)
         writeCharacteristicSafe(gatt, glucoseChar, bytes, "time_sync")
+    }
+
+    // Push phone name and Bluetooth identity to Sugarota so it can show it in Find Phone list
+    fun pushPhoneInfoToDevice(address: String) {
+        val gatt = connectedGatts[address] ?: return
+        val service = gatt.getService(BleUuids.SUGAROTA_SERVICE) ?: return
+        val glucoseChar = service.getCharacteristic(BleUuids.CHAR_GLUCOSE) ?: return
+
+        val myBluetoothAddress = try {
+            bluetoothAdapter?.address?.takeIf { it.isNotBlank() && it != "02:00:00:00:00:00" } ?: ""
+        } catch (_: Exception) { "" }
+
+        val myPhoneName = try {
+            val btName = bluetoothAdapter?.name
+            if (!btName.isNullOrBlank()) btName else "${Build.MANUFACTURER} ${Build.MODEL}"
+        } catch (_: Exception) {
+            "${Build.MANUFACTURER} ${Build.MODEL}"
+        }
+
+        val phoneId = appSettingsPrefs.getOrCreatePhoneId()
+
+        val infoObj = org.json.JSONObject().apply {
+            put("type", "phone_info")
+            put("phone_name", myPhoneName.trim())
+            put("phone_model", Build.MODEL.trim())
+            put("phone_id", phoneId)
+            put("phone_addr", if (myBluetoothAddress.isNotBlank()) myBluetoothAddress else phoneId)
+        }
+        val bytes = infoObj.toString().toByteArray(Charsets.UTF_8)
+        writeCharacteristicSafe(gatt, glucoseChar, bytes, "phone_info")
+        Log.i("SugarotaBleService", "Pushed phone_info to $address: name='$myPhoneName', id='$phoneId'")
+    }
+
+    fun startFindPhoneAlert(sourceAddress: String) {
+        if (_isRinging.value) {
+            Log.i("SugarotaBleService", "Find phone alert already ringing, ignoring duplicate start")
+            return
+        }
+        activeRingingDeviceAddress = sourceAddress
+        _isRinging.value = true
+        Log.i("SugarotaBleService", "Starting Find Phone alert requested by $sourceAddress")
+        appendDeviceLog(sourceAddress, "Find Phone alert triggered by device")
+
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        if (audioManager != null) {
+            // Save original volumes
+            originalAlarmVolume = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
+            originalRingVolume = audioManager.getStreamVolume(AudioManager.STREAM_RING)
+
+            // Override volumes to MAX for search
+            val maxAlarm = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+            audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxAlarm, 0)
+        }
+
+        // Determine sound URI
+        val soundUriStr = appSettingsPrefs.getFindPhoneSoundUri()
+        val soundUri = if (!soundUriStr.isNullOrBlank()) {
+            Uri.parse(soundUriStr)
+        } else {
+            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+        }
+
+        try {
+            alertPlayer?.release()
+            alertPlayer = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                setDataSource(this@SugarotaBleService, soundUri)
+                isLooping = true
+                prepare()
+                start()
+            }
+        } catch (e: Exception) {
+            Log.e("SugarotaBleService", "Error playing Find Phone alert: ${e.message}", e)
+            try {
+                // Fallback to default alarm
+                alertPlayer?.release()
+                alertPlayer = MediaPlayer().apply {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ALARM)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+                    )
+                    val defUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    setDataSource(this@SugarotaBleService, defUri)
+                    isLooping = true
+                    prepare()
+                    start()
+                }
+            } catch (e2: Exception) {
+                Log.e("SugarotaBleService", "Fallback alarm failed: ${e2.message}")
+            }
+        }
+
+        // Post high-priority notification with Stop action
+        showFindPhoneNotification()
+
+        // 30 seconds auto-timeout
+        ringJob?.cancel()
+        ringJob = serviceScope.launch {
+            delay(30000L)
+            if (_isRinging.value) {
+                Log.i("SugarotaBleService", "Find phone alert auto-timed out after 30s")
+                stopFindPhoneAlert(sendBleConfirmation = true)
+            }
+        }
+    }
+
+    fun stopFindPhoneAlert(sendBleConfirmation: Boolean = false) {
+        ringJob?.cancel()
+        ringJob = null
+
+        if (!_isRinging.value && alertPlayer == null) return
+        _isRinging.value = false
+
+        try {
+            alertPlayer?.stop()
+            alertPlayer?.release()
+        } catch (e: Exception) {
+            Log.w("SugarotaBleService", "Error stopping alert player: ${e.message}")
+        }
+        alertPlayer = null
+
+        // Restore original audio volumes
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        if (audioManager != null) {
+            originalAlarmVolume?.let {
+                audioManager.setStreamVolume(AudioManager.STREAM_ALARM, it, 0)
+            }
+            originalRingVolume?.let {
+                audioManager.setStreamVolume(AudioManager.STREAM_RING, it, 0)
+            }
+        }
+        originalAlarmVolume = null
+        originalRingVolume = null
+
+        // Dismiss ringing notification
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.cancel(FIND_PHONE_NOTIFICATION_ID)
+
+        val targetAddr = activeRingingDeviceAddress
+        activeRingingDeviceAddress = null
+
+        // If stopped from phone, inform Sugarota over BLE so it clears its ringing UI
+        if (sendBleConfirmation) {
+            val stopObj = org.json.JSONObject().apply {
+                put("type", "stop_find_phone")
+                put("phone_addr", targetAddr ?: "")
+            }
+            if (targetAddr != null && connectedGatts.containsKey(targetAddr)) {
+                val gatt = connectedGatts[targetAddr]
+                val char = gatt?.getService(BleUuids.SUGAROTA_SERVICE)?.getCharacteristic(BleUuids.CHAR_GLUCOSE)
+                if (gatt != null && char != null) {
+                    writeCharacteristicSafe(gatt, char, stopObj.toString().toByteArray(Charsets.UTF_8), "stop_find_phone")
+                }
+            } else {
+                // Broadcast to all connected screens
+                for (address in connectedGatts.keys) {
+                    val gatt = connectedGatts[address]
+                    val char = gatt?.getService(BleUuids.SUGAROTA_SERVICE)?.getCharacteristic(BleUuids.CHAR_GLUCOSE)
+                    if (gatt != null && char != null) {
+                        writeCharacteristicSafe(gatt, char, stopObj.toString().toByteArray(Charsets.UTF_8), "stop_find_phone")
+                    }
+                }
+            }
+        }
+        Log.i("SugarotaBleService", "Find Phone alert stopped (sentBleConfirmation=$sendBleConfirmation)")
+    }
+
+    private fun showFindPhoneNotification() {
+        val stopIntent = Intent(this, SugarotaBleService::class.java).apply {
+            action = ACTION_STOP_FIND_PHONE
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this,
+            202,
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+            .setContentTitle("Sugarota: Finding Phone")
+            .setContentText("Tap Stop to silence the ringtone")
+            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setOngoing(true)
+            .setContentIntent(contentPendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "STOP", stopPendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(FIND_PHONE_NOTIFICATION_ID, notification)
     }
 
     // Push API OK status packet when server was queried successfully but has no new reading
@@ -1456,6 +1703,36 @@ class SugarotaBleService : Service() {
             val current = _devices.value.toMutableMap()
             val existing = current[address] ?: SugarotaDevice(name = getDeviceDisplayName(address), address = address)
 
+            // Check if this notification is an alert event (Find Phone)
+            if (obj.has("alert")) {
+                val alertType = obj.optString("alert", "")
+                val target = obj.optString("target", "")
+                Log.i("SugarotaBleService", "Received alert notification from $address: type=$alertType target=$target")
+                if (alertType.equals("find_phone", ignoreCase = true)) {
+                    // Check if this alert is intended for this device/phone
+                    val myPhoneId = appSettingsPrefs.getOrCreatePhoneId()
+                    val myBtAddr = try { bluetoothAdapter?.address ?: "" } catch (_: Exception) { "" }
+                    val isTargetMe = target.isBlank() || 
+                        target.equals(myPhoneId, ignoreCase = true) || 
+                        (myBtAddr.isNotBlank() && target.equals(myBtAddr, ignoreCase = true))
+                    if (isTargetMe) {
+                        startFindPhoneAlert(address)
+                    } else {
+                        Log.i("SugarotaBleService", "Ignoring find_phone alert targeted for '$target' (myId='$myPhoneId')")
+                    }
+                } else if (alertType.equals("stop_alert", ignoreCase = true) || alertType.equals("stop_find_phone", ignoreCase = true)) {
+                    val myPhoneId = appSettingsPrefs.getOrCreatePhoneId()
+                    val myBtAddr = try { bluetoothAdapter?.address ?: "" } catch (_: Exception) { "" }
+                    val isTargetMe = target.isBlank() || 
+                        target.equals(myPhoneId, ignoreCase = true) || 
+                        (myBtAddr.isNotBlank() && target.equals(myBtAddr, ignoreCase = true))
+                    if (isTargetMe) {
+                        stopFindPhoneAlert(sendBleConfirmation = false)
+                    }
+                }
+                return
+            }
+
             // Check if this notification is a wifi_ota status update
             if (obj.has("wifi_ota")) {
                 val otaStatus = obj.optString("wifi_ota", "idle")
@@ -1474,9 +1751,10 @@ class SugarotaBleService : Service() {
             val brightness = if (obj.has("brightness")) obj.optInt("brightness", existing.status.brightness) else existing.status.brightness
             val isDark = if (obj.has("dark_theme")) obj.optBoolean("dark_theme", existing.status.isDarkTheme) else existing.status.isDarkTheme
             val isDebug = if (obj.has("debug")) obj.optBoolean("debug", existing.status.isDebugMode) else existing.status.isDebugMode
-            current[address] = existing.copy(status = DeviceStatus(bat, chg, ver, brightness, isDark, isDebug))
+            val volume = if (obj.has("volume")) obj.optInt("volume", existing.status.volume) else existing.status.volume
+            current[address] = existing.copy(status = DeviceStatus(bat, chg, ver, brightness, isDark, isDebug, volume))
             _devices.value = current
-            appendDeviceLog(address, "Status received: bat=$bat% chg=$chg ver=$ver debug=$isDebug")
+            appendDeviceLog(address, "Status received: bat=$bat% chg=$chg ver=$ver debug=$isDebug vol=$volume")
 
             // When device notifies status:
             // 1. If we don't have its config yet, attempt to read config now
@@ -1501,6 +1779,13 @@ class SugarotaBleService : Service() {
                     val force = isInitial || forceRefresh
                     Log.i("SugarotaBleService", "Triggering sync for $address (requestRefresh=$requestRefresh, forceRefresh=$forceRefresh, isInitial=$isInitial, forcePush=$force)")
                     fetchAndPushForDevice(address, forcePush = force)
+                }
+            }
+
+            // 3. Device opened Find Phone screen: push phone_info so device refreshes its paired name & state
+            if (obj.optBoolean("request_phone_info", false)) {
+                serviceScope.launch {
+                    pushPhoneInfoToDevice(address)
                 }
             }
         } catch (e: Exception) {
@@ -1782,8 +2067,10 @@ class SugarotaBleService : Service() {
         const val CHANNEL_ID = "sugarota_ble_channel"
         const val ALERT_CHANNEL_ID = "sugarota_alerts_channel"
         private const val NOTIFICATION_ID = 101
+        private const val FIND_PHONE_NOTIFICATION_ID = 102
 
         const val ACTION_CONNECT_DEVICE = "org.sugarota.companion.ACTION_CONNECT_DEVICE"
+        const val ACTION_STOP_FIND_PHONE = "org.sugarota.companion.ACTION_STOP_FIND_PHONE"
         const val EXTRA_DEVICE_ADDRESS = "extra_device_address"
 
         // Track active connections for fast checks across processes/receivers

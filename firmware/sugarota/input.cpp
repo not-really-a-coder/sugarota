@@ -4,6 +4,7 @@
 #include "net_client.h"
 #include "audio.h"
 #include "ble.h"
+#include "storage.h"
 #include <ESPmDNS.h>
 #include <Wire.h>
 
@@ -17,6 +18,7 @@ extern void logBoot(const String& msg);
 static int lastRawX = -1;
 static int lastRawY = -1;
 static int touchConfidence = 0;
+static int currentVerticalRotation = 0;
 
 void initInputs() {
   pinMode(PIN_PWR_BTN, INPUT_PULLUP);
@@ -264,6 +266,149 @@ void checkTouch() {
       return;
     }
 
+    // --- Vertical Mode Touch Handling ---
+    if (isVerticalMode) {
+      // In vertical rotation (0 or 2), the Canvas logical coordinates are 172 width x 640 height.
+      // Rotation 0 (USB-C up): vx = 172 - touchY, vy = touchX.
+      // Rotation 2 (USB-C down): 180 deg flip -> vx = touchY, vy = 640 - touchX.
+      int vx = (currentVerticalRotation == 2) ? touchY : (172 - touchY);
+      int vy = (currentVerticalRotation == 2) ? (640 - touchX) : touchX;
+
+      if (verticalSubscreen == 0) {
+        // Vertical Main Menu Options:
+        // Option A: Find Phone (y: 80 to 220, x: 14 to 158)
+        if (vx >= 14 && vx <= 158 && vy >= 80 && vy <= 220) {
+          verticalSubscreen = 2;
+          SugarotaBLE::getInstance().syncBondedPhonesWithActiveConnections();
+          SugarotaBLE::getInstance().requestPhoneInfoRefresh();
+          waitForRelease = true;
+          isTouching = false;
+          updateUI();
+          return;
+        }
+        // Option B: Countdown alarm (y: 230 to 370, x: 14 to 158) - not linked yet
+        if (vx >= 14 && vx <= 158 && vy >= 230 && vy <= 370) {
+          playBeeps(0, 1);
+          waitForRelease = true;
+          isTouching = false;
+          return;
+        }
+        // Option C: Settings (y: 380 to 520, x: 14 to 158)
+        if (vx >= 14 && vx <= 158 && vy >= 380 && vy <= 520) {
+          verticalSubscreen = 1;
+          waitForRelease = true;
+          isTouching = false;
+          updateUI();
+          return;
+        }
+      } else if (verticalSubscreen == 1) {
+        // Settings Subscreen:
+        // Full-width Bottom Back Button: x: 14 to 158, y: 560 to 625
+        if (vx >= 14 && vx <= 158 && vy >= 560 && vy <= 625) {
+          verticalSubscreen = 0;
+          waitForRelease = true;
+          isTouching = false;
+          updateUI();
+          return;
+        }
+
+        // Section 1: Speaker Volume Presets (2 rows x 2 cols)
+        // pillW = 68, pillH = 36, gapX = 8, gapY = 8, startX = 14, volBaseY = 92
+        int pillW = 68; int pillH = 36; int gapX = 8; int gapY = 8; int startX = 14;
+        int volBaseY = 92;
+        for (int i = 0; i < 4; i++) {
+          int col = i % 2;
+          int row = i / 2;
+          int px = startX + col * (pillW + gapX);
+          int py = volBaseY + row * (pillH + gapY);
+          if (vx >= px - 3 && vx <= px + pillW + 3 && vy >= py - 3 && vy <= py + pillH + 3) {
+            setVolume(i);
+            saveConfig();
+            playBeeps(0, 1);
+            waitForRelease = true;
+            isTouching = false;
+            SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
+            updateUI();
+            return;
+          }
+        }
+
+        // Section 2: Display Brightness Presets (2 rows x 2 cols)
+        // brightBaseY = 225
+        int brightPresets[4] = {76, 153, 204, 255};
+        int brightBaseY = 225;
+        for (int i = 0; i < 4; i++) {
+          int col = i % 2;
+          int row = i / 2;
+          int px = startX + col * (pillW + gapX);
+          int py = brightBaseY + row * (pillH + gapY);
+          if (vx >= px - 3 && vx <= px + pillW + 3 && vy >= py - 3 && vy <= py + pillH + 3) {
+            setBrightness(brightPresets[i]);
+            waitForRelease = true;
+            isTouching = false;
+            SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
+            updateUI();
+            return;
+          }
+        }
+
+        // Section 3: Night-mode Switch (y: 368 to 414, x: 14 to 158)
+        if (vx >= 14 && vx <= 158 && vy >= 360 && vy <= 420) {
+          nightModeEnabled = !nightModeEnabled;
+          saveConfig();
+          playBeeps(0, 1);
+          waitForRelease = true;
+          isTouching = false;
+          updateUI();
+          return;
+        }
+      } else if (verticalSubscreen == 2) {
+        // === Find Phone Subscreen Touch Handling ===
+        // Full-width Bottom Back Button: x: 14 to 158, y: 560 to 625
+        if (vx >= 14 && vx <= 158 && vy >= 560 && vy <= 625) {
+          verticalSubscreen = 0;
+          waitForRelease = true;
+          isTouching = false;
+          updateUI();
+          return;
+        }
+
+        // Tap on individual phone cards (up to 3)
+        // startY = 70, cardH = 130, gap = 15
+        int startY = 70, cardH = 130, gap = 15;
+        for (int i = 0; i < bondedPhoneCount && i < 3; i++) {
+          int cy = startY + i * (cardH + gap);
+          if (vx >= 14 && vx <= 158 && vy >= cy && vy <= cy + cardH) {
+            if (!bondedPhones[i].connected) {
+              // Phone is offline: visibly disabled, short error beep
+              playBeeps(0, 1);
+              waitForRelease = true;
+              isTouching = false;
+              return;
+            }
+
+            bool isAlerting = (activeFindPhoneAddr.length() > 0 && activeFindPhoneAddr.equalsIgnoreCase(bondedPhones[i].address));
+            if (isAlerting) {
+              // Currently ringing -> Interrupt / stop alert
+              SugarotaBLE::getInstance().notifyStopAlert(bondedPhones[i].address);
+              activeFindPhoneAddr = "";
+              playBeeps(0, 1);
+            } else {
+              // Not ringing -> Trigger Find Phone alert
+              activeFindPhoneAddr = bondedPhones[i].address;
+              SugarotaBLE::getInstance().notifyFindPhoneAlert(bondedPhones[i].address);
+              playBeeps(0, 2);
+            }
+            waitForRelease = true;
+            isTouching = false;
+            updateUI();
+            return;
+          }
+        }
+      }
+      return;
+    }
+
     // --- Main Screen Touch Handling ---
     if (touchX >= 15 && touchX <= 65 && touchY >= 60 && touchY <= 110) {
       showHarveyBallInfo = true;
@@ -324,17 +469,51 @@ void pollIMU() {
       float magnitude = sqrt(x*x + y*y + z*z);
       bool isMoving = (abs(magnitude - 1.0) > 0.25);
 
-      // 2. Timer Mode (Rotated Landscape)
-      // Regular Landscape has buttons on top (y < -0.4).
-      // Rotated Landscape has buttons on bottom (y > 0.4).
-      // Hysteresis: enter when y > 0.45; exit only when rotated back upright (y < 0.20)
+      // 2. Orientation Detection:
+      // A. Regular Landscape: buttons on top (y < -0.4).
+      // B. Rotated Landscape (Timer Mode): buttons on bottom (y > 0.4).
+      // C. Vertical Orientations (Hold >= 2 seconds):
+      //    Vertical Right (x > 0.55), Vertical Left (x < -0.55).
       bool isRotatedLandscape = isTimerMode ? (y > 0.20 && !currentZState) : (y > 0.45 && !currentZState);
+      bool isVerticalCandidate = !currentZState && (abs(x) > 0.55 && abs(y) < 0.40);
       
-      // Debounce orientation transition to prevent random restarts when tilted back or moved
+      static unsigned long verticalHoldStartTime = 0;
+      static bool verticalTimerActive = false;
+      static int candidateVerticalRot = 0;
+
+      if (isVerticalCandidate && !isMoving && !isFetching) {
+        int targetRot = (x > 0) ? 0 : 2;
+        if (!verticalTimerActive || candidateVerticalRot != targetRot) {
+          verticalTimerActive = true;
+          candidateVerticalRot = targetRot;
+          verticalHoldStartTime = millis();
+        } else if (millis() - verticalHoldStartTime >= 2000) {
+          if (!isVerticalMode || currentVerticalRotation != candidateVerticalRot) {
+            isVerticalMode = true;
+            verticalSubscreen = 0;
+            currentVerticalRotation = candidateVerticalRot;
+            setScreenRotation(currentVerticalRotation);
+            DBG_PRINTF("VERTICAL MODE: Entered (rotation %d)\n", currentVerticalRotation);
+            updateUI();
+          }
+        }
+      } else {
+        verticalTimerActive = false;
+        // If device was in vertical mode, exit when rotated back to horizontal (abs(x) < 0.35)
+        if (isVerticalMode && abs(x) < 0.35) {
+          isVerticalMode = false;
+          verticalSubscreen = 0;
+          setScreenRotation(isTimerMode ? 3 : 1);
+          DBG_PRINTLN("VERTICAL MODE: Exited (returned to horizontal)");
+          updateUI();
+        }
+      }
+      
+      // Debounce orientation transition for Timer Mode
       static unsigned long orientTransitionStartTime = 0;
       static bool pendingOrientation = false;
       
-      if (!isMoving && !isFetching) {
+      if (!isMoving && !isFetching && !isVerticalMode) {
         if (isRotatedLandscape != isTimerMode) {
           if (!pendingOrientation) {
             pendingOrientation = true;

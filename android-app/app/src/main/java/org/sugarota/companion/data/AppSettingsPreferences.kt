@@ -55,4 +55,37 @@ class AppSettingsPreferences(context: Context) {
             .putString("notification_importance", settings.importance.name)
             .apply()
     }
+
+    fun getOrCreatePhoneId(): String {
+        var id = prefs.getString("companion_phone_id", null)
+        if (id.isNullOrBlank()) {
+            id = java.util.UUID.randomUUID().toString().substring(0, 16)
+            prefs.edit().putString("companion_phone_id", id).apply()
+        }
+        return id
+    }
+
+    fun getFindPhoneSoundUri(): String? {
+        return prefs.getString("find_phone_sound_uri", null)
+    }
+
+    fun setFindPhoneSoundUri(uriString: String?) {
+        prefs.edit().putString("find_phone_sound_uri", uriString).apply()
+    }
+
+    fun getFindPhoneSoundTitle(context: Context): String {
+        val uriStr = getFindPhoneSoundUri()
+        val uri = if (!uriStr.isNullOrBlank()) {
+            android.net.Uri.parse(uriStr)
+        } else {
+            android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
+                ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
+        }
+        return try {
+            val ringtone = android.media.RingtoneManager.getRingtone(context, uri)
+            ringtone?.getTitle(context) ?: "Default Ringtone"
+        } catch (_: Exception) {
+            "Default Ringtone"
+        }
+    }
 }

@@ -13,5 +13,6 @@ void drawHarveyBall(int x, int y, int radius, long long timestamp);
 void drawTrendArrow(int x, int y, const String& direction, uint16_t color);
 void drawHistoryChart();
 void drawOTAProgress(int percent, const char* statusMsg);
+void drawVerticalScreen();
 
 #endif // SUGAROTA_UI_H

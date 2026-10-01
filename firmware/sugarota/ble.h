@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include "esp_ota_ops.h"
+#include "config.h"
 
 // Sugarota BLE GATT Service UUIDs
 #define SUGAROTA_SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -49,9 +50,13 @@ public:
     void confirmPairing(bool accept);
     void updateAdvertising();
 
-    void notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness = -1, int darkTheme = -1, bool requestRefresh = false, int debug = -1, bool forceRefresh = false);
+    void notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness = -1, int darkTheme = -1, bool requestRefresh = false, int debug = -1, bool forceRefresh = false, int volume = -1);
     void notifyWifiOTAStatus(const char* status, const char* ip, const char* mdns);
+    void notifyFindPhoneAlert(const char* targetAddress = nullptr);
+    void notifyStopAlert(const char* targetAddress = nullptr);
     void disconnect();
+    void syncBondedPhonesWithActiveConnections();
+    void requestPhoneInfoRefresh();
 
     static const int MAX_BLE_CLIENTS = 2;
 

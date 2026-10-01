@@ -122,20 +122,34 @@ class FirmwareUpdateManager(private val context: Context) {
             val lines = markdown.lines()
             val section = StringBuilder()
             var capturing = false
+            var currentHeader = ""
+            val currentBlock = StringBuilder()
 
             for (line in lines) {
                 if (line.startsWith("## [") || line.startsWith("## ")) {
                     if (capturing) {
                         break // End of target version notes
                     }
-                    if (line.contains(targetVersion, ignoreCase = true) || !capturing && targetVersion.isBlank()) {
-                        capturing = true
-                        section.append(line).append("\n\n")
-                        continue
+                    if (currentHeader.isNotEmpty()) {
+                        // Check if previous block contained the targetVersion
+                        val blockText = currentBlock.toString()
+                        if (targetVersion.isBlank() || currentHeader.contains(targetVersion, ignoreCase = true) || blockText.contains(targetVersion, ignoreCase = true)) {
+                            capturing = true
+                            section.append(currentHeader).append("\n\n").append(blockText)
+                            break
+                        }
                     }
+                    currentHeader = line
+                    currentBlock.clear()
+                    continue
                 }
-                if (capturing) {
-                    section.append(line).append("\n")
+                currentBlock.append(line).append("\n")
+            }
+
+            if (!capturing && currentHeader.isNotEmpty()) {
+                val blockText = currentBlock.toString()
+                if (targetVersion.isBlank() || currentHeader.contains(targetVersion, ignoreCase = true) || blockText.contains(targetVersion, ignoreCase = true)) {
+                    section.append(currentHeader).append("\n\n").append(blockText)
                 }
             }
 

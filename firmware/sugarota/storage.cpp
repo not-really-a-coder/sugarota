@@ -121,7 +121,17 @@ void loadConfig() {
     }
   }
 
-  DBG_PRINTF("Config: Mode: %s, Poll: %lu s, HW: %s (%d)\n", connectionMode.c_str(), pollIntervalSec, hwVersionConfig.c_str(), hwVersion);
+  if (doc.containsKey("volume")) {
+    volumeLevel = doc["volume"].as<int>();
+    if (volumeLevel < 0) volumeLevel = 0;
+    if (volumeLevel > 3) volumeLevel = 3;
+  }
+
+  if (doc.containsKey("night_mode")) {
+    nightModeEnabled = doc["night_mode"].as<bool>();
+  }
+
+  DBG_PRINTF("Config: Mode: %s, Poll: %lu s, HW: %s (%d), Vol: %d\n", connectionMode.c_str(), pollIntervalSec, hwVersionConfig.c_str(), hwVersion, volumeLevel);
   DBG_PRINTLN("Config: Loaded from LittleFS");
 }
 
@@ -154,6 +164,8 @@ void saveConfig() {
 
   doc["connection_mode"] = connectionMode;
   doc["poll_interval_sec"] = pollIntervalSec;
+  doc["volume"] = volumeLevel;
+  doc["night_mode"] = nightModeEnabled;
   
   serializeJson(doc, f);
   f.close();
@@ -240,6 +252,182 @@ void clearCrashLog() {
   if (LittleFS.exists("/crash.log")) {
     LittleFS.remove("/crash.log");
     DBG_PRINTLN("SYSTEM: Crash log cleared.");
+  }
+}
+
+void loadBondedPhones() {
+  bondedPhoneCount = 0;
+  if (!LittleFS.exists("/phones.json")) {
+    return;
+  }
+  File f = LittleFS.open("/phones.json", "r");
+  if (!f) return;
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, f);
+  f.close();
+  if (err) {
+    DBG_PRINTF("Phones: Failed to parse /phones.json: %s\n", err.c_str());
+    return;
+  }
+  if (doc.is<JsonArray>()) {
+    JsonArray arr = doc.as<JsonArray>();
+    for (JsonObject obj : arr) {
+      if (bondedPhoneCount >= MAX_BONDED_PHONES) break;
+      const char* addr = obj["address"] | "";
+      const char* name = obj["name"] | "Phone";
+      if (strlen(addr) > 0) {
+        // Deduplicate loaded list by address or identical name to avoid historical duplicates
+        bool duplicate = false;
+        for (int k = 0; k < bondedPhoneCount; k++) {
+          if (strcasecmp(bondedPhones[k].address, addr) == 0 ||
+              (strlen(name) > 0 && strcasecmp(bondedPhones[k].name, name) == 0)) {
+            duplicate = true;
+            break;
+          }
+        }
+        if (!duplicate) {
+          strncpy(bondedPhones[bondedPhoneCount].address, addr, sizeof(bondedPhones[bondedPhoneCount].address) - 1);
+          bondedPhones[bondedPhoneCount].address[sizeof(bondedPhones[bondedPhoneCount].address) - 1] = '\0';
+          strncpy(bondedPhones[bondedPhoneCount].name, name, sizeof(bondedPhones[bondedPhoneCount].name) - 1);
+          bondedPhones[bondedPhoneCount].name[sizeof(bondedPhones[bondedPhoneCount].name) - 1] = '\0';
+          bondedPhones[bondedPhoneCount].connected = false;
+          bondedPhoneCount++;
+        }
+      }
+    }
+  }
+  DBG_PRINTF("Phones: Loaded %d saved bonded phone(s)\n", bondedPhoneCount);
+}
+
+void saveBondedPhones() {
+  File f = LittleFS.open("/phones.json", "w");
+  if (!f) return;
+  JsonDocument doc;
+  JsonArray arr = doc.to<JsonArray>();
+  for (int i = 0; i < bondedPhoneCount; i++) {
+    JsonObject obj = arr.add<JsonObject>();
+    obj["address"] = bondedPhones[i].address;
+    obj["name"] = bondedPhones[i].name;
+  }
+  serializeJson(doc, f);
+  f.close();
+  DBG_PRINTF("Phones: Saved %d bonded phone(s)\n", bondedPhoneCount);
+}
+
+void updateOrRegisterPhone(const char* address, const char* name, bool connected) {
+  if (!address || strlen(address) == 0) return;
+
+  // 1. Check if phone already registered by exact address
+  int existingIdx = -1;
+  for (int i = 0; i < bondedPhoneCount; i++) {
+    if (strcasecmp(bondedPhones[i].address, address) == 0) {
+      existingIdx = i;
+      break;
+    }
+  }
+
+  // 2. If not found by address, check if matching by name (handles rotating BLE MAC / re-registration)
+  if (existingIdx < 0 && name && strlen(name) > 0 && strcasecmp(name, "Phone") != 0) {
+    for (int i = 0; i < bondedPhoneCount; i++) {
+      if (strcasecmp(bondedPhones[i].name, name) == 0) {
+        existingIdx = i;
+        // Update to newest address for this named phone
+        strncpy(bondedPhones[existingIdx].address, address, sizeof(bondedPhones[existingIdx].address) - 1);
+        bondedPhones[existingIdx].address[sizeof(bondedPhones[existingIdx].address) - 1] = '\0';
+        break;
+      }
+    }
+  }
+
+  if (existingIdx >= 0) {
+    if (name && strlen(name) > 0) {
+      strncpy(bondedPhones[existingIdx].name, name, sizeof(bondedPhones[existingIdx].name) - 1);
+      bondedPhones[existingIdx].name[sizeof(bondedPhones[existingIdx].name) - 1] = '\0';
+    }
+    // Update address in case it was refined
+    strncpy(bondedPhones[existingIdx].address, address, sizeof(bondedPhones[existingIdx].address) - 1);
+    bondedPhones[existingIdx].address[sizeof(bondedPhones[existingIdx].address) - 1] = '\0';
+    bondedPhones[existingIdx].connected = connected;
+
+    // Remove any other disconnected duplicate with the same name if present
+    for (int j = bondedPhoneCount - 1; j >= 0; j--) {
+      if (j != existingIdx && strcasecmp(bondedPhones[j].name, bondedPhones[existingIdx].name) == 0) {
+        for (int k = j; k < bondedPhoneCount - 1; k++) {
+          bondedPhones[k] = bondedPhones[k + 1];
+        }
+        bondedPhoneCount--;
+        if (existingIdx > j) existingIdx--;
+      }
+    }
+
+    // If connected, move to top (index 0) so connected phones are shown on top
+    if (connected && existingIdx > 0) {
+      BondedPhone temp = bondedPhones[existingIdx];
+      for (int i = existingIdx; i > 0; i--) {
+        bondedPhones[i] = bondedPhones[i - 1];
+      }
+      bondedPhones[0] = temp;
+    }
+    saveBondedPhones();
+    return;
+  }
+
+  // 3. Not found: add new phone if space or replace oldest disconnected
+  if (bondedPhoneCount < MAX_BONDED_PHONES) {
+    int idx = bondedPhoneCount++;
+    strncpy(bondedPhones[idx].address, address, sizeof(bondedPhones[idx].address) - 1);
+    bondedPhones[idx].address[sizeof(bondedPhones[idx].address) - 1] = '\0';
+    const char* defaultName = (name && strlen(name) > 0) ? name : "Phone";
+    strncpy(bondedPhones[idx].name, defaultName, sizeof(bondedPhones[idx].name) - 1);
+    bondedPhones[idx].name[sizeof(bondedPhones[idx].name) - 1] = '\0';
+    bondedPhones[idx].connected = connected;
+    if (connected && idx > 0) {
+      BondedPhone temp = bondedPhones[idx];
+      for (int i = idx; i > 0; i--) {
+        bondedPhones[i] = bondedPhones[i - 1];
+      }
+      bondedPhones[0] = temp;
+    }
+  } else {
+    // Replace last disconnected phone
+    int replaceIdx = MAX_BONDED_PHONES - 1;
+    for (int i = MAX_BONDED_PHONES - 1; i >= 0; i--) {
+      if (!bondedPhones[i].connected) {
+        replaceIdx = i;
+        break;
+      }
+    }
+    strncpy(bondedPhones[replaceIdx].address, address, sizeof(bondedPhones[replaceIdx].address) - 1);
+    bondedPhones[replaceIdx].address[sizeof(bondedPhones[replaceIdx].address) - 1] = '\0';
+    const char* defaultName = (name && strlen(name) > 0) ? name : "Phone";
+    strncpy(bondedPhones[replaceIdx].name, defaultName, sizeof(bondedPhones[replaceIdx].name) - 1);
+    bondedPhones[replaceIdx].name[sizeof(bondedPhones[replaceIdx].name) - 1] = '\0';
+    bondedPhones[replaceIdx].connected = connected;
+    if (connected && replaceIdx > 0) {
+      BondedPhone temp = bondedPhones[replaceIdx];
+      for (int i = replaceIdx; i > 0; i--) {
+        bondedPhones[i] = bondedPhones[i - 1];
+      }
+      bondedPhones[0] = temp;
+    }
+  }
+  saveBondedPhones();
+}
+
+void setPhoneConnected(const char* address, bool connected) {
+  if (!address) return;
+  for (int i = 0; i < bondedPhoneCount; i++) {
+    if (strcasecmp(bondedPhones[i].address, address) == 0) {
+      bondedPhones[i].connected = connected;
+      if (connected && i > 0) {
+        BondedPhone temp = bondedPhones[i];
+        for (int k = i; k > 0; k--) {
+          bondedPhones[k] = bondedPhones[k - 1];
+        }
+        bondedPhones[0] = temp;
+      }
+      break;
+    }
   }
 }
 

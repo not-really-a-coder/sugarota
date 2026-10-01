@@ -1,4 +1,5 @@
 #include "ble.h"
+#include "storage.h"
 #include <ArduinoJson.h>
 #include <esp_mac.h>
 
@@ -14,8 +15,12 @@ public:
 
     void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
         m_ble->m_connectedCount = pServer->getConnectedCount();
-        BLE_DBG_PRINTF("[BLE] Central connected: %s (total clients: %d)\n", connInfo.getAddress().toString().c_str(), m_ble->m_connectedCount);
+        String peerAddr = connInfo.getAddress().toString().c_str();
+        BLE_DBG_PRINTF("[BLE] Central connected: %s (total clients: %d)\n", peerAddr.c_str(), m_ble->m_connectedCount);
         
+        setPhoneConnected(peerAddr.c_str(), true);
+        bleUIUpdatePending = true;
+
         // Update advertising: stop advertising unless pairing mode is explicitly active
         m_ble->updateAdvertising();
 
@@ -26,6 +31,13 @@ public:
 
     void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
         m_ble->m_connectedCount = pServer->getConnectedCount();
+        String peerAddr = connInfo.getAddress().toString().c_str();
+        setPhoneConnected(peerAddr.c_str(), false);
+        if (activeFindPhoneAddr.equalsIgnoreCase(peerAddr)) {
+            activeFindPhoneAddr = "";
+        }
+        bleUIUpdatePending = true;
+
         if (m_ble->m_connectedCount == 0) {
             m_ble->m_glucoseBridged = false;
         }
@@ -400,7 +412,7 @@ void SugarotaBLE::confirmPairing(bool accept) {
     }
 }
 
-void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness, int darkTheme, bool requestRefresh, int debug, bool forceRefresh) {
+void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* version, int brightness, int darkTheme, bool requestRefresh, int debug, bool forceRefresh, int volume) {
     if (!m_pStatusChar) return;
 
     JsonDocument doc;
@@ -413,6 +425,8 @@ void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* vers
     if (darkTheme >= 0) {
         doc["dark_theme"] = (darkTheme == 1);
     }
+    int volToSend = (volume >= 0) ? volume : volumeLevel;
+    doc["volume"] = volToSend;
     if (requestRefresh) {
         doc["request_refresh"] = true;
     }
@@ -447,6 +461,40 @@ void SugarotaBLE::notifyWifiOTAStatus(const char* status, const char* ip, const 
     if (isConnected()) {
         m_pStatusChar->notify();
     }
+}
+
+void SugarotaBLE::notifyFindPhoneAlert(const char* targetAddress) {
+    if (!m_pStatusChar) return;
+
+    JsonDocument doc;
+    doc["alert"] = "find_phone";
+    if (targetAddress && strlen(targetAddress) > 0) {
+        doc["target"] = targetAddress;
+    }
+    String payload;
+    serializeJson(doc, payload);
+    m_pStatusChar->setValue((const uint8_t*)payload.c_str(), payload.length());
+    if (isConnected()) {
+        m_pStatusChar->notify();
+    }
+    BLE_DBG_PRINTF("[BLE] Sent find_phone alert to phone(s) (target: %s)\n", targetAddress ? targetAddress : "all");
+}
+
+void SugarotaBLE::notifyStopAlert(const char* targetAddress) {
+    if (!m_pStatusChar) return;
+
+    JsonDocument doc;
+    doc["alert"] = "stop_alert";
+    if (targetAddress && strlen(targetAddress) > 0) {
+        doc["target"] = targetAddress;
+    }
+    String payload;
+    serializeJson(doc, payload);
+    m_pStatusChar->setValue((const uint8_t*)payload.c_str(), payload.length());
+    if (isConnected()) {
+        m_pStatusChar->notify();
+    }
+    BLE_DBG_PRINTF("[BLE] Sent stop_alert to phone(s) (target: %s)\n", targetAddress ? targetAddress : "all");
 }
 
 void SugarotaBLE::enablePairingMode(bool enable) {
@@ -517,5 +565,48 @@ void SugarotaBLE::disconnect() {
         }
     }
 }
+
+void SugarotaBLE::syncBondedPhonesWithActiveConnections() {
+    if (!m_pServer) return;
+    std::vector<uint16_t> connIds = m_pServer->getPeerDevices();
+    m_connectedCount = connIds.size();
+
+    // Mark all as disconnected first if 0 clients connected
+    if (connIds.empty()) {
+        for (int i = 0; i < bondedPhoneCount; i++) {
+            bondedPhones[i].connected = false;
+        }
+        return;
+    }
+
+    // Check each bonded phone against active connection peer addresses
+    for (int i = 0; i < bondedPhoneCount; i++) {
+        bool isActivelyConnected = false;
+        for (uint16_t cid : connIds) {
+            NimBLEConnInfo info = m_pServer->getPeerInfoByHandle(cid);
+            String actAddr = info.getAddress().toString().c_str();
+            if (actAddr.equalsIgnoreCase(bondedPhones[i].address)) {
+                isActivelyConnected = true;
+                break;
+            }
+        }
+        // If actively connected by MAC or if overall connectedCount corresponds to known phones
+        bondedPhones[i].connected = isActivelyConnected;
+    }
+}
+
+void SugarotaBLE::requestPhoneInfoRefresh() {
+    if (!m_pStatusChar || !isConnected()) return;
+
+    // Send status notification asking companions to push fresh phone_info
+    JsonDocument doc;
+    doc["request_phone_info"] = true;
+    String payload;
+    serializeJson(doc, payload);
+    m_pStatusChar->setValue((const uint8_t*)payload.c_str(), payload.length());
+    m_pStatusChar->notify();
+    BLE_DBG_PRINTLN("[BLE] Broadcasted request_phone_info to connected central(s)");
+}
+
 
 

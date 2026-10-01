@@ -262,6 +262,96 @@ fun AppSettingsScreen(
                     }
                 }
             }
+
+            // Section 3: Find Phone Alert Sound
+            var soundTitle by remember { mutableStateOf(appSettingsPrefs.getFindPhoneSoundTitle(context)) }
+            val ringtonePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                if (result.resultCode == android.app.Activity.RESULT_OK) {
+                    val uri: android.net.Uri? = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        result.data?.getParcelableExtra(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI, android.net.Uri::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        result.data?.getParcelableExtra(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+                    }
+                    appSettingsPrefs.setFindPhoneSoundUri(uri?.toString())
+                    soundTitle = appSettingsPrefs.getFindPhoneSoundTitle(context)
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = null,
+                        tint = colors.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Find Phone Alert Sound",
+                        style = typography.h3,
+                        color = colors.foreground
+                    )
+                }
+                Text(
+                    text = "Selected sound will play at full volume when Find Phone is triggered from Sugarota.",
+                    style = typography.caption,
+                    color = colors.mutedForeground
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Card(
+                    shape = RoundedCornerShape(ShadcnTheme.shapes.radiusMedium),
+                    colors = CardDefaults.cardColors(containerColor = colors.card),
+                    border = BorderStroke(1.dp, colors.border),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            val currentUriStr = appSettingsPrefs.getFindPhoneSoundUri()
+                            val existingUri = if (!currentUriStr.isNullOrBlank()) {
+                                android.net.Uri.parse(currentUriStr)
+                            } else {
+                                android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
+                            }
+                            val intent = android.content.Intent(android.media.RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                                putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TYPE, android.media.RingtoneManager.TYPE_RINGTONE or android.media.RingtoneManager.TYPE_ALARM)
+                                putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TITLE, "Select Find Phone Alert Sound")
+                                putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, existingUri)
+                                putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                                putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                            }
+                            ringtonePickerLauncher.launch(intent)
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Alert Ringtone",
+                                style = typography.body.copy(fontWeight = FontWeight.SemiBold),
+                                color = colors.foreground
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = soundTitle,
+                                style = typography.caption.copy(color = colors.primary, fontWeight = FontWeight.Medium)
+                            )
+                        }
+                        Text(
+                            text = "Change",
+                            style = typography.caption.copy(fontWeight = FontWeight.Bold, color = colors.primary)
+                        )
+                    }
+                }
+            }
         }
     }
 }

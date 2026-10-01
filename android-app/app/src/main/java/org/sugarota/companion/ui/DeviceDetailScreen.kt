@@ -876,6 +876,70 @@ fun DeviceChartContent(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    // 1b. Speaker Volume Section (levels 0: Off, 1: 35%, 2: 70%, 3: 100%)
+                    val volumeLevels = listOf(
+                        Pair(0, "Off"),
+                        Pair(1, "35%"),
+                        Pair(2, "70%"),
+                        Pair(3, "100%")
+                    )
+                    val currentVolume = device.status.volume
+
+                    Text(
+                        text = "Speaker Volume",
+                        style = typography.caption.copy(fontWeight = FontWeight.Medium),
+                        color = colors.mutedForeground
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        volumeLevels.forEach { (level, label) ->
+                            val isSelected = currentVolume == level
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusMedium))
+                                    .background(if (isSelected) colors.primary.copy(alpha = 0.15f) else colors.secondary)
+                                    .border(
+                                        BorderStroke(
+                                            1.dp,
+                                            if (isSelected) colors.primary else colors.border
+                                        ),
+                                        RoundedCornerShape(ShadcnTheme.shapes.radiusMedium)
+                                    )
+                                    .clickable {
+                                        service?.setDeviceVolume(device.address, level)
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (level == 0) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                        contentDescription = null,
+                                        tint = if (isSelected) colors.primary else colors.mutedForeground,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = label,
+                                        style = typography.caption.copy(
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        ),
+                                        color = if (isSelected) colors.primary else colors.foreground
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
                     // 2. Theme Selection Section (Dark / Light)
                     val isDark = device.status.isDarkTheme
                     Text(

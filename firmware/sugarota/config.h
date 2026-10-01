@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#define SUGAROTA_VERSION "v0.09.29.7"
+#define SUGAROTA_VERSION "v0.10.01.42"
 
 // --- Design System Colors (RGB565 matching Shadcn Zinc Dark & Telemetry Palette) ---
 #define BLACK   0x0841  // #09090B (OLED Zinc Dark Canvas)
@@ -162,7 +162,22 @@ extern bool pendingStartWifiOta;
 
 extern bool isDarkTheme;
 extern int brightnessLevel;
+extern int volumeLevel;
+extern bool nightModeEnabled;
+extern bool isVerticalMode;
+extern int verticalSubscreen;
 extern unsigned long lastUiUpdate;
+
+// Bonded phone metadata for Find Phone screen
+struct BondedPhone {
+  char address[18];   // "AA:BB:CC:DD:EE:FF"
+  char name[32];      // "Google Pixel 7"
+  bool connected;     // true if currently connected over BLE
+};
+#define MAX_BONDED_PHONES 3
+extern BondedPhone bondedPhones[MAX_BONDED_PHONES];
+extern int bondedPhoneCount;
+extern String activeFindPhoneAddr;
 
 extern bool isOTAUpdating;
 extern int otaProgressPercent;

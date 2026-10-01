@@ -73,9 +73,38 @@ void handleBLEGlucose(const JsonDocument& doc) {
     }
   }
 
+  // Check if payload contains phone metadata (from time_sync or sync packets)
+  if (doc.containsKey("phone_name") || doc.containsKey("phone_model")) {
+    const char* pName = doc["phone_name"] | (doc["phone_model"] | "Phone");
+    const char* pAddr = doc["phone_id"] | (doc["phone_addr"] | "");
+    if (strlen(pAddr) > 0) {
+      updateOrRegisterPhone(pAddr, pName, true);
+    }
+  }
+
   const char* pType = doc["type"] | "";
   if (strcmp(pType, "time_sync") == 0) {
     bleUIUpdatePending = true;
+    return;
+  }
+
+  if (strcmp(pType, "phone_info") == 0) {
+    const char* pName = doc["phone_name"] | (doc["phone_model"] | "Phone");
+    const char* pAddr = doc["phone_id"] | (doc["phone_addr"] | "");
+    if (strlen(pAddr) > 0) {
+      updateOrRegisterPhone(pAddr, pName, true);
+    }
+    bleUIUpdatePending = true;
+    return;
+  }
+
+  if (strcmp(pType, "stop_find_phone") == 0) {
+    const char* pAddr = doc["phone_id"] | (doc["phone_addr"] | "");
+    if (strlen(pAddr) == 0 || activeFindPhoneAddr.equalsIgnoreCase(pAddr)) {
+      activeFindPhoneAddr = "";
+      bleUIUpdatePending = true;
+      DBG_PRINTLN("BLE: Received stop_find_phone from companion");
+    }
     return;
   }
 
@@ -252,6 +281,14 @@ void handleBLECommand(const JsonDocument& doc) {
     screenManuallyOff = false;
     setBrightness(val);
     DBG_PRINTF("BLE: Updated brightness to %d\n", val);
+    SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
+  } else if (strcmp(cmd, "set_volume") == 0) {
+    int val = doc["val"] | 2;
+    if (val < 0) val = 0;
+    if (val > 3) val = 3;
+    setVolume(val);
+    saveConfig();
+    DBG_PRINTF("BLE: Updated volume to %d\n", val);
     SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
   } else if (strcmp(cmd, "set_theme") == 0) {
     const char* themeStr = doc["val"] | "";

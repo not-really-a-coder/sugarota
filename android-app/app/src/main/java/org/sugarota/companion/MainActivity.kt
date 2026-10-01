@@ -284,6 +284,7 @@ fun CompanionAppContent(
     var targetDeviceTab by remember { mutableStateOf(DeviceScreenTab.CHART) }
     val bridgeStatusText by service?.bridgeStatus?.collectAsState() ?: remember { mutableStateOf("Idle") }
     val lastReading by service?.lastReading?.collectAsState() ?: remember { mutableStateOf(null) }
+    val isRinging by service?.isRinging?.collectAsState() ?: remember { mutableStateOf(false) }
 
     val connectingDevices by service?.connectingDevicesState?.collectAsState() ?: remember { mutableStateOf(emptySet()) }
     val pairingDevices by service?.pairingDevicesState?.collectAsState() ?: remember { mutableStateOf(emptySet()) }
@@ -609,6 +610,57 @@ fun CompanionAppContent(
                             ),
                             color = colors.primary
                         )
+                    }
+                }
+            }
+
+            // Active Find Phone Ringing Banner
+            if (isRinging) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444)),
+                    shape = RoundedCornerShape(ShadcnTheme.shapes.radiusMedium),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.NotificationsActive,
+                            contentDescription = "Ringing",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Finding Phone",
+                                style = typography.body.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White
+                            )
+                            Text(
+                                text = "Device requested find phone alert",
+                                style = typography.caption,
+                                color = Color.White.copy(alpha = 0.9f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        ShadcnButton(
+                            onClick = { service?.stopFindPhoneAlert(sendBleConfirmation = true) },
+                            variant = ShadcnButtonVariant.SECONDARY,
+                            modifier = Modifier.defaultMinSize(minWidth = 72.dp)
+                        ) {
+                            Text(
+                                text = "STOP",
+                                color = Color(0xFFEF4444),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
                     }
                 }
             }
@@ -1351,13 +1403,13 @@ fun CompanionAppContent(
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        imageVector = Icons.Default.OpenInNew,
+                                        imageVector = Icons.Default.Download,
                                         contentDescription = null,
                                         tint = colors.primaryForeground,
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Download Release", color = colors.primaryForeground, fontWeight = FontWeight.Bold)
+                                    Text("Download APK", color = colors.primaryForeground, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

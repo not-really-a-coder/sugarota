@@ -2,6 +2,27 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## 2026-10-01 — Multi-Device Connectivity & Find Phone Feature
+Firmware v0.10.01.42 | Android App v0.10.01.23
+
+This release introduces multi-device Bluetooth management, a dedicated Find Phone feature with bidirectional alerts, and vertical subscreen UI additions for bonded device interaction.
+
+### Firmware & Display Interface
+
+- Added Find Phone screen in vertical orientation allowing users to trigger audible alerts on paired phones
+- Implemented multi-device pairing support with persistence of bonded central devices in non-volatile storage
+- Added dedicated Ring Phone and Stop Alarm interactive buttons on the vertical subscreen
+- Integrated alert state synchronizations across BLE characteristics and sound generator
+
+### Android Companion App
+
+- Added bidirectional Find Phone ringing audio player with high-priority audio stream handling
+- Added multi-device connection status indicators and notification management
+- Refined background Bluetooth LE scan receiver and auto-reconnect routines
+- Updated companion app UI for device switching and ring-phone acknowledgment
+
+---
+
 ## [v0.09.29.7] — V1 Display Brightness Cycle & Display-Off Fixes (2026-09-29)
 
 This release resolves brightness cycling and display toggle issues when using the hardware power button on V1 devices, ensuring correct inverted PWM control across all levels and eliminating unintended canvas redraw wakeups when the screen is powered down.

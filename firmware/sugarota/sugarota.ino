@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.09.29.7"
+#define SUGAROTA_VERSION "v0.10.01.42"
 
 #include "config.h"
 #include "storage.h"
@@ -61,7 +61,15 @@ bool pendingStartWifiOta = false;
 
 bool isDarkTheme = true;
 int brightnessLevel = 76;
+int volumeLevel = 2; // Default preset 2 (~70%)
+bool nightModeEnabled = false;
+bool isVerticalMode = false;
+int verticalSubscreen = 0; // 0: Main Vertical Menu, 1: Settings, 2: Find Phone
 unsigned long lastUiUpdate = 0;
+
+BondedPhone bondedPhones[MAX_BONDED_PHONES];
+int bondedPhoneCount = 0;
+String activeFindPhoneAddr = "";
 
 bool isOTAUpdating = false;
 int otaProgressPercent = 0;
@@ -424,6 +432,8 @@ void setup() {
   }
   logBoot(batMsg);
 
+  loadBondedPhones();
+
   // BLE Peripheral: initialized unless connection mode is explicitly set to WIFI_ONLY
   if (connectionMode != "WIFI_ONLY") {
     SugarotaBLE::getInstance().setGlucoseCallback(handleBLEGlucose);
@@ -736,7 +746,7 @@ void loop() {
   static unsigned long lastClockTick = 0;
   if (millis() - lastClockTick >= 1000) {
     lastClockTick = millis();
-    if (!isTimerMode && !isFetching) {
+    if (!isTimerMode && !isVerticalMode && !isFetching) {
       updateUI();
     }
   }

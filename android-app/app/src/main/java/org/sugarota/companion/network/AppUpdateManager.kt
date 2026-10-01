@@ -47,7 +47,7 @@ class AppUpdateManager(private val context: Context) {
                     val latestVer = androidObj?.optString("version", "") ?: ""
                     if (latestVer.isNotBlank()) {
                         val changelog = fetchChangelog(url.substringBefore("/data/"), latestVer)
-                        val apkUrl = "https://github.com/not-really-a-coder/sugarota/releases"
+                        val apkUrl = "https://github.com/not-really-a-coder/sugarota/raw/refs/heads/main/android-app/sugarota-app-debug.apk"
                         return@withContext AppReleaseInfo(
                             version = latestVer,
                             changelog = changelog,
@@ -95,20 +95,33 @@ class AppUpdateManager(private val context: Context) {
             val lines = markdown.lines()
             val section = StringBuilder()
             var capturing = false
+            var currentHeader = ""
+            val currentBlock = StringBuilder()
 
             for (line in lines) {
                 if (line.startsWith("## [") || line.startsWith("## ")) {
                     if (capturing) {
                         break
                     }
-                    if (line.contains(targetVersion, ignoreCase = true) || (!capturing && targetVersion.isBlank())) {
-                        capturing = true
-                        section.append(line).append("\n\n")
-                        continue
+                    if (currentHeader.isNotEmpty()) {
+                        val blockText = currentBlock.toString()
+                        if (targetVersion.isBlank() || currentHeader.contains(targetVersion, ignoreCase = true) || blockText.contains(targetVersion, ignoreCase = true)) {
+                            capturing = true
+                            section.append(currentHeader).append("\n\n").append(blockText)
+                            break
+                        }
                     }
+                    currentHeader = line
+                    currentBlock.clear()
+                    continue
                 }
-                if (capturing) {
-                    section.append(line).append("\n")
+                currentBlock.append(line).append("\n")
+            }
+
+            if (!capturing && currentHeader.isNotEmpty()) {
+                val blockText = currentBlock.toString()
+                if (targetVersion.isBlank() || currentHeader.contains(targetVersion, ignoreCase = true) || blockText.contains(targetVersion, ignoreCase = true)) {
+                    section.append(currentHeader).append("\n\n").append(blockText)
                 }
             }
 

@@ -175,8 +175,8 @@ object NotificationChartRenderer {
             val p1 = windowPoints[i]
             val p2 = windowPoints[i + 1]
 
-            // If gap between points is > 10 minutes (600s), don't draw connecting line
-            if (p2.timestamp - p1.timestamp > 600) continue
+            // If gap between points is > 6 minutes (360s), don't draw connecting line
+            if (p2.timestamp - p1.timestamp > 360) continue
 
             val x1 = getX(p1.timestamp)
             val y1 = getY(p1.sgv)

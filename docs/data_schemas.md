@@ -106,6 +106,14 @@ Sugarota accepts both verbose and compact format. The compact schema is recommen
 }
 ```
 
+#### Historical Readings & Data Gap Behavior:
+* **Reading Interval**: Continuous glucose monitors (CGMs) normally broadcast new readings every 5 minutes (300 seconds).
+* **Data Gap Threshold**: A gap between consecutive readings exceeding **6 minutes (360 seconds)** is classified across firmware, mobile app charts, and sparklines as a **data gap**.
+* **Visual Representation**:
+  * **Sugarota Device & Detailed App Charts**: Display vertical indicator lines/zig-zag gap markers with missing-reading interval spacing.
+  * **PiP & Notification Sparklines**: Break the connecting line/curve and render isolated readings as individual dots without joining lines across the gap.
+  * **Companion BLE Service**: Triggers automatic historical backfills (`SugarotaBleService`) whenever `timeDiff > 360` seconds is detected.
+
 #### API Status & Synchronization Signals:
 Written by the companion app when handling scheduled refresh requests:
 

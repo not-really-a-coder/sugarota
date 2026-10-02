@@ -2,6 +2,27 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## 2026-10-02 — Picture-in-Picture Adaptive Layouts & Data Gap Handling
+Android App v0.10.01.25
+
+This release introduces width-adaptive layouts for Android Picture-in-Picture mode, responsive scaling across window dimensions, sparkline data gap handling, and formal data gap specifications.
+
+### Android Companion App
+
+- Added width-adaptive layout tiers for Picture-in-Picture mode based on window width
+- Implemented full chart layout with axis labels and responsive edge-to-edge stretching for wide windows
+- Implemented label-free chart view with maximized line canvas and simplified reading age text for medium windows
+- Implemented minimalist compact reading view with stacked delta and units and an integrated 2-hour smoothed sparkline for small windows
+- Added data gap handling in sparklines, breaking connecting curves and rendering isolated readings as distinct dots when gap exceeds 6 minutes
+- Added setSeamlessResizeEnabled(false) to picture-in-picture parameters on Android 12+
+- Aligned notification sparkline gap threshold with the 6-minute (360-second) standard
+
+### Documentation
+
+- Documented CGM reading intervals and the 6-minute (360-second) data gap threshold specification in data schemas
+
+---
+
 ## 2026-10-01 — Multi-Device Connectivity & Find Phone Feature
 Firmware v0.10.01.42 | Android App v0.10.01.23
 

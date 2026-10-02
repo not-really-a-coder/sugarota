@@ -37,7 +37,9 @@ fun GlucoseChartView(
     modifier: Modifier = Modifier,
     units: String = "mg/dL",
     isDarkTheme: Boolean = true,
-    enableInteraction: Boolean = true
+    enableInteraction: Boolean = true,
+    showLabels: Boolean = true,
+    showCardFrame: Boolean = true
 ) {
     val colors = ShadcnTheme.colors
     val typography = ShadcnTheme.typography
@@ -51,15 +53,21 @@ fun GlucoseChartView(
     var touchX by remember { mutableFloatStateOf(-1f) }
 
     if (sortedHistory.isEmpty()) {
-        Box(
-            modifier = modifier
+        val emptyModifier = if (showCardFrame) {
+            modifier
                 .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusLarge))
                 .background(colors.card)
                 .border(
                     androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                     RoundedCornerShape(ShadcnTheme.shapes.radiusLarge)
                 )
-                .padding(16.dp),
+                .padding(16.dp)
+        } else {
+            modifier
+                .background(colors.background)
+        }
+        Box(
+            modifier = emptyModifier,
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -72,8 +80,8 @@ fun GlucoseChartView(
     }
 
     // Chart container
-    Box(
-        modifier = modifier
+    val containerModifier = if (showCardFrame) {
+        modifier
             .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusLarge))
             .background(colors.card)
             .border(
@@ -81,6 +89,12 @@ fun GlucoseChartView(
                 RoundedCornerShape(ShadcnTheme.shapes.radiusLarge)
             )
             .padding(top = 16.dp, bottom = 12.dp, start = 8.dp, end = 12.dp)
+    } else {
+        modifier
+    }
+
+    Box(
+        modifier = containerModifier
     ) {
         val interactionModifier = if (enableInteraction) {
             Modifier
@@ -124,15 +138,17 @@ fun GlucoseChartView(
         ) {
             val totalW = size.width
             val totalH = size.height
+            val nativeCanvas = drawContext.canvas.nativeCanvas
+            val timeSdf = SimpleDateFormat("HH:mm", Locale.getDefault())
 
             // Layout metrics
-            val yAxisLabelWidth = 44.dp.toPx()
-            val xAxisLabelHeight = 22.dp.toPx()
-            val chartTop = 10.dp.toPx()
+            val yAxisLabelWidth = if (showLabels) 44.dp.toPx() else 0f
+            val xAxisLabelHeight = if (showLabels) 22.dp.toPx() else 0f
+            val chartTop = if (showLabels) 10.dp.toPx() else 0f
             val chartBottom = totalH - xAxisLabelHeight
             val chartHeight = chartBottom - chartTop
             val chartLeft = yAxisLabelWidth
-            val chartRight = totalW - 8.dp.toPx()
+            val chartRight = if (showLabels) totalW - 8.dp.toPx() else totalW
             val chartWidth = chartRight - chartLeft
 
             if (chartWidth <= 0 || chartHeight <= 0) return@Canvas
@@ -202,48 +218,48 @@ fun GlucoseChartView(
                 strokeWidth = 1.dp.toPx()
             )
 
-            // Y-Axis Labels (Text Paint)
-            val textPaint = Paint().apply {
-                color = android.graphics.Color.parseColor("#A1A1AA")
-                textSize = 10.sp.toPx()
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                isAntiAlias = true
-            }
-
-            fun formatValueForY(bg: Int): String {
-                return if (units.equals("mmol/l", ignoreCase = true)) {
-                    String.format(Locale.US, "%.1f", bg / 18.0182f)
-                } else {
-                    bg.toString()
+            if (showLabels) {
+                // Y-Axis Labels (Text Paint)
+                val textPaint = Paint().apply {
+                    color = android.graphics.Color.parseColor("#A1A1AA")
+                    textSize = 10.sp.toPx()
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                    isAntiAlias = true
                 }
+
+                fun formatValueForY(bg: Int): String {
+                    return if (units.equals("mmol/l", ignoreCase = true)) {
+                        String.format(Locale.US, "%.1f", bg / 18.0182f)
+                    } else {
+                        bg.toString()
+                    }
+                }
+
+                // 180 line label
+                nativeCanvas.drawText(
+                    formatValueForY(180),
+                    8.dp.toPx(),
+                    y180 + 3.dp.toPx(),
+                    textPaint
+                )
+
+                // 70 line label
+                nativeCanvas.drawText(
+                    formatValueForY(70),
+                    8.dp.toPx(),
+                    y70 + 3.dp.toPx(),
+                    textPaint
+                )
+
+                // Max line label (top)
+                val yMaxTop = getY(maxBG)
+                nativeCanvas.drawText(
+                    formatValueForY(maxBG - 20),
+                    8.dp.toPx(),
+                    yMaxTop + 10.dp.toPx(),
+                    textPaint
+                )
             }
-
-            val nativeCanvas = drawContext.canvas.nativeCanvas
-
-            // 180 line label
-            nativeCanvas.drawText(
-                formatValueForY(180),
-                8.dp.toPx(),
-                y180 + 3.dp.toPx(),
-                textPaint
-            )
-
-            // 70 line label
-            nativeCanvas.drawText(
-                formatValueForY(70),
-                8.dp.toPx(),
-                y70 + 3.dp.toPx(),
-                textPaint
-            )
-
-            // Max line label (top)
-            val yMaxTop = getY(maxBG)
-            nativeCanvas.drawText(
-                formatValueForY(maxBG - 20),
-                8.dp.toPx(),
-                yMaxTop + 10.dp.toPx(),
-                textPaint
-            )
 
             // 4. Data Gap indicators (when timeDiff > 360 sec)
             // Rendered as two vertical zigzag lines with width equal to 1 data point interval,
@@ -362,31 +378,32 @@ fun GlucoseChartView(
                 )
             }
 
-            // 7. X-Axis Time Labels (Absolute hours: e.g. 14:00, 13:00, 12:00, 11:00 or current reading time)
-            val xAxisPaint = Paint().apply {
-                color = android.graphics.Color.parseColor("#71717A")
-                textSize = 10.sp.toPx()
-                isAntiAlias = true
-            }
+            if (showLabels) {
+                // 7. X-Axis Time Labels (Absolute hours: e.g. 14:00, 13:00, 12:00, 11:00 or current reading time)
+                val xAxisPaint = Paint().apply {
+                    color = android.graphics.Color.parseColor("#71717A")
+                    textSize = 10.sp.toPx()
+                    isAntiAlias = true
+                }
 
-            val latestTs = sortedHistory.first().timestamp
-            val timeSdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-            val timeIntervals = listOf(
-                Pair(0f, timeSdf.format(Date(latestTs * 1000L))),
-                Pair(16 * barWidth, timeSdf.format(Date((latestTs - 3600L) * 1000L))),
-                Pair(32 * barWidth, timeSdf.format(Date((latestTs - 7200L) * 1000L))),
-                Pair(48 * barWidth, timeSdf.format(Date((latestTs - 10800L) * 1000L)))
-            )
-            for ((offsetFromRight, label) in timeIntervals) {
-                val lx = chartRight - offsetFromRight
-                if (lx >= chartLeft) {
-                    val textW = xAxisPaint.measureText(label)
-                    nativeCanvas.drawText(
-                        label,
-                        lx - (textW / 2f).coerceAtMost(lx - chartLeft),
-                        totalH - 4.dp.toPx(),
-                        xAxisPaint
-                    )
+                val latestTs = sortedHistory.first().timestamp
+                val timeIntervals = listOf(
+                    Pair(0f, timeSdf.format(Date(latestTs * 1000L))),
+                    Pair(16 * barWidth, timeSdf.format(Date((latestTs - 3600L) * 1000L))),
+                    Pair(32 * barWidth, timeSdf.format(Date((latestTs - 7200L) * 1000L))),
+                    Pair(48 * barWidth, timeSdf.format(Date((latestTs - 10800L) * 1000L)))
+                )
+                for ((offsetFromRight, label) in timeIntervals) {
+                    val lx = chartRight - offsetFromRight
+                    if (lx >= chartLeft) {
+                        val textW = xAxisPaint.measureText(label)
+                        nativeCanvas.drawText(
+                            label,
+                            lx - (textW / 2f).coerceAtMost(lx - chartLeft),
+                            totalH - 4.dp.toPx(),
+                            xAxisPaint
+                        )
+                    }
                 }
             }
 

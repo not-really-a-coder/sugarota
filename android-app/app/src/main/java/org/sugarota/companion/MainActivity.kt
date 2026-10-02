@@ -84,6 +84,10 @@ class MainActivity : ComponentActivity() {
                 .setAspectRatio(android.util.Rational(16, 9))
                 .setSourceRectHint(sourceRect)
 
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                builder.setSeamlessResizeEnabled(false)
+            }
+
             enterPictureInPictureMode(builder.build())
         }
     }

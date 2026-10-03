@@ -72,9 +72,10 @@ class MainActivity : ComponentActivity() {
     private var isBound by mutableStateOf(false)
     var isInPipMode by mutableStateOf(false)
     var pipDeviceAddress by mutableStateOf<String?>(null)
+    var currentActiveDeviceAddress by mutableStateOf<String?>(null)
 
     fun enterPipMode(targetDeviceAddress: String? = null) {
-        pipDeviceAddress = targetDeviceAddress
+        pipDeviceAddress = targetDeviceAddress ?: currentActiveDeviceAddress
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val dm = resources.displayMetrics
             val screenW = dm.widthPixels
@@ -184,8 +185,8 @@ class MainActivity : ComponentActivity() {
                                     org.json.JSONObject(cfgJson).optString("units", "")
                                 } catch (_: Exception) { "" }
                             } else ""
-                        }?.takeIf { it.isNotBlank() } ?: bleService?.getDeviceUnits(activePipAddr) ?: "mg/dL"
-                        val units = reading?.units?.takeIf { it.isNotBlank() } ?: configuredUnits
+                        }?.takeIf { it.isNotBlank() } ?: bleService?.getDeviceUnits(activePipAddr) ?: reading?.units ?: "mg/dL"
+                        val units = configuredUnits.ifBlank { reading?.units ?: "mg/dL" }
                         PipGlucoseChartContent(
                             reading = reading,
                             units = units,
@@ -208,6 +209,7 @@ class MainActivity : ComponentActivity() {
                             } else {
                                 CompanionAppContent(
                                     service = bleService,
+                                    onActiveDeviceChanged = { currentActiveDeviceAddress = it },
                                     onEnterPip = { targetAddr -> enterPipMode(targetAddr) }
                                 )
                             }
@@ -275,6 +277,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun CompanionAppContent(
     service: SugarotaBleService?,
+    onActiveDeviceChanged: ((String?) -> Unit)? = null,
     onEnterPip: ((String?) -> Unit)? = null
 ) {
     val currentService by rememberUpdatedState(service)
@@ -300,6 +303,9 @@ fun CompanionAppContent(
     val isScanning = serviceScanning
 
     var selectedDeviceAddress by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(selectedDeviceAddress) {
+        onActiveDeviceChanged?.invoke(selectedDeviceAddress)
+    }
     var targetDeviceTab by remember { mutableStateOf(DeviceScreenTab.CHART) }
     val bridgeStatusText by service?.bridgeStatus?.collectAsState() ?: remember { mutableStateOf("Idle") }
     val lastReading by service?.lastReading?.collectAsState() ?: remember { mutableStateOf(null) }
@@ -844,14 +850,21 @@ fun CompanionAppContent(
                                         val hitItem = items.firstOrNull {
                                             offset.y.toInt() in it.offset..(it.offset + it.size)
                                         }
-                                        if (hitItem != null && hitItem.index in currentOrderList.indices) {
-                                            initialDragIndex = hitItem.index
-                                            draggedDeviceAddress = currentOrderList.getOrNull(hitItem.index)?.address
+                                        val pairedHeaderOffset = if (currentOrderList.isNotEmpty()) 1 else 0
+                                        val hitOrderIndex = hitItem?.let { it.index - pairedHeaderOffset }
+                                        if (hitItem != null && hitOrderIndex != null && hitOrderIndex in currentOrderList.indices) {
+                                            initialDragIndex = hitOrderIndex
+                                            draggedDeviceAddress = currentOrderList.getOrNull(hitOrderIndex)?.address
                                             dragDisplacementY = 0f
                                             settlingDeviceAddress = null
                                             // Capture static initial slot geometry so we never read stale layoutInfo mid-drag
-                                            initialItemCenters = items.associate { it.index to (it.offset + it.size / 2f) }
-                                            initialItemOffsets = items.associate { it.index to it.offset.toFloat() }
+                                            // Map item positions to currentOrderList indices (item.index - pairedHeaderOffset)
+                                            initialItemCenters = items
+                                                .filter { (it.index - pairedHeaderOffset) in currentOrderList.indices }
+                                                .associate { (it.index - pairedHeaderOffset) to (it.offset + it.size / 2f) }
+                                            initialItemOffsets = items
+                                                .filter { (it.index - pairedHeaderOffset) in currentOrderList.indices }
+                                                .associate { (it.index - pairedHeaderOffset) to it.offset.toFloat() }
                                         }
                                     },
                                     onDrag = { change, dragAmount ->
@@ -1069,8 +1082,8 @@ fun CompanionAppContent(
                                 ) {
                                     val configuredUnits = deviceConfigsMap[device.address]?.let { cfg ->
                                         try { org.json.JSONObject(cfg).optString("units", "") } catch (_: Exception) { "" }
-                                    }?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
-                                    val devUnits = devReading?.units?.takeIf { it.isNotBlank() } ?: configuredUnits
+                                    }?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: devReading?.units ?: "mg/dL"
+                                    val devUnits = configuredUnits.ifBlank { devReading?.units ?: "mg/dL" }
                                     val isConnecting = connectingDevices.contains(device.address)
                                     val isPairing = pairingDevices.contains(device.address)
                                     DeviceCard(
@@ -1138,8 +1151,8 @@ fun CompanionAppContent(
                                 val isConfigured = deviceConfigured[device.address] ?: true
                                 val configuredUnits = deviceConfigsMap[device.address]?.let { cfg ->
                                     try { org.json.JSONObject(cfg).optString("units", "") } catch (_: Exception) { "" }
-                                }?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
-                                val devUnits = devReading?.units?.takeIf { it.isNotBlank() } ?: configuredUnits
+                                }?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: devReading?.units ?: "mg/dL"
+                                val devUnits = configuredUnits.ifBlank { devReading?.units ?: "mg/dL" }
                                 val isConnecting = connectingDevices.contains(device.address)
                                 val isPairing = pairingDevices.contains(device.address)
                                 DeviceCard(
@@ -2316,10 +2329,10 @@ fun TrendArrowIcon(
     }
 
     // For double vertical arrows (up/down), rotation ±90 causes width to become visual height.
-    // Making it square (20x20) and applying a vertical translation offset aligns it with text baseline.
+    // Adjust vertical translation offset to align visually with the glucose number.
     val canvasWidth = 20.dp
     val canvasHeight = 20.dp
-    val verticalShiftY = if (isDouble && (dir.contains("up") || dir.contains("down"))) (-2.5).dp else 0.dp
+    val verticalShiftY = if (isDouble && (dir.contains("up") || dir.contains("down"))) 1.5.dp else 0.dp
 
     androidx.compose.foundation.Canvas(
         modifier = modifier

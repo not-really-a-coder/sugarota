@@ -454,7 +454,7 @@ fun DeviceChartContent(
         }
     }
 
-    val units = lastReading?.units?.takeIf { it.isNotBlank() } ?: configuredUnits.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
+    val units = configuredUnits.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: lastReading?.units?.takeIf { it.isNotBlank() } ?: "mg/dL"
     val isMmol = units.equals("mmol/l", ignoreCase = true)
 
     Column(

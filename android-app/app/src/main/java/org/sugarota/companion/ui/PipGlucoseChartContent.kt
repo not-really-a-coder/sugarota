@@ -400,17 +400,32 @@ fun PipGlucoseSparkline(
         segments.add(currentSegment)
 
         // Draw continuous Bezier smoothed curves for segments with >= 2 points
+        // Color each segment interval between consecutive points individually based on average SGV,
+        // matching the main chart logic (avg in 70..180 -> green, else orange).
         for (seg in segments) {
-            if (seg.size < 2) continue
+            if (seg.size < 2) {
+                // Isolated single-point segment: draw as a subtle dot so gap readings aren't lost
+                val pt = points[seg.first()]
+                val dotColor = if (pt.sgv in 70..180) Color(0xFF00E676) else Color(0xFFF97316)
+                drawCircle(
+                    color = dotColor,
+                    radius = 2.dp.toPx(),
+                    center = coords[seg.first()]
+                )
+                continue
+            }
 
-            val path = Path().apply {
-                val startIdx = seg.first()
-                moveTo(coords[startIdx].x, coords[startIdx].y)
-                for (k in 0 until seg.size - 1) {
-                    val idx0 = seg[k]
-                    val idx1 = seg[k + 1]
-                    val p0 = coords[idx0]
-                    val p1 = coords[idx1]
+            for (k in 0 until seg.size - 1) {
+                val idx0 = seg[k]
+                val idx1 = seg[k + 1]
+                val p0 = coords[idx0]
+                val p1 = coords[idx1]
+
+                val avgSgv = (points[idx0].sgv + points[idx1].sgv) / 2
+                val segColor = if (avgSgv in 70..180) Color(0xFF00E676) else Color(0xFFF97316)
+
+                val subPath = Path().apply {
+                    moveTo(p0.x, p0.y)
                     val controlX = (p0.x + p1.x) / 2f
                     cubicTo(
                         x1 = controlX, y1 = p0.y,
@@ -418,32 +433,16 @@ fun PipGlucoseSparkline(
                         x3 = p1.x, y3 = p1.y
                     )
                 }
-            }
 
-            val lastSegIdx = seg.last()
-            val segSgv = points[lastSegIdx].sgv
-            val segLineColor = if (segSgv in 70..180) Color(0xFF00E676) else Color(0xFFF97316)
-
-            drawPath(
-                path = path,
-                color = segLineColor,
-                style = Stroke(
-                    width = 2.dp.toPx(),
-                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                drawPath(
+                    path = subPath,
+                    color = segColor,
+                    style = Stroke(
+                        width = 2.dp.toPx(),
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
                 )
-            )
-        }
-
-        // Draw data points as dots (shows isolated dots during gaps and points along the curve)
-        for (i in points.indices) {
-            val pt = points[i]
-            val dotColor = if (pt.sgv in 70..180) Color(0xFF00E676) else Color(0xFFF97316)
-            val radius = if (i == points.size - 1) 2.5.dp.toPx() else 1.5.dp.toPx()
-            drawCircle(
-                color = dotColor,
-                radius = radius,
-                center = coords[i]
-            )
+            }
         }
     }
 }

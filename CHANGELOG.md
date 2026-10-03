@@ -2,6 +2,22 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## 2026-10-03 — Per-Device Glucose Units Everywhere in App
+Android App v0.10.03.28
+
+This release ensures that per-device glucose units (mg/dL and mmol/L) configured in device settings are applied consistently and reactively across all screens in the Android companion app.
+
+### Android Companion App
+
+- Configured device units (`units` in device config) now take priority everywhere in the app over remote API defaults
+- Updated Device Cards (paired and unpaired displays) to format glucose value, delta, and units label according to each device's configured units
+- Updated Device Detail Screen (actual glucose readout, delta, units label, chart Y-axis scale, and interactive touch tooltip) to react immediately to unit preference changes
+- Updated Picture-in-Picture (PiP) mode to resolve units for the active device and format glucose reading, delta, units label, and chart accordingly
+- Enhanced `SugarotaBleService` to immediately update in-memory device readings and state flow upon saving device config, avoiding delay while awaiting network refresh
+- Tracked active device context when navigating between displays so Picture-in-Picture mode seamlessly matches the device in view
+
+---
+
 ## 2026-10-02 — Picture-in-Picture Adaptive Layouts & Data Gap Handling
 Android App v0.10.01.25
 

@@ -1432,6 +1432,18 @@ class SugarotaBleService : Service() {
                 Log.i("SugarotaBleService", "writeConfig to $address completed. Success=$overallSuccess (bytes=${allBytes.size})")
 
                 if (overallSuccess) {
+                    val newUnits = getDeviceUnits(address)
+                    val existing = _deviceReadings.value[address]
+                    if (existing != null) {
+                        val updated = existing.copy(units = newUnits)
+                        val map = _deviceReadings.value.toMutableMap()
+                        map[address] = updated
+                        _deviceReadings.value = map
+                        val primaryAddr = getPrimaryDeviceAddress()
+                        if (primaryAddr == null || primaryAddr == address) {
+                            _lastReading.value = updated
+                        }
+                    }
                     refreshNotificationState()
                     serviceScope.launch {
                         delay(200)
@@ -1551,22 +1563,24 @@ class SugarotaBleService : Service() {
             }
 
             if (reading != null) {
+                val units = getDeviceUnits(address)
+                val readingWithUnits = reading.copy(units = units)
+
                 // Update global fallback and per-device reading map
-                _lastReading.value = reading
+                _lastReading.value = readingWithUnits
                 val updatedReadings = _deviceReadings.value.toMutableMap()
-                updatedReadings[address] = reading
+                updatedReadings[address] = readingWithUnits
                 _deviceReadings.value = updatedReadings
 
-                val units = reading.units.takeIf { it.isNotBlank() } ?: getDeviceUnits(address)
                 val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
-                    .format(java.util.Date(reading.timestamp * 1000))
-                val arrow = reading.trendArrow
-                val valStr = formatGlucoseValue(reading.sgv, units)
-                val deltaStr = formatGlucoseDelta(reading.delta, units)
+                    .format(java.util.Date(readingWithUnits.timestamp * 1000))
+                val arrow = readingWithUnits.trendArrow
+                val valStr = formatGlucoseValue(readingWithUnits.sgv, units)
+                val deltaStr = formatGlucoseDelta(readingWithUnits.delta, units)
                 val summary = "$valStr $units $arrow ($deltaStr) at $timeStr"
 
                 val lastTs = lastPushedTimestamps[address]
-                val isNewData = (lastTs == null || reading.timestamp > lastTs)
+                val isNewData = (lastTs == null || readingWithUnits.timestamp > lastTs)
 
                 // Check for a data gap between the new reading and the last pushed reading (> 360 seconds / 6 minutes),
                 // or if there are any gaps within the recent readings list.
@@ -1597,14 +1611,14 @@ class SugarotaBleService : Service() {
                     Log.i("SugarotaBleService", "Detected data gap for $address (lastTs=$lastTs, newTs=${reading.timestamp}). Triggering full history backfill.")
                 }
 
-                lastPushedTimestamps[address] = reading.timestamp
-                pushGlucoseToDevice(address, reading, isFullSync = shouldFullSync)
+                lastPushedTimestamps[address] = readingWithUnits.timestamp
+                pushGlucoseToDevice(address, readingWithUnits, isFullSync = shouldFullSync)
                 _bridgeStatus.value = "Synced $summary"
 
                 // Topmost device in list is the primary source for status notifications and chart preview
                 val primaryAddr = getPrimaryDeviceAddress()
                 if (primaryAddr == null || primaryAddr == address) {
-                    updateNotification("Glucose: $summary", isNewData = isNewData, reading = reading)
+                    updateNotification("Glucose: $summary", isNewData = isNewData, reading = readingWithUnits)
                 }
                 return true
             } else {

@@ -551,14 +551,21 @@ fun GlucoseChartView(
                         isAntiAlias = true
                     }
 
-                    val formattedBg = if (units.equals("mmol/l", ignoreCase = true)) {
+                    val isMmol = units.equals("mmol/l", ignoreCase = true)
+                    val formattedBg = if (isMmol) {
                         String.format(Locale.US, "%.1f", curReading.sgv / 18.0182f)
                     } else {
                         curReading.sgv.toString()
                     }
                     val deltaStr = if (curReading.delta != 0) {
-                        val sign = if (curReading.delta > 0) "+" else ""
-                        " ($sign${curReading.delta})"
+                        if (isMmol) {
+                            val mmolVal = curReading.delta / 18.0182f
+                            val sign = if (curReading.delta > 0) "+" else ""
+                            " ($sign${String.format(Locale.US, "%.1f", mmolVal)})"
+                        } else {
+                            val sign = if (curReading.delta > 0) "+" else ""
+                            " ($sign${curReading.delta})"
+                        }
                     } else ""
                     val fullValStr = "$formattedBg$deltaStr"
 

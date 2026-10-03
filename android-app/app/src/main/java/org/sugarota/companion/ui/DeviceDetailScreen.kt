@@ -62,6 +62,7 @@ fun DeviceDetailScreen(
     val lastReading by service?.lastReading?.collectAsState() ?: remember { mutableStateOf(null) }
     val deviceReadings by service?.deviceReadings?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
     val deviceConfigured by service?.deviceConfigured?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
+    val deviceConfigsMap by service?.deviceConfigsFlow?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
     val deviceReading = deviceReadings[deviceAddress] ?: lastReading
     val isConfigured = deviceConfigured[deviceAddress] ?: true
     var currentTab by remember { mutableStateOf(initialTab) }
@@ -393,9 +394,13 @@ fun DeviceDetailScreen(
         ) {
             when (currentTab) {
                 DeviceScreenTab.CHART -> {
+                    val configuredUnits = deviceConfigsMap[device.address]?.let { cfg ->
+                        try { org.json.JSONObject(cfg).optString("units", "") } catch (_: Exception) { "" }
+                    }?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
                     DeviceChartContent(
                         device = device,
                         lastReading = deviceReading,
+                        configuredUnits = configuredUnits,
                         isConfigured = isConfigured,
                         service = service,
                         onNavigateToConfig = { currentTab = DeviceScreenTab.CONFIG },
@@ -427,6 +432,7 @@ fun DeviceDetailScreen(
 fun DeviceChartContent(
     device: SugarotaDevice,
     lastReading: org.sugarota.companion.model.GlucoseData?,
+    configuredUnits: String = "mg/dL",
     isConfigured: Boolean = true,
     service: SugarotaBleService?,
     onNavigateToConfig: () -> Unit = {},
@@ -448,7 +454,7 @@ fun DeviceChartContent(
         }
     }
 
-    val units = lastReading?.units?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
+    val units = lastReading?.units?.takeIf { it.isNotBlank() } ?: configuredUnits.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
     val isMmol = units.equals("mmol/l", ignoreCase = true)
 
     Column(

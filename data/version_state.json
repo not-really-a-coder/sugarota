@@ -10,8 +10,8 @@
     "version": "v0.09.27.5"
   },
   "android": {
-    "last_date": "2026-10-01",
-    "build_increment": 25,
-    "version": "v0.10.01.25"
+    "last_date": "2026-10-03",
+    "build_increment": 17,
+    "version": "v0.10.03.17"
   }
 }

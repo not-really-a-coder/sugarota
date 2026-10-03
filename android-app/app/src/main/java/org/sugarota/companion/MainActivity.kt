@@ -71,8 +71,10 @@ class MainActivity : ComponentActivity() {
     private var bleService by mutableStateOf<SugarotaBleService?>(null)
     private var isBound by mutableStateOf(false)
     var isInPipMode by mutableStateOf(false)
+    var pipDeviceAddress by mutableStateOf<String?>(null)
 
-    fun enterPipMode() {
+    fun enterPipMode(targetDeviceAddress: String? = null) {
+        pipDeviceAddress = targetDeviceAddress
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val dm = resources.displayMetrics
             val screenW = dm.widthPixels
@@ -169,9 +171,21 @@ class MainActivity : ComponentActivity() {
                     )
                 ) {
                     if (isInPipMode) {
-                        val reading by bleService?.lastReading?.collectAsState() ?: remember { mutableStateOf(null) }
+                        val deviceReadings by bleService?.deviceReadings?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
+                        val globalReading by bleService?.lastReading?.collectAsState() ?: remember { mutableStateOf(null) }
+                        val deviceConfigsMap by bleService?.deviceConfigsFlow?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
                         val primaryAddr = bleService?.getPrimaryDeviceAddress()
-                        val units = reading?.units?.takeIf { it.isNotBlank() } ?: bleService?.getDeviceUnits(primaryAddr) ?: "mg/dL"
+                        val activePipAddr = pipDeviceAddress ?: primaryAddr
+                        val reading = (activePipAddr?.let { deviceReadings[it] }) ?: globalReading
+                        val configuredUnits = activePipAddr?.let { addr ->
+                            val cfgJson = deviceConfigsMap[addr]
+                            if (!cfgJson.isNullOrBlank()) {
+                                try {
+                                    org.json.JSONObject(cfgJson).optString("units", "")
+                                } catch (_: Exception) { "" }
+                            } else ""
+                        }?.takeIf { it.isNotBlank() } ?: bleService?.getDeviceUnits(activePipAddr) ?: "mg/dL"
+                        val units = reading?.units?.takeIf { it.isNotBlank() } ?: configuredUnits
                         PipGlucoseChartContent(
                             reading = reading,
                             units = units,
@@ -194,7 +208,7 @@ class MainActivity : ComponentActivity() {
                             } else {
                                 CompanionAppContent(
                                     service = bleService,
-                                    onEnterPip = { enterPipMode() }
+                                    onEnterPip = { targetAddr -> enterPipMode(targetAddr) }
                                 )
                             }
                         }
@@ -261,13 +275,14 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun CompanionAppContent(
     service: SugarotaBleService?,
-    onEnterPip: (() -> Unit)? = null
+    onEnterPip: ((String?) -> Unit)? = null
 ) {
     val currentService by rememberUpdatedState(service)
     val devicesMap by service?.devices?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
     val deviceOrder by service?.deviceOrder?.collectAsState() ?: remember { mutableStateOf(emptyList()) }
     val deviceReadings by service?.deviceReadings?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
     val deviceConfigured by service?.deviceConfigured?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
+    val deviceConfigsMap by service?.deviceConfigsFlow?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
 
     // Sort device list according to user custom order
     val sortedDeviceList = remember(devicesMap, deviceOrder) {
@@ -429,7 +444,7 @@ fun CompanionAppContent(
                                     },
                                     onClick = {
                                         showTopMenu = false
-                                        onEnterPip()
+                                        onEnterPip?.invoke(null)
                                     }
                                 )
                             }
@@ -1052,7 +1067,10 @@ fun CompanionAppContent(
                                             }
                                         }
                                 ) {
-                                    val devUnits = devReading?.units?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
+                                    val configuredUnits = deviceConfigsMap[device.address]?.let { cfg ->
+                                        try { org.json.JSONObject(cfg).optString("units", "") } catch (_: Exception) { "" }
+                                    }?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
+                                    val devUnits = devReading?.units?.takeIf { it.isNotBlank() } ?: configuredUnits
                                     val isConnecting = connectingDevices.contains(device.address)
                                     val isPairing = pairingDevices.contains(device.address)
                                     DeviceCard(
@@ -1118,7 +1136,10 @@ fun CompanionAppContent(
                             ) { device ->
                                 val devReading = deviceReadings[device.address]
                                 val isConfigured = deviceConfigured[device.address] ?: true
-                                val devUnits = devReading?.units?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
+                                val configuredUnits = deviceConfigsMap[device.address]?.let { cfg ->
+                                    try { org.json.JSONObject(cfg).optString("units", "") } catch (_: Exception) { "" }
+                                }?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
+                                val devUnits = devReading?.units?.takeIf { it.isNotBlank() } ?: configuredUnits
                                 val isConnecting = connectingDevices.contains(device.address)
                                 val isPairing = pairingDevices.contains(device.address)
                                 DeviceCard(
@@ -1434,7 +1455,7 @@ fun CompanionAppContent(
                 deviceAddress = targetAddress,
                 initialTab = targetDeviceTab,
                 service = service,
-                onEnterPip = onEnterPip,
+                onEnterPip = { onEnterPip?.invoke(targetAddress) },
                 onDismiss = { selectedDeviceAddress = null }
             )
         }

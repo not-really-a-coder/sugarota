@@ -106,6 +106,10 @@ class SugarotaBleService : Service() {
     private val _deviceConfigured = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val deviceConfigured: StateFlow<Map<String, Boolean>> = _deviceConfigured.asStateFlow()
 
+    // Per-device raw JSON configuration StateFlow for reactive UI updates
+    private val _deviceConfigsFlow = MutableStateFlow<Map<String, String>>(emptyMap())
+    val deviceConfigsFlow: StateFlow<Map<String, String>> = _deviceConfigsFlow.asStateFlow()
+
     // Persistent custom device ordering (ordered list of BLE addresses)
     private val orderPrefs by lazy { getSharedPreferences("sugarota_device_order", Context.MODE_PRIVATE) }
     private val _deviceOrder = MutableStateFlow<List<String>>(emptyList())
@@ -240,12 +244,15 @@ class SugarotaBleService : Service() {
     private fun loadCachedDeviceConfigs() {
         try {
             val all = configPrefs.all
+            val map = mutableMapOf<String, String>()
             for ((addr, value) in all) {
                 if (value is String && value.isNotBlank()) {
                     deviceConfigs[addr] = value
+                    map[addr] = value
                     checkConfigCompleteness(addr, value)
                 }
             }
+            _deviceConfigsFlow.value = map
         } catch (e: Exception) {
             Log.w("SugarotaBleService", "Error loading cached device configs: ${e.message}")
         }
@@ -254,6 +261,9 @@ class SugarotaBleService : Service() {
     private fun saveCachedDeviceConfig(address: String, configJson: String) {
         if (configJson.isNotBlank()) {
             configPrefs.edit().putString(address, configJson).apply()
+            val current = _deviceConfigsFlow.value.toMutableMap()
+            current[address] = configJson
+            _deviceConfigsFlow.value = current
         }
     }
 
@@ -347,6 +357,10 @@ class SugarotaBleService : Service() {
         val updatedConfigured = _deviceConfigured.value.toMutableMap()
         updatedConfigured.remove(address)
         _deviceConfigured.value = updatedConfigured
+
+        val updatedConfigs = _deviceConfigsFlow.value.toMutableMap()
+        updatedConfigs.remove(address)
+        _deviceConfigsFlow.value = updatedConfigs
 
         clearDeviceLogs(address)
         namePrefs.edit().remove(address).apply()
@@ -773,6 +787,9 @@ class SugarotaBleService : Service() {
             deviceConfigs[address] = payload
             saveCachedDeviceConfig(address, payload)
             checkConfigCompleteness(address, payload)
+            val current = _deviceConfigsFlow.value.toMutableMap()
+            current[address] = payload
+            _deviceConfigsFlow.value = current
         }
         pendingConfigReads.remove(address)?.invoke(payload)
         // Trigger sync ONLY if not already synced or syncing for this device
@@ -1413,6 +1430,14 @@ class SugarotaBleService : Service() {
                 }
 
                 Log.i("SugarotaBleService", "writeConfig to $address completed. Success=$overallSuccess (bytes=${allBytes.size})")
+
+                if (overallSuccess) {
+                    refreshNotificationState()
+                    serviceScope.launch {
+                        delay(200)
+                        fetchAndPushForDevice(address, forcePush = true)
+                    }
+                }
 
                 mainHandler.post {
                     onComplete(overallSuccess)

@@ -18,6 +18,19 @@ void updateUI() {
   gfx->fillScreen(bgColor);
   drawStatusBar();
 
+  if (isConfigMode && configScreenState != CONFIG_SCREEN_NONE) {
+    if (configScreenState == CONFIG_SCREEN_PROMPT) {
+      drawConfigPromptScreen();
+      return;
+    } else if (configScreenState == CONFIG_SCREEN_CONNECTING) {
+      drawConfigConnectingScreen();
+      return;
+    } else if (configScreenState == CONFIG_SCREEN_INFO) {
+      drawConfigInfoScreen();
+      return;
+    }
+  }
+
   if (isTimerMode) {
     unsigned long elapsed = timerElapsedMs;
     unsigned long minutes = (elapsed / 60000) % 100;
@@ -86,6 +99,33 @@ void updateUI() {
     gfx->setTextSize(2);
     gfx->setCursor(dx + 148, dy + 96);
     gfx->print("NO");
+  }
+
+  // Night Mode No Data Alert Dialog (relative message on screen)
+  if (isNightModeActive() && !nightModeAlertSnoozed && (millis() - lastDataFetch > 15 * 60 * 1000) && !isShowingPairingDialog) {
+    int w = 340;
+    int h = 90;
+    int dx = (640 - w) / 2;
+    int dy = (172 - h) / 2;
+
+    gfx->fillRoundRect(dx, dy, w, h, 8, DARK_RED);
+    gfx->drawRoundRect(dx, dy, w, h, 8, YELLOW);
+
+    gfx->setTextColor(YELLOW);
+    gfx->setTextSize(2);
+    gfx->setCursor(dx + 20, dy + 16);
+    gfx->print("! NO DATA UPDATE !");
+
+    gfx->setTextColor(WHITE);
+    gfx->setTextSize(2);
+    gfx->setCursor(dx + 20, dy + 42);
+    unsigned long mins = (millis() - lastDataFetch) / 60000;
+    gfx->printf("Last update: %lum ago", mins);
+
+    gfx->setTextSize(1);
+    gfx->setTextColor(GRAY);
+    gfx->setCursor(dx + 20, dy + 68);
+    gfx->print("Tap screen to snooze alert");
   }
 
   gfx->flush();
@@ -232,7 +272,7 @@ void drawGlucoseContainer() {
 
   drawHarveyBall(40, 85, 16, bgHistory[0].timestamp);
 
-  if (showHarveyBallInfo || offlineMode) {
+  if (showHarveyBallInfo) {
     long long now = time(NULL);
     int diffMin = 0;
     char ageStr[16];
@@ -647,6 +687,43 @@ void drawWiFiIcon(int x, int y, uint16_t color) {
   gfx->fillRect(x + 5, y + 8, 3, 3, color);
 }
 
+bool isNightModeActive() {
+  if (!nightModeEnabled) return false;
+  struct tm timeinfo;
+  bool gotTime = getLocalTime(&timeinfo, 10);
+  if (!gotTime) {
+    time_t now = time(NULL);
+    localtime_r(&now, &timeinfo);
+  }
+  // Schedule: 22:00 to 07:00 (active when hour >= 22 or hour < 7)
+  return (timeinfo.tm_hour >= 22 || timeinfo.tm_hour < 7);
+}
+
+void drawMoonIcon(int x, int y, uint16_t color) {
+  // 10x12 crisp crescent moon icon (facing right)
+  static const uint16_t moonBitmap[12] = {
+    0b0000111000,
+    0b0011111100,
+    0b0111100000,
+    0b1111000000,
+    0b1111000000,
+    0b1111000000,
+    0b1111000000,
+    0b1111000000,
+    0b0111100000,
+    0b0011111100,
+    0b0000111000,
+    0b0000000000
+  };
+  for (int row = 0; row < 12; row++) {
+    uint16_t rowBits = moonBitmap[row];
+    for (int col = 0; col < 10; col++) {
+      if (rowBits & (1 << (9 - col))) {
+        gfx->drawPixel(x + col, y + row, color);
+      }
+    }
+  }
+}
 
 void drawStatusBar() {
   uint16_t textColor = isDarkTheme ? WHITE : BLACK;
@@ -666,15 +743,14 @@ void drawStatusBar() {
   gfx->print(timeStr);
 
   int leftOffset = 15 + strlen(timeStr) * 12 + 4; // ~79px
-  if (isConfigMode) {
-    gfx->setTextColor(ORANGE);
-    gfx->setCursor(leftOffset, 7);
-    gfx->print("*");
-    gfx->setTextColor(textColor);
+
+  if (isNightModeActive()) {
+    // Moon icon near the clock
+    drawMoonIcon(leftOffset, 8, isDarkTheme ? CYAN : 0x001F);
     leftOffset += 14;
   }
 
-  bool showSpinner = isFetching && !offlineMode;
+  bool showSpinner = isFetching;
   if (showSpinner) {
     gfx->setTextColor(ORANGE);
     const char spinnerFrames[] = {'|', '/', '-', '\\'};
@@ -689,17 +765,8 @@ void drawStatusBar() {
   int bgX = isConfigMode ? (leftOffset + (showSpinner ? 20 : 6)) : 110;
 
   if (isTimerMode) {
-    if (!offlineMode) {
-      showBG = true;
-      bgX = 110;
-    }
-  } else {
-    if (offlineMode) {
-      gfx->setTextColor(RED);
-      gfx->setCursor(85, 7);
-      gfx->print("LAST SAVED BG");
-      gfx->setTextColor(textColor);
-    }
+    showBG = true;
+    bgX = 110;
   }
 
   if (showBG && historyCount > 0) {
@@ -769,12 +836,7 @@ void drawStatusBar() {
     if (isWifiActive)
       batLeftX -= 18;
 
-    if (offlineMode && !SugarotaBLE::getInstance().isConnected()) {
-      gfx->setTextColor(RED);
-      gfx->setCursor(batLeftX - 95, 7);
-      gfx->print("OFFLINE");
-      gfx->setTextColor(textColor);
-    }
+
 
     if (showBat) {
       gfx->setTextColor(batColor);
@@ -825,53 +887,40 @@ void drawStatusBar() {
     }
 
     if (isConfigMode) {
-      String ipMsg = "";
-      if (WiFi.status() == WL_CONNECTED) {
-        ipMsg = "IP: " + WiFi.localIP().toString();
-      } else if (!isBtConnected) {
-        ipMsg = "IP: Connecting...";
-      }
-
-      if (ipMsg.length() > 0) {
+      if (configScreenState != CONFIG_SCREEN_NONE || WiFi.status() != WL_CONNECTED) {
+        // In full config views or when Wi-Fi is off (e.g. user selected NO): Title status bar "Config Mode"
+        const char* title = "Config Mode";
+        int16_t x1, y1;
+        uint16_t w, h;
+        gfx->getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+        int textX = (640 - w) / 2;
+        gfx->setTextColor(isDarkTheme ? CYAN : BLUE);
+        gfx->setCursor(textX, 7);
+        gfx->print(title);
+      } else {
+        // Returned to standard dashboard in config mode with Wi-Fi connected: Show IP only (no QR code)
+        String ipMsg = "IP: " + WiFi.localIP().toString();
         int16_t x1, y1;
         uint16_t w, h;
         gfx->getTextBounds(ipMsg.c_str(), 0, 0, &x1, &y1, &w, &h);
 
-        int textX = (640 - w) / 2;
+        int leftBoundary = leftOffset + (showSpinner ? 20 : 6);
+        int rightBoundary = currentLeftX - 6;
+        int textX;
+        if (rightBoundary > leftBoundary + w) {
+          textX = leftBoundary + ((rightBoundary - leftBoundary) - w) / 2;
+        } else {
+          textX = (640 - w) / 2;
+        }
+
+        gfx->setTextColor(isDarkTheme ? CYAN : BLUE);
         gfx->setCursor(textX, 7);
         gfx->print(ipMsg);
-
-        if (WiFi.status() == WL_CONNECTED) {
-          String url = "http://" + WiFi.localIP().toString();
-
-          QRCode qrcode;
-          uint8_t qrcodeData[qrcode_getBufferSize(2)];
-          qrcode_initText(&qrcode, qrcodeData, 2, 0, url.c_str());
-
-          int qrSize = qrcode.size;
-          int qrX = textX + w + 10;
-          int qrY = 2;
-
-          gfx->fillRect(qrX - 2, qrY - 2, qrSize + 4, qrSize + 4, WHITE);
-
-          for (uint8_t y = 0; y < qrSize; y++) {
-            for (uint8_t x = 0; x < qrSize; x++) {
-              if (qrcode_getModule(&qrcode, x, y)) {
-                gfx->drawPixel(qrX + x, qrY + y, BLACK);
-              }
-            }
-          }
-        }
       }
       gfx->setTextColor(textColor);
     }
   } else {
-    if (offlineMode && !SugarotaBLE::getInstance().isConnected()) {
-      gfx->setTextColor(RED);
-      gfx->setCursor(625 - 84, 7);
-      gfx->print("OFFLINE");
-      gfx->setTextColor(textColor);
-    }
+    // Battery disabled / not detected
   }
 
   gfx->drawFastHLine(0, 30, 640, isDarkTheme ? GRAY : GRAY);
@@ -1140,7 +1189,7 @@ void drawVerticalScreen() {
     gfx->setTextColor(GRAY);
     gfx->setTextSize(1);
     int16_t bx, by; uint16_t bw, bh;
-    const char* nmNote = "(Placeholder for now)";
+    const char* nmNote = "Active: 22:00 - 07:00";
     gfx->getTextBounds(nmNote, 0, 0, &bx, &by, &bw, &bh);
     gfx->setCursor((172 - bw) / 2, 428);
     gfx->print(nmNote);
@@ -1296,6 +1345,166 @@ void drawVerticalScreen() {
     gfx->setCursor(backBtnX + (backBtnW - bw) / 2, backBtnY + (backBtnH - bh) / 2);
     gfx->print(backTxt);
   }
+
+  gfx->flush();
+}
+
+void drawConfigPromptScreen() {
+  uint16_t textColor = isDarkTheme ? WHITE : BLACK;
+  uint16_t subColor  = isDarkTheme ? CYAN : BLUE;
+
+  // Title: "Enable Wi-Fi & Web Portal?"
+  const char* title = "Enable Wi-Fi & Web Portal?";
+  gfx->setTextSize(3);
+  gfx->setTextColor(textColor);
+  int16_t x1, y1;
+  uint16_t w, h;
+  gfx->getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  gfx->setCursor((640 - w) / 2, 45);
+  gfx->print(title);
+
+  // Subtitle / Notice: Centered "BLE remains active"
+  const char* desc = "BLE remains active";
+  gfx->setTextSize(2);
+  gfx->setTextColor(subColor);
+  gfx->getTextBounds(desc, 0, 0, &x1, &y1, &w, &h);
+  gfx->setCursor((640 - w) / 2, 82);
+  gfx->print(desc);
+
+  // YES Button: x: 180..300, y: 118..158
+  int yesX = 180, yesY = 118, yesW = 120, yesH = 40;
+  gfx->fillRoundRect(yesX, yesY, yesW, yesH, 6, isDarkTheme ? GREEN : 0x03E0);
+  gfx->setTextColor(isDarkTheme ? BLACK : WHITE);
+  gfx->setTextSize(3);
+  const char* yesTxt = "YES";
+  gfx->getTextBounds(yesTxt, 0, 0, &x1, &y1, &w, &h);
+  gfx->setCursor(yesX + (yesW - w) / 2, yesY + (yesH - h) / 2);
+  gfx->print(yesTxt);
+
+  // NO Button: x: 340..460, y: 118..158
+  int noX = 340, noY = 118, noW = 120, noH = 40;
+  uint16_t noBgColor = isDarkTheme ? LIGHT_PINK : 0xD186; // Light pink in dark mode; soft muted rose in light mode
+  uint16_t noFgColor = isDarkTheme ? DARK_RED : DARK_RED;
+  gfx->fillRoundRect(noX, noY, noW, noH, 6, noBgColor);
+  gfx->drawRoundRect(noX, noY, noW, noH, 6, DARK_RED);
+  gfx->setTextColor(noFgColor);
+  gfx->setTextSize(3);
+  const char* noTxt = "NO";
+  gfx->getTextBounds(noTxt, 0, 0, &x1, &y1, &w, &h);
+  gfx->setCursor(noX + (noW - w) / 2, noY + (noH - h) / 2);
+  gfx->print(noTxt);
+
+  gfx->flush();
+}
+
+void drawConfigConnectingScreen() {
+  gfx->setTextSize(2);
+  int logY = 38;
+  int startIdx = 0;
+  for (int i = 0; i < configLog.length(); i++) {
+    if (configLog[i] == '\n') {
+      gfx->setCursor(25, logY);
+      String line = configLog.substring(startIdx, i);
+      if (line.indexOf("Failed") >= 0 || line.indexOf("Error") >= 0) {
+        gfx->setTextColor(RED);
+      } else if (line.indexOf("Connected") >= 0 || line.indexOf("started") >= 0) {
+        gfx->setTextColor(GREEN);
+      } else {
+        gfx->setTextColor(CYAN);
+      }
+      gfx->print(line);
+      logY += 20;
+      startIdx = i + 1;
+    }
+  }
+  gfx->flush();
+}
+
+void drawConfigInfoScreen() {
+  uint16_t textColor = isDarkTheme ? WHITE : BLACK;
+  bool isConnected = (WiFi.status() == WL_CONNECTED);
+
+  if (isConnected) {
+    // Generate QR Code (URL: http://<localIP>)
+    String ipStr = WiFi.localIP().toString();
+    String url = "http://" + ipStr;
+    QRCode qrcode;
+    uint8_t qrcodeData[qrcode_getBufferSize(2)];
+    qrcode_initText(&qrcode, qrcodeData, 2, 0, url.c_str());
+
+    // Draw 3x scaled QR code (25 modules * 3 = 75px wide)
+    int scale = 3;
+    int qrX = 35;
+    int qrY = 46;
+    int qrSize = qrcode.size;
+    int border = 4;
+
+    gfx->fillRect(qrX - border, qrY - border, qrSize * scale + border * 2, qrSize * scale + border * 2, WHITE);
+
+    for (uint8_t y = 0; y < qrSize; y++) {
+      for (uint8_t x = 0; x < qrSize; x++) {
+        if (qrcode_getModule(&qrcode, x, y)) {
+          gfx->fillRect(qrX + x * scale, qrY + y * scale, scale, scale, BLACK);
+        }
+      }
+    }
+
+    // Right-side info text:
+    // Line 1: IP address & local URL
+    int textX = 145;
+    gfx->setTextColor(textColor);
+    gfx->setTextSize(2);
+    gfx->setCursor(textX, 48);
+    gfx->printf("IP: %s", ipStr.c_str());
+
+    gfx->setTextColor(isDarkTheme ? CYAN : BLUE);
+    gfx->setCursor(textX, 72);
+    gfx->print("http://sugarota.local");
+
+    // Line 2: Instruction
+    gfx->setTextColor(isDarkTheme ? GRAY : 0x4A49);
+    gfx->setTextSize(1);
+    gfx->setCursor(textX, 98);
+    gfx->print("Connect phone or PC to the same Wi-Fi network");
+    gfx->setCursor(textX, 112);
+    gfx->print("Shake device anytime to exit Config Mode");
+  } else {
+    // Connection Failed message
+    gfx->setTextColor(RED);
+    gfx->setTextSize(3);
+    gfx->setCursor(35, 50);
+    gfx->print("Wi-Fi Connection Failed");
+
+    gfx->setTextColor(textColor);
+    gfx->setTextSize(2);
+    gfx->setCursor(35, 88);
+    gfx->print("Could not reach configured Wi-Fi network.");
+
+    // TRY AGAIN Button (x: 330..460, y: 120..158)
+    int tryX = 330, tryY = 120, tryW = 130, tryH = 38;
+    gfx->fillRoundRect(tryX, tryY, tryW, tryH, 6, isDarkTheme ? GREEN : 0x03E0);
+    gfx->setTextColor(isDarkTheme ? BLACK : WHITE);
+    gfx->setTextSize(2);
+    const char* tryTxt = "TRY AGAIN";
+    int16_t x1, y1;
+    uint16_t w, h;
+    gfx->getTextBounds(tryTxt, 0, 0, &x1, &y1, &w, &h);
+    gfx->setCursor(tryX + (tryW - w) / 2, tryY + (tryH - h) / 2);
+    gfx->print(tryTxt);
+  }
+
+  // DISMISS Button on bottom-right (x: 480..610, y: 120..158)
+  int btnX = 480, btnY = 120, btnW = 130, btnH = 38;
+  gfx->fillRoundRect(btnX, btnY, btnW, btnH, 6, isDarkTheme ? 0x2104 : 0xCE79);
+  gfx->drawRoundRect(btnX, btnY, btnW, btnH, 6, isDarkTheme ? CYAN : BLACK);
+  gfx->setTextColor(isDarkTheme ? CYAN : BLACK);
+  gfx->setTextSize(2);
+  const char* btnTxt = "DISMISS";
+  int16_t x1, y1;
+  uint16_t w, h;
+  gfx->getTextBounds(btnTxt, 0, 0, &x1, &y1, &w, &h);
+  gfx->setCursor(btnX + (btnW - w) / 2, btnY + (btnH - h) / 2);
+  gfx->print(btnTxt);
 
   gfx->flush();
 }

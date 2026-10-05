@@ -21,4 +21,9 @@ void stopFindDeviceAlert();
 void updateFindDevice();
 bool isFindDeviceActive();
 
+void startNightModeDataAlert();
+void stopNightModeDataAlert();
+void updateNightModeAlert();
+bool isNightModeAlertActive();
+
 #endif // SUGAROTA_AUDIO_H

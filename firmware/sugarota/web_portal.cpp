@@ -211,9 +211,8 @@ void handleSaveConfig() {
   debugMode = server.hasArg("debug");
   
   saveConfig();
-  server.send(200, "text/html", "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'></head><body style='background:#121212;color:#FD20;font-family:Arial;text-align:center;padding:50px;'><h2>Configuration Saved!</h2><p style='color:#e0e0e0'>The device is now rebooting. You can safely close this page.</p></body></html>");
-  delay(1000); 
-  ESP.restart();
+  applyRuntimeConfig();
+  server.send(200, "text/html", "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'></head><body style='background:#121212;color:#FD20;font-family:Arial;text-align:center;padding:50px;'><h2>Configuration Saved!</h2><p style='color:#e0e0e0'>Settings applied in realtime. You can safely close this page.</p></body></html>");
 }
 
 void handleCrashLog() {

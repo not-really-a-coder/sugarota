@@ -5,6 +5,7 @@
 #include <LittleFS.h>
 
 void loadConfig();
+void applyRuntimeConfig();
 void saveConfig();
 bool loadHistoryFromCache();
 void saveHistoryToCache();

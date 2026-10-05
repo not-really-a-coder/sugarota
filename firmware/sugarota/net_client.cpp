@@ -3,6 +3,8 @@
 #include "storage.h"
 #include "ble.h"
 #include "ble_handler.h"
+#include "display.h"
+#include "ui.h"
 
 SensorPCF85063 rtc;
 
@@ -124,7 +126,7 @@ void connectWiFi(bool allowBleBailout) {
   WiFi.mode(WIFI_STA);
   WiFi.setHostname("Sugarota");
   
-  int maxLoops = isBooting ? 2 : 1;
+  int maxLoops = 2;
   while (wifiRetryLoop < maxLoops) {
     String loopMsg = "WiFi Loop " + String(wifiRetryLoop + 1) + "/" + String(maxLoops);
     logBoot(loopMsg);
@@ -444,7 +446,6 @@ void parseResponse(const String& payload) {
   
   if (historyCount > 0) {
     historyDirty = true;
-    offlineMode = false;
     time_t rawtime = (time_t)bgHistory[0].timestamp;
     struct tm * ti = localtime(&rawtime);
     DBG_PRINTF("Success: %d readings. Latest SGV: %d (%s, delta: %+d) at %02d:%02d:%02d\n", 
@@ -470,6 +471,12 @@ void parseResponse(const String& payload) {
   }
   isFetching = false;
   fetchStartTime = 0;
+  if (nightModeEnabled) {
+    triggerNightModeWake();
+    if (isNightModeActive() && brightnessLevel == 0) {
+      setBrightness(76);
+    }
+  }
   updateUI();
 }
 

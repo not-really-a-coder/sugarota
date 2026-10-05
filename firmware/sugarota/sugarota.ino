@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.10.01.42"
+#define SUGAROTA_VERSION "v0.10.05.32"
 
 #include "config.h"
 #include "storage.h"
@@ -48,9 +48,11 @@ int daylightOffset_sec = 0;
 
 bool deviceOn = true;
 bool screenManuallyOff = false;
-bool offlineMode = false;
 bool isConfigMode = false;
 unsigned long configModeStartTime = 0;
+ConfigScreenState configScreenState = CONFIG_SCREEN_NONE;
+String configLog = "";
+bool pendingStartConfigWifi = false;
 bool isBooting = true;
 String bootLog = "";
 bool isFetching = false;
@@ -63,6 +65,15 @@ bool isDarkTheme = true;
 int brightnessLevel = 76;
 int volumeLevel = 2; // Default preset 2 (~70%)
 bool nightModeEnabled = false;
+unsigned long nightModeScreenWakeUntil = 0;
+bool nightModeAlertSnoozed = false;
+
+void triggerNightModeWake() {
+  nightModeScreenWakeUntil = millis() + 30000; // Keep screen on for 30s
+  nightModeAlertSnoozed = true;                 // Touch/wake snoozes the no-data alert
+  stopNightModeDataAlert();
+  // Hardware brightness and canvas flush are handled safely in the Arduino loop thread
+}
 bool isVerticalMode = false;
 int verticalSubscreen = 0; // 0: Main Vertical Menu, 1: Settings, 2: Find Phone
 unsigned long lastUiUpdate = 0;
@@ -116,6 +127,10 @@ void powerOffDevice();
 void logBoot(const String& msg) {
   if (msg.length() > 0) {
     DBG_PRINTLN(msg);
+  }
+  if (isConfigMode && configScreenState == CONFIG_SCREEN_CONNECTING) {
+    logConfig(msg);
+    return;
   }
   if (!isBooting) return;
 
@@ -207,10 +222,39 @@ static void detectHardwareVersion() {
   }
 }
 
+void logConfig(const String& msg) {
+  if (msg.length() > 0) {
+    DBG_PRINTLN(msg);
+  }
+  if (!isConfigMode || configScreenState != CONFIG_SCREEN_CONNECTING) return;
+
+  if (msg.length() > 0) {
+    configLog += msg;
+    configLog += '\n';
+  }
+
+  int newlineCount = 0;
+  for (int i = 0; i < configLog.length(); i++) {
+    if (configLog[i] == '\n') newlineCount++;
+  }
+
+  while (newlineCount > 6) {
+    int firstNewline = configLog.indexOf('\n');
+    configLog = configLog.substring(firstNewline + 1);
+    newlineCount--;
+  }
+
+  updateUI();
+}
+
 void exitConfigMode() {
   if (!isConfigMode) return;
   isConfigMode = false;
+  configScreenState = CONFIG_SCREEN_NONE;
+  configLog = "";
+  pendingStartConfigWifi = false;
   DBG_PRINTLN("CONFIG MODE: Exited");
+  MDNS.end();
   SugarotaBLE::getInstance().enablePairingMode(false);
   if (!isFetching) {
     sleepWiFi();
@@ -300,9 +344,9 @@ void checkSerialConsole() {
         if (f) {
           f.print(jsonPayload);
           f.close();
+          loadConfig();
+          applyRuntimeConfig();
           Serial.println("CONF_OK");
-          delay(500);
-          ESP.restart();
         } else {
           Serial.println("CONF_ERR");
         }
@@ -466,8 +510,10 @@ void setup() {
       delay(50);
     }
     if (!bleConnectedEarly) {
-      logBoot("No Companion yet (Offline)");
-      offlineMode = true;
+      logBoot("No Companion connected. Powering off...");
+      delay(1500);
+      powerOffDevice();
+      return;
     }
     sleepWiFi();
   } else {
@@ -499,7 +545,6 @@ void setup() {
 
   if (bleConnectedEarly) {
     logBoot("BLE Active. Wi-Fi sleeping...");
-    offlineMode = false;
     sleepWiFi();
 
     logBoot("Waiting for BLE Data Sync...");
@@ -530,7 +575,6 @@ void setup() {
       
     if (SugarotaBLE::getInstance().isConnected()) {
       logBoot("BLE Active. Wi-Fi sleeping...");
-      offlineMode = false;
       sleepWiFi();
 
       logBoot("Waiting for BLE Data Sync...");
@@ -552,7 +596,6 @@ void setup() {
         delay(500);
       }
     } else if (WiFi.status() == WL_CONNECTED) {
-      offlineMode = false;
       logBoot("WiFi Connected!");
       logBoot("Syncing NTP Time...");
       
@@ -585,16 +628,19 @@ void setup() {
         logBoot("Warning: Using Cache...");
       }
     } else {
-      logBoot("WiFi Failed. Entering Offline Mode...");
-      offlineMode = true;
-      sleepWiFi();
+      logBoot("WiFi Failed. Powering off...");
       delay(1500);
+      powerOffDevice();
+      return;
     }
   }
   
-  setupWebPortal();
-  if (MDNS.begin("sugarota")) {
-    MDNS.addService("http", "tcp", 80);
+  if (WiFi.status() == WL_CONNECTED) {
+    setupWebPortal();
+    MDNS.end();
+    if (MDNS.begin("sugarota")) {
+      MDNS.addService("http", "tcp", 80);
+    }
   }
 
   isBooting = false;
@@ -619,6 +665,11 @@ void loop() {
   }
   if (bleUIUpdatePending) {
     bleUIUpdatePending = false;
+    if (isNightModeActive() && nightModeScreenWakeUntil > millis()) {
+      if (brightnessLevel == 0) {
+        setBrightness(76);
+      }
+    }
     updateUI();
   }
   
@@ -656,6 +707,32 @@ void loop() {
     }
   }
 
+  if (pendingStartConfigWifi) {
+    pendingStartConfigWifi = false;
+    DBG_PRINTLN("CONFIG: Connecting Wi-Fi from main loop...");
+    connectWiFi(false);
+    if (WiFi.status() == WL_CONNECTED) {
+      logConfig("WiFi Connected!");
+      logConfig("Setting up Web Portal...");
+      setupWebPortal();
+      MDNS.end();
+      if (!MDNS.begin("sugarota")) {
+        logConfig("Error setting up MDNS responder!");
+      } else {
+        MDNS.addService("http", "tcp", 80);
+        logConfig("mDNS responder started: sugarota.local");
+      }
+      delay(800);
+      configScreenState = CONFIG_SCREEN_INFO;
+      updateUI();
+    } else {
+      logConfig("WiFi Connection Failed.");
+      delay(1500);
+      configScreenState = CONFIG_SCREEN_INFO;
+      updateUI();
+    }
+  }
+
   if (bleFallbackFetchPending) {
     bleFallbackFetchPending = false;
     DBG_PRINTLN("BLE: Companion reported API failure, falling back to Wi-Fi fetch from main loop...");
@@ -667,10 +744,74 @@ void loop() {
     exitConfigMode();
   }
 
-  if (brightnessLevel > 0) {
+  // Touchscreen is active when brightness > 0 OR when Night Mode is active (allows tap to wake)
+  if (brightnessLevel > 0 || isNightModeActive()) {
     checkTouch();
   } else {
     isTouching = false;
+  }
+
+  // Night Mode state management:
+  static bool wasNightModeActive = false;
+  static int preNightBrightness = 76;
+  static unsigned long lastNmAlertTrigger = 0;
+  bool nmActive = isNightModeActive();
+
+  if (nmActive && !wasNightModeActive) {
+    // Entered Night Mode
+    wasNightModeActive = true;
+    if (brightnessLevel > 0) {
+      preNightBrightness = brightnessLevel;
+    }
+    // Switch to lowest brightness preset (76)
+    brightnessLevel = 76;
+    nightModeScreenWakeUntil = 0;
+    // Default screen off
+    setBrightness(0);
+    DBG_PRINTLN("NIGHT MODE: Activated (Screen OFF by default, Touch ON)");
+  } else if (!nmActive && wasNightModeActive) {
+    // Exited Night Mode (after 07:00 or turned off in settings)
+    wasNightModeActive = false;
+    nightModeScreenWakeUntil = 0;
+    nightModeAlertSnoozed = false;
+    stopNightModeDataAlert();
+    // Restore brightness
+    setBrightness((preNightBrightness > 0) ? preNightBrightness : 76);
+    updateUI();
+    DBG_PRINTLN("NIGHT MODE: Deactivated (Restored brightness & screen)");
+  }
+
+  if (nmActive) {
+    // 1. Temporary screen wake timeout (30 seconds)
+    if (nightModeScreenWakeUntil > 0) {
+      if (millis() >= nightModeScreenWakeUntil) {
+        nightModeScreenWakeUntil = 0;
+        setBrightness(0); // turn screen back off
+        DBG_PRINTLN("NIGHT MODE: 30s wake expired -> Screen OFF");
+      }
+    }
+
+    // 2. No-data alarm (no update for > 15 minutes)
+    // Plays 4 beeps, 1s pause, 4 beeps, 1s pause, 4 beeps every 5 minutes until data arrives
+    if (!isBooting && lastDataFetch > 0 && (millis() - lastDataFetch > 15 * 60 * 1000)) {
+      if (!nightModeAlertSnoozed && !isNightModeAlertActive()) {
+        if (lastNmAlertTrigger == 0 || (millis() - lastNmAlertTrigger >= 5 * 60 * 1000)) {
+          lastNmAlertTrigger = millis();
+          startNightModeDataAlert();
+          // Turn screen on at lowest brightness during alert so the user sees the warning message
+          nightModeScreenWakeUntil = millis() + 30000;
+          if (brightnessLevel == 0) {
+            setBrightness(76);
+            updateUI();
+          }
+        }
+      }
+    } else {
+      // Data is fresh
+      nightModeAlertSnoozed = false;
+      lastNmAlertTrigger = 0;
+      stopNightModeDataAlert();
+    }
   }
 
   if (showHarveyBallInfo && (millis() - lastHarveyBallTapTime > 3000)) {
@@ -684,10 +825,11 @@ void loop() {
   }
 
   updateFindDevice();
+  updateNightModeAlert();
   pollIMU();
 
   static unsigned long lastBatCheck = 0;
-  if (millis() - lastBatCheck >= 5000 || lastBatCheck == 0) {
+  if (millis() - lastBatCheck >= 30000 || lastBatCheck == 0) {
     lastBatCheck = millis();
     updateBattery();
   }
@@ -706,7 +848,7 @@ void loop() {
     }
   }
 
-  if (isConfigMode || isOTAUpdating || (WiFi.getMode() == WIFI_STA && WiFi.status() == WL_CONNECTED)) {
+  if (isConfigMode || isOTAUpdating) {
     server.handleClient();
   }
 
@@ -726,8 +868,8 @@ void loop() {
       }
     }
     // Safety timeout: prevent spinner from freezing or staying active indefinitely
-    if (fetchStartTime > 0 && (millis() - fetchStartTime > 15000)) {
-      DBG_PRINTLN("FETCH: Timed out after 15s");
+    if (fetchStartTime > 0 && (millis() - fetchStartTime > 35000)) {
+      DBG_PRINTLN("FETCH: Timed out after 35s");
       isFetching = false;
       fetchStartTime = 0;
       if (!isConfigMode) {
@@ -735,7 +877,7 @@ void loop() {
       }
       updateUI();
 
-      // If connected via BLE but companion didn't respond to refresh within 15s, fallback to Wi-Fi
+      // If connected via BLE but companion didn't respond to refresh within 35s, fallback to Wi-Fi
       if (SugarotaBLE::getInstance().isConnected() && connectionMode != "BLE_ONLY" && !isConfigMode) {
         DBG_PRINTLN("BLE: Companion timed out. Falling back to Wi-Fi...");
         fetchData();

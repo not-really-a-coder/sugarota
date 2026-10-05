@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#define SUGAROTA_VERSION "v0.10.01.42"
+#define SUGAROTA_VERSION "v0.10.05.32"
 
 // --- Design System Colors (RGB565 matching Shadcn Zinc Dark & Telemetry Palette) ---
 #define BLACK   0x0841  // #09090B (OLED Zinc Dark Canvas)
@@ -148,9 +148,19 @@ extern int daylightOffset_sec;
 
 extern bool deviceOn;
 extern bool screenManuallyOff;
-extern bool offlineMode;
+enum ConfigScreenState {
+  CONFIG_SCREEN_NONE = 0,
+  CONFIG_SCREEN_PROMPT,
+  CONFIG_SCREEN_CONNECTING,
+  CONFIG_SCREEN_INFO
+};
+
 extern bool isConfigMode;
 extern unsigned long configModeStartTime;
+extern ConfigScreenState configScreenState;
+extern String configLog;
+
+void logConfig(const String& msg);
 void exitConfigMode();
 extern bool isBooting;
 extern String bootLog;
@@ -159,11 +169,15 @@ extern unsigned long fetchStartTime;
 extern bool pendingReboot;
 extern unsigned long pendingRebootTime;
 extern bool pendingStartWifiOta;
+extern bool pendingStartConfigWifi;
 
 extern bool isDarkTheme;
 extern int brightnessLevel;
 extern int volumeLevel;
 extern bool nightModeEnabled;
+extern unsigned long nightModeScreenWakeUntil;
+extern bool nightModeAlertSnoozed;
+void triggerNightModeWake();
 extern bool isVerticalMode;
 extern int verticalSubscreen;
 extern unsigned long lastUiUpdate;

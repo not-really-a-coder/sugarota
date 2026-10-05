@@ -1,4 +1,42 @@
 #include "storage.h"
+#include "audio.h"
+#include "ui.h"
+#include "ble.h"
+#include <time.h>
+#include <WiFi.h>
+
+void applyRuntimeConfig() {
+  // 1. Timezone & NTP: update runtime libc time configuration immediately
+  if (ntpServer.length() > 0) {
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer.c_str());
+  } else {
+    configTime(gmtOffset_sec, daylightOffset_sec, "");
+  }
+
+  // 2. Audio volume: update codec output gain immediately
+  setVolume(volumeLevel);
+
+  // 3. Provider credentials: clear active session so next poll uses new auth/endpoint
+  dexSessionId = "";
+
+  // 4. Wi-Fi reconnection: if Wi-Fi is currently connected, disconnect cleanly
+  // so the next fetch will reconnect with updated SSIDs/passwords/preferences
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFi.disconnect(false, false);
+  }
+
+  // 5. Notify BLE companion of updated system status if connected
+  if (SugarotaBLE::getInstance().isConnected()) {
+    SugarotaBLE::getInstance().notifyStatus(
+        currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION,
+        brightnessLevel, isDarkTheme ? 1 : 0, false,
+        debugMode ? 1 : 0, false, volumeLevel);
+  }
+
+  // 6. Refresh UI immediately to reflect new units or other visual options
+  updateUI();
+  DBG_PRINTLN("Config: Applied in realtime (no reboot)");
+}
 
 void saveHistoryToCache() {
   if (!historyDirty && LittleFS.exists("/history.dat")) return;

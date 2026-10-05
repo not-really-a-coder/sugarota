@@ -84,6 +84,10 @@ void checkButton(ButtonState &btn, const char* name) {
             pwrClickCount = 0;
             Serial.println("PWR Button: DOUBLE Press detected -> Toggle Display & Touch");
 
+            if (isNightModeActive()) {
+              triggerNightModeWake();
+            }
+
             if (brightnessLevel > 0) {
               // Screen is currently ON -> turn OFF
               lastActiveBrightness = brightnessLevel;
@@ -104,6 +108,9 @@ void checkButton(ButtonState &btn, const char* name) {
       } else if (btn.pin == PIN_BOOT_BTN) {
         if (duration > 50 && duration < 1500) {
           Serial.printf("%s Button: SHORT Press detected (Release)\n", name);
+          if (isNightModeActive()) {
+            triggerNightModeWake();
+          }
           if (SugarotaBLE::getInstance().isConnected()) {
             DBG_PRINTLN("ACTION: Force Data Refresh via BLE Companion");
             isFetching = true;
@@ -244,6 +251,20 @@ void checkTouch() {
     touchY = ty;
     isTouching = true;
 
+    // In Night Mode: snooze/stop any active no-data alert on touch, and extend wake window
+    if (isNightModeActive()) {
+      bool wasOff = (brightnessLevel == 0);
+      triggerNightModeWake();
+      if (wasOff) {
+        // If screen was off, the tap is only used to wake up the screen (prevent accidental clicks)
+        setBrightness(76);
+        updateUI();
+        waitForRelease = true;
+        isTouching = false;
+        return;
+      }
+    }
+
     if (isShowingPairingDialog) {
       int w = 220; int h = 130;
       int dx = (640 - w) / 2;
@@ -263,6 +284,56 @@ void checkTouch() {
         waitForRelease = true;
         updateUI();
       }
+      return;
+    }
+
+    if (isConfigMode && configScreenState == CONFIG_SCREEN_PROMPT) {
+      // Prompt Screen YES (x: 180..300, y: 118..158) / NO (x: 340..460, y: 118..158)
+      if (touchX >= 180 && touchX <= 300 && touchY >= 118 && touchY <= 158) {
+        // YES selected: switch to connecting screen, queue main loop Wi-Fi connect
+        configScreenState = CONFIG_SCREEN_CONNECTING;
+        configLog = "Initializing Wi-Fi...\n";
+        pendingStartConfigWifi = true;
+        isTouching = false;
+        waitForRelease = true;
+        updateUI();
+        return;
+      }
+      if (touchX >= 340 && touchX <= 460 && touchY >= 118 && touchY <= 158) {
+        // NO selected: return to glucose dashboard in config mode (BLE remains on)
+        configScreenState = CONFIG_SCREEN_NONE;
+        isTouching = false;
+        waitForRelease = true;
+        updateUI();
+        return;
+      }
+      return;
+    }
+
+    if (isConfigMode && configScreenState == CONFIG_SCREEN_INFO) {
+      // If Wi-Fi failed, TRY AGAIN button is at (x: 330..460, y: 120..158)
+      if (WiFi.status() != WL_CONNECTED && touchX >= 330 && touchX <= 460 && touchY >= 120 && touchY <= 158) {
+        configScreenState = CONFIG_SCREEN_CONNECTING;
+        configLog = "Retrying Wi-Fi...\n";
+        pendingStartConfigWifi = true;
+        isTouching = false;
+        waitForRelease = true;
+        updateUI();
+        return;
+      }
+      // Dismiss button on bottom right: (x: 480..610, y: 120..158)
+      if (touchX >= 480 && touchX <= 610 && touchY >= 120 && touchY <= 158) {
+        configScreenState = CONFIG_SCREEN_NONE;
+        isTouching = false;
+        waitForRelease = true;
+        updateUI();
+        return;
+      }
+      return;
+    }
+
+    if (isConfigMode && configScreenState == CONFIG_SCREEN_CONNECTING) {
+      // Ignore background taps while actively connecting
       return;
     }
 
@@ -435,7 +506,7 @@ void checkTouch() {
 
 void pollIMU() {
   static unsigned long lastImuPoll = 0;
-  int imuPollInterval = (isTimerMode && !isTimerStopped) ? 50 : 100;
+  int imuPollInterval = (isTimerMode && !isTimerStopped) ? 50 : 300;
   if (imuReady && !isBooting && deviceOn && !screenManuallyOff && (millis() - lastImuPoll > imuPollInterval)) {
     lastImuPoll = millis();
     float x, y, z;
@@ -452,15 +523,15 @@ void pollIMU() {
         lastZState = currentZState;
       }
       
-      if (currentZState && !wasFaceDown && (millis() - stateChangeTime >= 100)) {
+      if (currentZState && !wasFaceDown && (millis() - stateChangeTime >= 300)) {
         wasFaceDown = true;
         DBG_PRINTLN("FACE DOWN: Sleep");
         if (brightnessLevel > 0) lastBrightness = brightnessLevel;
         setBrightness(0);
-      } else if (!currentZState && wasFaceDown && (millis() - stateChangeTime >= 100)) {
+      } else if (!currentZState && wasFaceDown && (millis() - stateChangeTime >= 300)) {
         wasFaceDown = false;
         DBG_PRINTLN("PICKED UP: Wake");
-        if (brightnessLevel == 0) {
+        if (brightnessLevel == 0 && !isNightModeActive()) {
           setBrightness(lastBrightness);
         }
       }
@@ -518,7 +589,7 @@ void pollIMU() {
           if (!pendingOrientation) {
             pendingOrientation = true;
             orientTransitionStartTime = millis();
-          } else if (millis() - orientTransitionStartTime >= 250) { // 250ms debounce
+          } else if (millis() - orientTransitionStartTime >= 300) { // 300ms debounce (1 sample hold)
             pendingOrientation = false;
             if (isRotatedLandscape) {
               if (brightnessLevel > 0) {
@@ -581,8 +652,8 @@ void pollIMU() {
       }
       
       // 3. Shake Detection
-      // To prevent accidental triggers and require an intentional, sustained shake (~1.5 seconds),
-      // we track continuous shaking over an extended window requiring 8 shake samples.
+      // To prevent accidental triggers and require an intentional, sustained shake (~1.5-2 seconds),
+      // we track continuous shaking over an extended window requiring 4 shake samples at 300ms polling rate.
       static unsigned long firstShakeTime = 0;
       static unsigned long lastShakeTime = 0;
       static unsigned long lastShakeTriggerTime = 0;
@@ -592,7 +663,7 @@ void pollIMU() {
       if (totalAcc > 2.5) {
         unsigned long now = millis();
         if (now - lastShakeTriggerTime > 1500) { // Cooldown between triggers
-          if (now - lastShakeTime < 500) {
+          if (now - lastShakeTime < 700) {
             shakeCount++;
           } else {
             shakeCount = 1;
@@ -600,8 +671,8 @@ void pollIMU() {
           }
           lastShakeTime = now;
           
-          // Require at least 8 shake peaks and at least 1200ms of sustained shaking (~1.5s total)
-          if (shakeCount >= 8 && (now - firstShakeTime >= 1200)) {
+          // Require at least 4 shake peaks and at least 1000ms of sustained shaking
+          if (shakeCount >= 4 && (now - firstShakeTime >= 1000)) {
             shakeCount = 0;
             firstShakeTime = 0;
             lastShakeTriggerTime = now;
@@ -617,19 +688,28 @@ void pollIMU() {
               
               SugarotaBLE::getInstance().enablePairingMode(true);
 
-              WiFi.disconnect();
-              WiFi.mode(WIFI_AP);
-              WiFi.softAP("Sugarota-Setup");
-              
-              if (!MDNS.begin("sugarota")) {
-                DBG_PRINTLN("Error setting up MDNS responder!");
+              bool isBleMode = (connectionMode == "BLE_ONLY" || SugarotaBLE::getInstance().isConnected());
+              if (isBleMode) {
+                configScreenState = CONFIG_SCREEN_PROMPT;
+                playBeeps(0, 3);
+                updateUI();
               } else {
-                DBG_PRINTLN("mDNS responder started: http://sugarota.local");
-                MDNS.addService("http", "tcp", 80);
+                configScreenState = CONFIG_SCREEN_NONE;
+                WiFi.disconnect();
+                WiFi.mode(WIFI_AP);
+                WiFi.softAP("Sugarota-Setup");
+                
+                MDNS.end();
+                if (!MDNS.begin("sugarota")) {
+                  DBG_PRINTLN("Error setting up MDNS responder!");
+                } else {
+                  DBG_PRINTLN("mDNS responder started: http://sugarota.local");
+                  MDNS.addService("http", "tcp", 80);
+                }
+                
+                playBeeps(0, 3);
+                updateUI();
               }
-              
-              playBeeps(0, 3);
-              updateUI();
             }
           }
         }

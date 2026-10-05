@@ -102,6 +102,8 @@ class MainActivity : ComponentActivity() {
         isInPipMode = isInPictureInPictureMode
     }
 
+    @Deprecated("Deprecated in Java", ReplaceWith("onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)"))
+    @Suppress("DEPRECATION")
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode)
         android.util.Log.d("SugarotaPip", "onPictureInPictureModeChanged(Boolean): $isInPictureInPictureMode")
@@ -450,7 +452,7 @@ fun CompanionAppContent(
                                     },
                                     onClick = {
                                         showTopMenu = false
-                                        onEnterPip?.invoke(null)
+                                        onEnterPip.invoke(null)
                                     }
                                 )
                             }
@@ -1505,7 +1507,6 @@ fun DeviceConfigScreen(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var showRawJson by remember { mutableStateOf(false) }
     var showFirmwareUpdateScreen by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
     val colors = ShadcnTheme.colors
     val typography = ShadcnTheme.typography
@@ -1532,6 +1533,9 @@ fun DeviceConfigScreen(
     var debugMode by remember { mutableStateOf(false) }
     var connectionMode by remember { mutableStateOf("AUTO") }
     var pollIntervalSec by remember { mutableIntStateOf(60) }
+    var ntpServer by remember { mutableStateOf("pool.ntp.org") }
+    var gmtOffsetSec by remember { mutableLongStateOf(10800L) }
+    var daylightOffsetSec by remember { mutableIntStateOf(0) }
 
     // Password preview toggles (temporary reveal with eye icon)
     var showPrimaryPass by remember { mutableStateOf(false) }
@@ -1563,6 +1567,11 @@ fun DeviceConfigScreen(
             secondarySsid = wifi?.optString("secondary_ssid", "") ?: ""
             secondaryPass = wifi?.optString("secondary_pass", "") ?: ""
             useSecondaryFirst = wifi?.optBoolean("use_secondary_first", false) ?: false
+
+            val tz = root.optJSONObject("timezone")
+            ntpServer = tz?.optString("ntp", "pool.ntp.org") ?: "pool.ntp.org"
+            gmtOffsetSec = tz?.optLong("offset", 10800L) ?: 10800L
+            daylightOffsetSec = tz?.optInt("daylight", 0) ?: 0
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -1781,6 +1790,12 @@ fun DeviceConfigScreen(
                                 wifiObj.put("use_secondary_first", useSecondaryFirst)
                                 root.put("wifi", wifiObj)
 
+                                val tzObj = root.optJSONObject("timezone") ?: org.json.JSONObject()
+                                tzObj.put("ntp", ntpServer.trim())
+                                tzObj.put("offset", gmtOffsetSec)
+                                tzObj.put("daylight", daylightOffsetSec)
+                                root.put("timezone", tzObj)
+
                                 val finalJson = root.toString(2)
                                 rawConfigText = finalJson
 
@@ -1793,11 +1808,7 @@ fun DeviceConfigScreen(
                                 service.writeConfig(deviceAddress, finalJson) { success ->
                                      isSaving = false
                                      if (success) {
-                                         statusMessage = "Saved! Device rebooting..."
-                                         scope.launch {
-                                             kotlinx.coroutines.delay(400)
-                                             onDismiss()
-                                         }
+                                         statusMessage = "Saved in real time!"
                                      } else {
                                          statusMessage = "Failed to write configuration"
                                      }
@@ -1813,7 +1824,7 @@ fun DeviceConfigScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "Save & Reboot",
+                            text = "Save & Apply",
                             style = typography.body,
                             fontWeight = FontWeight.Bold,
                             color = colors.primaryForeground
@@ -2145,6 +2156,148 @@ fun DeviceConfigScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
+                // Time & Synchronization Section
+                Text(
+                    text = "TIME & SYNCHRONIZATION",
+                    style = typography.caption,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.foreground
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Configure device clock, NTP server, and time zone",
+                    style = typography.caption,
+                    color = colors.mutedForeground
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                ShadcnCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "Time Zone",
+                            style = typography.caption,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.foreground
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        val timeZones = listOf(
+                            -28800L to "GMT -8:00 (PST)",
+                            -21600L to "GMT -6:00 (CST)",
+                            -18000L to "GMT -5:00 (EST)",
+                            0L to "GMT +0:00 (UTC)",
+                            3600L to "GMT +1:00 (CET)",
+                            7200L to "GMT +2:00 (EET)",
+                            10800L to "GMT +3:00 (MSK / TRT)",
+                            14400L to "GMT +4:00 (GST)",
+                            18000L to "GMT +5:00 (PKT)",
+                            21600L to "GMT +6:00 (BST)",
+                            25200L to "GMT +7:00 (ICT)",
+                            28800L to "GMT +8:00 (SGT / CST)",
+                            32400L to "GMT +9:00 (JST)",
+                            36000L to "GMT +10:00 (AEST)"
+                        )
+
+                        var expandedTz by remember { mutableStateOf(false) }
+                        val currentTzLabel = timeZones.find { it.first == gmtOffsetSec }?.second
+                            ?: run {
+                                val hrs = gmtOffsetSec / 3600
+                                val sign = if (hrs >= 0) "+" else ""
+                                "GMT $sign$hrs:00"
+                            }
+
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            ShadcnButton(
+                                onClick = { expandedTz = true },
+                                variant = ShadcnButtonVariant.SECONDARY,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = currentTzLabel,
+                                        style = typography.body,
+                                        color = colors.foreground
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = null,
+                                        tint = colors.mutedForeground
+                                    )
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = expandedTz,
+                                onDismissRequest = { expandedTz = false },
+                                modifier = Modifier
+                                    .background(colors.card)
+                                    .border(1.dp, colors.border)
+                            ) {
+                                timeZones.forEach { (offset, label) ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = label,
+                                                color = if (offset == gmtOffsetSec) colors.primary else colors.foreground,
+                                                fontWeight = if (offset == gmtOffsetSec) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        },
+                                        onClick = {
+                                            gmtOffsetSec = offset
+                                            expandedTz = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        ShadcnInput(
+                            value = ntpServer,
+                            onValueChange = { ntpServer = it },
+                            label = "NTP Server",
+                            placeholder = "pool.ntp.org"
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Daylight Saving Time (DST)",
+                                    style = typography.body,
+                                    color = colors.foreground
+                                )
+                                Text(
+                                    text = "Advance clock by +1 hour (+3600s)",
+                                    style = typography.caption,
+                                    color = colors.mutedForeground
+                                )
+                            }
+                            Switch(
+                                checked = daylightOffsetSec != 0,
+                                onCheckedChange = { daylightOffsetSec = if (it) 3600 else 0 },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = colors.primaryForeground,
+                                    checkedTrackColor = colors.primary,
+                                    uncheckedThumbColor = colors.mutedForeground,
+                                    uncheckedTrackColor = colors.secondary
+                                )
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
                 // Firmware & Updates Section
                 Text(
                     text = "FIRMWARE & UPDATES",
@@ -2332,7 +2485,11 @@ fun TrendArrowIcon(
     // Adjust vertical translation offset to align visually with the glucose number.
     val canvasWidth = 20.dp
     val canvasHeight = 20.dp
-    val verticalShiftY = if (isDouble && (dir.contains("up") || dir.contains("down"))) 1.5.dp else 0.dp
+    val verticalShiftY = when {
+        isDouble && dir.contains("down") -> 1.5.dp
+        isDouble && dir.contains("up") -> (-2.5).dp
+        else -> 0.dp
+    }
 
     androidx.compose.foundation.Canvas(
         modifier = modifier

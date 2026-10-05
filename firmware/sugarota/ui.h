@@ -14,5 +14,10 @@ void drawTrendArrow(int x, int y, const String& direction, uint16_t color);
 void drawHistoryChart();
 void drawOTAProgress(int percent, const char* statusMsg);
 void drawVerticalScreen();
+bool isNightModeActive();
+void drawMoonIcon(int x, int y, uint16_t color);
+void drawConfigPromptScreen();
+void drawConfigConnectingScreen();
+void drawConfigInfoScreen();
 
 #endif // SUGAROTA_UI_H

@@ -273,3 +273,70 @@ void updateFindDevice() {
   }
 }
 
+// --- Night Mode Data Alert State Machine ---
+// Requirement: 4 beeps, 1 sec pause, 4 beeps, 1 sec pause, 4 beeps.
+static bool nmAlertRunning = false;
+static int nmAlertRepetition = 0; // 0, 1, 2 (total 3 sets of 4 beeps)
+static int nmAlertBeepInRep = 0;  // 0 to 3 (total 4 beeps per set)
+static bool nmAlertIsBeeping = false;
+static unsigned long nmAlertNextActionTime = 0;
+
+void startNightModeDataAlert() {
+  if (findDeviceRunning) return; // Don't interrupt Find Phone alert
+  nmAlertRunning = true;
+  nmAlertRepetition = 0;
+  nmAlertBeepInRep = 0;
+  nmAlertIsBeeping = false;
+  nmAlertNextActionTime = millis();
+  DBG_PRINTLN("NIGHT MODE ALERT: Started (4 beeps x 3 reps, 1s pause)");
+}
+
+void stopNightModeDataAlert() {
+  if (nmAlertRunning) {
+    nmAlertRunning = false;
+    DBG_PRINTLN("NIGHT MODE ALERT: Stopped");
+  }
+}
+
+bool isNightModeAlertActive() {
+  return nmAlertRunning;
+}
+
+void updateNightModeAlert() {
+  if (!nmAlertRunning) return;
+
+  unsigned long now = millis();
+  if (now < nmAlertNextActionTime) return;
+
+  if (nmAlertIsBeeping) {
+    nmAlertIsBeeping = false;
+    nmAlertBeepInRep++;
+
+    if (nmAlertBeepInRep >= 4) {
+      // Finished 4 beeps for this repetition
+      nmAlertRepetition++;
+      nmAlertBeepInRep = 0;
+
+      if (nmAlertRepetition >= 3) {
+        // Finished all 3 sets
+        nmAlertRunning = false;
+        DBG_PRINTLN("NIGHT MODE ALERT: Pattern complete");
+        return;
+      } else {
+        // 1 second pause between sets
+        nmAlertNextActionTime = now + 1000;
+        return;
+      }
+    } else {
+      // Inter-beep gap within the 4-beep set: 100ms
+      nmAlertNextActionTime = now + 100;
+      return;
+    }
+  } else {
+    // Play a short alert beep (112ms tone)
+    nmAlertIsBeeping = true;
+    codecBeepTone(112, 6); // ~2000 Hz tone
+    nmAlertNextActionTime = millis();
+  }
+}
+

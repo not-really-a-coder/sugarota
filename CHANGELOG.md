@@ -2,6 +2,37 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## 2026-10-05 — Night Mode, Power Optimization & Companion Sync
+Firmware v0.10.05.32 | Android App v0.10.05.0 | Web installer v0.10.04.0
+
+This release introduces an automated Night Mode with tap-to-wake and no-data acoustic alerts, streamlined Config Mode Wi-Fi prompting, multi-device Android deployment tooling, time synchronization controls in the companion app, and power management guardrails extending battery autonomy to 20+ hours.
+
+### Firmware & Display Interface
+
+- Added Night Mode (22:00–07:00) with automatic screen blanking, tap-to-wake 30-second low-brightness preview, and periodic acoustic alarm when glucose data stops updating for over 15 minutes
+- Introduced Config Mode prompt screen asking whether to activate Wi-Fi and web portal when shaking while connected over BLE, preserving BLE connectivity without radio power waste
+- Added connection log and info screens in Config Mode with QR code and mDNS URL or retry buttons
+- Applied runtime configuration updates immediately on serial and web save without requiring full hardware reboot
+- Replaced indefinite offline mode with graceful shutdown when initial Wi-Fi or BLE connection cannot be established
+- Extended BLE fetch fallback timeout to 35 seconds to prevent premature Wi-Fi radio wake during Android background execution
+- Throttled IMU polling interval from 100ms to 300ms in normal mode and relaxed shake detection window for battery conservation
+- Increased battery ADC sampling interval to 30 seconds to minimize CPU activity and peripheral draw
+- Updated vertical subscreen text and touch handlers to align with Night Mode schedule and controls
+
+### Android Companion App
+
+- Added Time & Synchronization configuration card in device settings with Time Zone selector, NTP server input, and Daylight Saving Time (DST) switch
+- Corrected double-up trend arrow vertical offset alignment on glucose displays
+- Incremented Android app version code and CalVer version
+
+### Web Installer & Tooling
+
+- Updated Web Installer version badge and applied real-time configuration messaging without device reboot
+- Enhanced `utils/run_android_app.ps1` to automatically detect multiple connected devices/emulators, support targeting specific devices via `-Device`, and fallback to PATH `adb`
+- Added firmware crash log reader utility `utils/read_crash.ps1` and Justfile commands for automated builds, deployment, and device management
+
+---
+
 ## 2026-10-03 — Per-Device Glucose Units Everywhere in App
 Android App v0.10.03.28
 

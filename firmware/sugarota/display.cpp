@@ -68,11 +68,9 @@ void setBrightness(int level) {
     analogWrite(PIN_BL_V1, val);
   }
   
-  if (level == 0) {
-    gfx->displayOff();
-  } else {
-    gfx->displayOn();
-  }
+  // Backlight PWM and V2 boost converter control screen visibility.
+  // Note: Avoid sending QSPI displayOff/displayOn sleep commands to AXS15231B controller
+  // to prevent bus lockups or sync issues during rapid canvas flushes.
 }
 
 void cycleBrightness() {

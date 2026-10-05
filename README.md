@@ -56,10 +56,11 @@ The local setup center requires **zero external python packages** (no `requireme
 
 ## ✨ Key Features & Hardware Specs
 
-- **Long Battery Autonomy**: Up to **18 hours of autonomous operation** without recharging on a single battery charge when using Bluetooth Low Energy (BLE) connection with the companion app.
+- **Long Battery Autonomy**: Up to **20+ hours of autonomous operation** without recharging on a single battery charge when using Bluetooth Low Energy (BLE) connection with the companion app.
 - **Dual Hardware Compatibility**: Automatically detects and drives both Waveshare ESP32-S3-Touch-LCD-3.49 Hardware V1 and V2 (Rev1.1) revisions with dynamic backlight boost control.
 - **Real-Time CGM Monitoring**: Native support for Dexcom Share and Nightscout REST APIs with delta display and direction trend arrows.
 - **Smart Timestamp-Aligned Fetching**: Subsequent data polls align precisely to your CGM reading timestamps with a 3-second lag buffer, minimizing radio airtime, avoiding stale API queries, and eliminating redundant historical sync loops during routine updates.
+- **Night Mode (22:00 – 07:00)**: Automatically turns display off at night to save battery, keeps touchscreen responsive for tap-to-wake (30-second low-brightness peek), and provides an acoustic alarm when sensor data has not updated for >15 minutes.
 - **Display & Touch Controls**:
   - **Double-Press (PWR Button)**: Instantly toggles display and touchscreen ON/OFF while preserving current brightness level.
   - **Single-Press (PWR Button)**: Cycles through active brightness levels (`76 -> 153 -> 204 -> 255`) without turning off, or wakes the screen if off. Also operates during boot sequences.
@@ -67,7 +68,7 @@ The local setup center requires **zero external python packages** (no `requireme
   - **Theme Toggle (BOOT Button)**: Switches between high-contrast pixelated dark console and soft flashlight light theme.
   - **Force Refresh (BOOT Button Short Press)**: Requests an immediate fresh reading and full historical backfill from the companion app or Wi-Fi.
   - **Unit Configuration**: Configurable via Web Installer or Android Companion App settings.
-- **Companion App Remote Control & Find Device**: Control brightness, toggle dark/light theme, trigger acoustic Find Device locator alarm with loud distinct beeps, or remotely reboot and power off the device directly over BLE.
+- **Companion App Remote Control & Time Settings**: Full control over brightness, dark/light theme, time zones, NTP servers, DST toggle, acoustic Find Device locator alarm, and remote restart/power-off directly over BLE.
 - **Picture-in-Picture Floating Monitor**: Monitor real-time glucose and trend charts continuously across any app via Android Picture-in-Picture (PiP) window mode with proportional auto-scaling.
 - **High-DPI Interactive Historical Chart**: 4-hour historical CGM graph with touch scrubber for inspecting past readings.
 - **High-Speed Wi-Fi OTA Flashing**: Update firmware wirelessly over your local Wi-Fi network (`http://sugarota.local/api/ota` or local IP) in 3–5 seconds with live on-screen flashing progress, MD5 verification, and automatic rollback-safe reboot into the new partition.

@@ -209,7 +209,6 @@ void handleBLEGlucose(const JsonDocument& doc) {
     }
   }
 
-  offlineMode = false;
   historyDirty = true;
   isFetching = false;
   fetchStartTime = 0;
@@ -249,6 +248,9 @@ void handleBLEGlucose(const JsonDocument& doc) {
                (historyCount > 0 ? bgHistory[0].delta : 0),
                tsBuf,
                nextBuf);
+    if (nightModeEnabled) {
+      triggerNightModeWake();
+    }
     bleUIUpdatePending = true;
   } else {
     DBG_PRINTF("BLE: Ingested history chunk (%d readings cached)\n", historyCount);
@@ -256,9 +258,9 @@ void handleBLEGlucose(const JsonDocument& doc) {
 }
 
 void handleBLEConfig() {
-  DBG_PRINTLN("BLE: Config updated from smartphone, rebooting in 1s...");
-  delay(1000);
-  ESP.restart();
+  DBG_PRINTLN("BLE: Config updated from smartphone, applying in realtime...");
+  loadConfig();
+  applyRuntimeConfig();
 }
 
 void handleBLEPairingDisplay(uint32_t pin, bool active) {

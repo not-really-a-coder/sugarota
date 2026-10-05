@@ -759,7 +759,7 @@
                     style="width: 58px; height: 58px; image-rendering: pixelated; filter: drop-shadow(0 4px 16px rgba(0, 240, 255, 0.4));">
                 <h1 class="logo-title" style="margin: 0;">SUGAROTA CONTROL CENTER</h1>
             </div>
-            <div><span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.09.27.5</span></div>
+            <div><span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.10.04.0</span></div>
         </header>
 
         <!-- Global Connection Status Banner -->
@@ -1149,7 +1149,7 @@
     </div>
 
     <script>
-        const INSTALLER_VERSION = "v0.09.27.5";
+        const INSTALLER_VERSION = "v0.10.04.0";
 
         // Toggle Password Visibility Reveal Icon Logic
         function togglePasswordVisibility(inputId, btn) {
@@ -1686,7 +1686,7 @@
                 await writer.write(encoder.encode(`SET_CONFIG ${jsonString}\n`));
                 writer.releaseLock();
 
-                log("Settings successfully uploaded! The Sugarota screen is rebooting now to apply...", "var(--accent-green)");
+                log("Settings successfully uploaded and applied in real time!", "var(--accent-green)");
                 SoundEffects.success();
 
                 // Also save a copy back to the local computer's data/config.json

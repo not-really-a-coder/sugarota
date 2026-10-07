@@ -3,12 +3,15 @@
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
 ## 2026-10-07 — Battery Indicator Refinements, Night Mode Sync & Find Phone UX
-Firmware v0.10.07.8 | Android App v0.10.07.46
+Firmware v0.10.07.16 | Android App v0.10.07.48
 
-This release refines low battery indication and adds telemetry logging, updates the firmware Night Mode icon to match Material Design Bedtime, adds bidirectional Night Mode sync over BLE, and significantly improves the Find Phone experience on Android.
+This release refines low battery indication and adds telemetry logging, fixes wireless OTA flashing over Wi-Fi, ensures instant bidirectional Night Mode synchronization, updates the firmware Night Mode icon to match Material Design Bedtime, and significantly improves the Find Phone experience on Android.
 
 ### Firmware & Display Interface
 
+- Fixed Wi-Fi OTA flashing connection failure by ensuring web portal endpoints are initialized and serviced during OTA preparation
+- Added 3-minute safety timeout to Wi-Fi OTA mode to return device to sleep if flashing does not start or aborts
+- Fixed touch screen Night Mode switch sync by immediately dispatching BLE status notification upon toggle and detecting state change in main loop
 - Battery icon now correctly turns red and blinks at 3% or lower in all operating modes
 - Adjusted battery icon segment drawing so that 1 section remains visible between 4% and 19%, leaving only the empty outline at 3% or lower
 - Added LittleFS-backed battery telemetry log (`/battery.log`) recording voltage, percentage, charging state, screen state, and network status every 5 minutes or on 1% battery drops
@@ -22,6 +25,8 @@ This release refines low battery indication and adds telemetry logging, updates 
 ### Android Companion App
 
 - Added Night Mode toggle card in device settings screen with live BLE synchronization to firmware
+- Enhanced OTA Wi-Fi preparation to probe the direct device IP address reported via BLE alongside fallback `sugarota.local` mDNS
+- Fixed light theme indicator color in settings card to use active state rather than default state
 - Added dynamic primary color accent for active theme indicators
 - Silenced Find Phone alerts using physical volume and power hardware button presses
 - Suppressed intrusive heads-up notification banner when the companion app is already open in the foreground

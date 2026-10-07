@@ -2,6 +2,7 @@
 #include "web_portal.h"
 #include "storage.h"
 #include "ui.h"
+#include "net_client.h"
 
 WebServer server(80);
 
@@ -293,7 +294,11 @@ void handleOTAUpload() {
     Update.abort();
     DBG_PRINTLN("[OTA] Update was aborted");
     isOTAUpdating = false;
+    isWifiOtaMode = false;
     otaProgressPercent = 0;
+    if (!isConfigMode && !isFetching) {
+      sleepWiFi();
+    }
     updateUI();
   }
 }
@@ -308,7 +313,11 @@ void handleOTAFinish() {
     String errMsg = Update.errorString();
     server.send(500, "application/json", "{\"status\":\"error\",\"message\":\"" + errMsg + "\"}");
     isOTAUpdating = false;
+    isWifiOtaMode = false;
     otaProgressPercent = 0;
+    if (!isConfigMode && !isFetching) {
+      sleepWiFi();
+    }
     delay(2000);
     updateUI();
   }

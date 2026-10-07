@@ -430,6 +430,7 @@ void checkTouch() {
           playBeeps(0, 1);
           waitForRelease = true;
           isTouching = false;
+          SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
           updateUI();
           return;
         }

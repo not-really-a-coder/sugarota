@@ -996,7 +996,7 @@ fun DeviceChartContent(
                                         Icon(
                                             imageVector = Icons.Default.WbSunny,
                                             contentDescription = null,
-                                            tint = if (device.status.isLightTheme) colors.primary else colors.mutedForeground,
+                                            tint = if (isLightTheme) colors.primary else colors.mutedForeground,
                                             modifier = Modifier.size(20.dp)
                                         )
                                         Spacer(modifier = Modifier.width(12.dp))

@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.10.07.8"
+#define SUGAROTA_VERSION "v0.10.07.16"
 
 #include "config.h"
 #include "storage.h"
@@ -83,6 +83,8 @@ int bondedPhoneCount = 0;
 String activeFindPhoneAddr = "";
 
 bool isOTAUpdating = false;
+bool isWifiOtaMode = false;
+unsigned long wifiOtaStartTime = 0;
 int otaProgressPercent = 0;
 
 BGReading bgHistory[MAX_HISTORY];
@@ -702,16 +704,21 @@ void loop() {
     DBG_PRINTLN("OTA: Connecting Wi-Fi from main loop...");
     connectWiFi(false); // Do not bailout on BLE connection since BLE is actively driving OTA
     if (WiFi.status() == WL_CONNECTED) {
+      setupWebPortal();
+      MDNS.end();
       if (!MDNS.begin("sugarota")) {
         DBG_PRINTLN("[OTA] mDNS begin failed");
       } else {
         MDNS.addService("http", "tcp", 80);
       }
+      isWifiOtaMode = true;
+      wifiOtaStartTime = millis();
       String ipStr = WiFi.localIP().toString();
       DBG_PRINTF("BLE: Wi-Fi connected for OTA at %s (sugarota.local)\n", ipStr.c_str());
       SugarotaBLE::getInstance().notifyWifiOTAStatus("ready", ipStr.c_str(), "sugarota.local");
     } else {
       DBG_PRINTLN("BLE: Wi-Fi connection failed for OTA");
+      isWifiOtaMode = false;
       SugarotaBLE::getInstance().notifyWifiOTAStatus("wifi_failed", "", "");
     }
   }
@@ -846,18 +853,31 @@ void loop() {
   static unsigned long lastBleStatus = 0;
   static int lastNotifiedBattery = -1;
   static bool lastNotifiedCharging = false;
-  bool batteryChanged = (currentBatteryPct != lastNotifiedBattery) || (wasUSBPlugged != lastNotifiedCharging);
+  static bool lastNotifiedNightMode = false;
+  bool stateChanged = (currentBatteryPct != lastNotifiedBattery) || 
+                      (wasUSBPlugged != lastNotifiedCharging) || 
+                      (nightModeEnabled != lastNotifiedNightMode);
 
   if (SugarotaBLE::getInstance().isConnected()) {
-    if (batteryChanged || (millis() - lastBleStatus >= 60000)) {
+    if (stateChanged || (millis() - lastBleStatus >= 60000)) {
       lastBleStatus = millis();
       lastNotifiedBattery = currentBatteryPct;
       lastNotifiedCharging = wasUSBPlugged;
+      lastNotifiedNightMode = nightModeEnabled;
       SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
     }
   }
 
-  if (isConfigMode || isOTAUpdating) {
+  if (isWifiOtaMode && !isOTAUpdating && (millis() - wifiOtaStartTime > 180000)) {
+    DBG_PRINTLN("OTA: 3m Timeout waiting for upload. Disabling Wi-Fi OTA server...");
+    isWifiOtaMode = false;
+    MDNS.end();
+    if (!isConfigMode && !isFetching) {
+      sleepWiFi();
+    }
+  }
+
+  if (isConfigMode || isOTAUpdating || isWifiOtaMode) {
     server.handleClient();
   }
 

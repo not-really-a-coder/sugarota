@@ -175,8 +175,13 @@ fun FirmwareUpdateScreen(
                     return@launch
                 }
 
-                // Probe mDNS / IP if available
-                if (updateManager.probeDeviceSubnet("sugarota.local")) {
+                // Probe IP reported via BLE or fallback mDNS
+                val candidateIp = currentDev?.wifiOta?.ip?.takeIf { it.isNotBlank() } ?: "sugarota.local"
+                if (updateManager.probeDeviceSubnet(candidateIp)) {
+                    deviceIp = candidateIp
+                    break
+                }
+                if (candidateIp != "sugarota.local" && updateManager.probeDeviceSubnet("sugarota.local")) {
                     deviceIp = "sugarota.local"
                     break
                 }

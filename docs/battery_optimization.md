@@ -4,6 +4,32 @@ This document defines the architectural principles and operational guardrails re
 
 ---
 
+## 0. Battery Chemistry & Hardware Architecture
+
+### Cell Chemistry & Discharge Behavior
+* **Form Factor & Capacity**: Sugarota hardware utilizes an **18650 Li-Ion cylindrical cell** (~2400–3500 mAh real capacity).
+* **Discharge Curve Characteristics**:
+  - Full charge float voltage is 4.15V–4.20V.
+  - Initial IR drop and surface charge dissipation drop cell voltage quickly from ~4.20V to ~3.95V under active CPU/radio load.
+  - The dominant discharge plateau sits between 3.60V and 3.80V, where the cell spends the majority of its operating cycle.
+  - At very low current draw (screen off / BLE idle ~15–20 mA), the cell maintains a prolonged tail between 3.35V and 3.00V before reaching the 3.00V safety shutdown cutoff.
+  - The percentage mapping curve in `battery.cpp` (`getBatteryPercentage()`) is calibrated to this plateau to prevent premature low-battery alarms while ensuring accurate empty warnings.
+
+### Charging Circuitry & State Detection
+* **Charger IC**: Waveshare hardware integrates an **ETA6098** Li-Ion charger.
+* **Charge LED Status**:
+  - The charger IC drives a green charge status LED directly via its `STAT` pin (pin 9).
+  - The `STAT` line is strictly analog hardware: it is **not routed** to any ESP32-S3 GPIO or TCA9554 IO expander pin and cannot be queried via software.
+  - Software charging detection relies on ADC rail voltage thresholds (hysteresis between `chargeHighThreshold` and `chargeLowThreshold`).
+
+### Telemetry Logging
+* **Diagnostic Battery Log (`/battery.log`)**:
+  - Firmware records timestamp, battery voltage, percentage, charging status, screen status, and Wi-Fi status on LittleFS.
+  - Entries are captured on boot, on every 1% battery change, or at least every 5 minutes (bounded to 16 KB).
+  - Accessible via serial command `GET_BATTERY_LOG` (`just battery-log`) and cleared with `CLEAR_BATTERY_LOG` (`just clear-battery-log`).
+
+---
+
 ## 1. Radio Power Management (Wi-Fi & BLE Coexistence)
 
 The Wi-Fi and Bluetooth radios are by far the largest consumers of power on the ESP32-S3. Active Wi-Fi reception/transmission consumes 80–120 mA, compared to ~15–25 mA in idle/BLE sleep.

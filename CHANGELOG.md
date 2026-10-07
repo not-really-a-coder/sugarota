@@ -2,10 +2,10 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
-## 2026-10-07 — Battery Indicator Refinements & Dedicated Telemetry Logging
-Firmware v0.10.07.5
+## 2026-10-07 — Battery Indicator Refinements, Night Mode Sync & Find Phone UX
+Firmware v0.10.07.8 | Android App v0.10.07.46
 
-This release fixes low battery icon coloring and segment metrics on the display, and introduces a dedicated background battery telemetry logger with serial retrieval tooling.
+This release refines low battery indication and adds telemetry logging, updates the firmware Night Mode icon to match Material Design Bedtime, adds bidirectional Night Mode sync over BLE, and significantly improves the Find Phone experience on Android.
 
 ### Firmware & Display Interface
 
@@ -15,10 +15,22 @@ This release fixes low battery icon coloring and segment metrics on the display,
 - Added `GET_BATTERY_LOG` and `CLEAR_BATTERY_LOG` serial CDC commands to query and reset battery metrics
 - Theme-aware accent colors and high-contrast pills applied to vertical menus and settings subscreen
 - Ensured Night Mode wake trigger relies accurately on `isNightModeActive()`
+- Updated Night Mode status bar moon icon to match Android companion app Material Bedtime (`Icons.Default.Bedtime`) vector profile
+- Added BLE support for `set_night_mode` command and bidirectional `night_mode` telemetry notification
+- Added audio chime confirmation when updating alert volume via companion app
 
-### Tooling & Automation
+### Android Companion App
+
+- Added Night Mode toggle card in device settings screen with live BLE synchronization to firmware
+- Added dynamic primary color accent for active theme indicators
+- Silenced Find Phone alerts using physical volume and power hardware button presses
+- Suppressed intrusive heads-up notification banner when the companion app is already open in the foreground
+- Added automatic silence handling for Find Phone ringtone upon incoming screen alerts or dismissal
+
+### Tooling & Documentation
 
 - Added `utils/read_battery.ps1` and Justfile recipes `just battery-log` and `just clear-battery-log` to read and reset telemetry data over serial
+- Documented 18650 Li-Ion chemistry, discharge plateau characteristics, and ETA6098 charging hardware in battery optimization guide
 
 ---
 

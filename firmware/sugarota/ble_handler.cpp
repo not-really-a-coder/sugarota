@@ -291,7 +291,16 @@ void handleBLECommand(const JsonDocument& doc) {
     if (val > 3) val = 3;
     setVolume(val);
     saveConfig();
+    if (val > 0) {
+      playBeeps(0, 1);
+    }
     DBG_PRINTF("BLE: Updated volume to %d\n", val);
+    SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
+  } else if (strcmp(cmd, "set_night_mode") == 0) {
+    nightModeEnabled = doc["val"] | false;
+    saveConfig();
+    bleUIUpdatePending = true;
+    DBG_PRINTF("BLE: Updated night mode to %s\n", nightModeEnabled ? "ON" : "OFF");
     SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
   } else if (strcmp(cmd, "set_theme") == 0) {
     const char* themeStr = doc["val"] | "";

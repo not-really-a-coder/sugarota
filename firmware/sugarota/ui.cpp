@@ -700,27 +700,27 @@ bool isNightModeActive() {
 }
 
 void drawMoonIcon(int x, int y, uint16_t color) {
-  // 10x14 crescent moon icon (height 14px matching font cap height at textSize 2)
+  // 12x14 crescent moon icon matching Material Bedtime (Icons.Default.Bedtime)
   static const uint16_t moonBitmap[14] = {
-    0b0000011100,
-    0b0001111110,
-    0b0011111000,
-    0b0111110000,
-    0b1111100000,
-    0b1111100000,
-    0b1111100000,
-    0b1111100000,
-    0b1111100000,
-    0b1111100000,
-    0b0111110000,
-    0b0011111000,
-    0b0001111110,
-    0b0000011100
+    0b000001000000,
+    0b000111000000,
+    0b011111000000,
+    0b011111000000,
+    0b111111000000,
+    0b111111000000,
+    0b111111000000,
+    0b111111100000,
+    0b111111110000,
+    0b111111111000,
+    0b011111111111,
+    0b001111111110,
+    0b000111111100,
+    0b000001111000
   };
   for (int row = 0; row < 14; row++) {
     uint16_t rowBits = moonBitmap[row];
-    for (int col = 0; col < 10; col++) {
-      if (rowBits & (1 << (9 - col))) {
+    for (int col = 0; col < 12; col++) {
+      if (rowBits & (1 << (11 - col))) {
         gfx->drawPixel(x + col, y + row, color);
       }
     }

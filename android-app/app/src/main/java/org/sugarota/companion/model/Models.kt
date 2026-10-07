@@ -137,7 +137,8 @@ data class DeviceStatus(
     val brightness: Int = 76,
     val isDarkTheme: Boolean = true,
     val isDebugMode: Boolean = false,
-    val volume: Int = 2
+    val volume: Int = 2,
+    val isNightMode: Boolean = false
 )
 
 data class WifiOtaStatus(

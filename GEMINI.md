@@ -25,6 +25,9 @@ Detailed module maps and file indices reside directly alongside code in local in
 - Targeted Search First: Use `grep_search` to pinpoint functions/symbols. DO NOT read files linearly to locate code.
 - Anti-Micro-Reading: Read files in large chunks (150–400 lines) or whole files. NEVER make sequential small-slice reads (10–40 lines).
 - Max 2 Reads Per File: If reviewing the same snippet a second time does not yield a solution, STOP immediately, state hypothesis, and ask the user.
+- Strict Re-Read Ban: Once code has been inspected, NEVER re-read the exact same snippet/lines in the same turn unless the file was modified. Rely on context rather than repeating queries.
+- Tool Call Cap & Fast Checkpointing: If 10–12 inspection tool calls pass without generating code edits or resolving the issue, STOP immediately. Post a concise hypothesis/progress checkpoint rather than continuing silent verification loops.
+- Prompt Decomposition: For multi-issue prompts (3+ items), decompose them into an upfront plan within the first few minutes; do NOT attempt exhaustive simultaneous investigation across all sub-items in an uninterrupted loop.
 - Scope Discipline: For routine UI changes, touch only the target Screen/Composable. Do NOT trace data layers across modules unless requested.
 - Hardware Solutions: When encountering display/touch issues, check `extras/waveshare_lcd` before web searches.
 - Diff Hygiene: Modify ONLY files directly required for the active prompt. DO NOT reformat untouched code.

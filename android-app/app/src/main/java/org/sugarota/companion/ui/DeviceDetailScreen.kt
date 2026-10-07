@@ -38,8 +38,7 @@ import org.sugarota.companion.ui.theme.ShadcnTheme
 
 enum class DeviceScreenTab {
     CHART,
-    CONFIG,
-    LOGS
+    SETTINGS
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,7 +50,12 @@ fun DeviceDetailScreen(
     onEnterPip: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
-    BackHandler(onBack = onDismiss)
+    var showLogsSubPage by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = showLogsSubPage) {
+        showLogsSubPage = false
+    }
+    BackHandler(enabled = !showLogsSubPage, onBack = onDismiss)
 
     val devicesMap by service?.devices?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
     val device = devicesMap[deviceAddress] ?: SugarotaDevice(
@@ -71,6 +75,7 @@ fun DeviceDetailScreen(
     LaunchedEffect(device.isConnected) {
         if (!device.isConnected && currentTab != DeviceScreenTab.CHART) {
             currentTab = DeviceScreenTab.CHART
+            showLogsSubPage = false
         }
     }
 
@@ -231,154 +236,108 @@ fun DeviceDetailScreen(
             )
         },
         bottomBar = {
-            // Persistent bottom switcher between Chart and Config screens
-            Surface(
-                color = colors.background,
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.Center
+            if (!showLogsSubPage) {
+                // Persistent bottom switcher between Chart and Settings screens
+                Surface(
+                    color = colors.background,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp
                 ) {
-                    Box(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(42.dp)
-                            .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusMedium))
-                            .background(colors.card) // zinc-900 surface
-                            .border(
-                                width = 1.dp,
-                                color = colors.border, // zinc-800 subtle outline
-                                shape = RoundedCornerShape(ShadcnTheme.shapes.radiusMedium)
-                            )
-                            .padding(3.dp)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.Center
                     ) {
-                        Row(modifier = Modifier.fillMaxSize()) {
-                            // Chart Tab Button
-                            val isChartSelected = currentTab == DeviceScreenTab.CHART
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (isChartSelected) colors.secondary else Color.Transparent)
-                                    .clickable { currentTab = DeviceScreenTab.CHART },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.ShowChart,
-                                        contentDescription = null,
-                                        tint = if (isChartSelected) colors.foreground else colors.mutedForeground,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Chart",
-                                        style = typography.caption.copy(
-                                            fontWeight = if (isChartSelected) FontWeight.SemiBold else FontWeight.Normal
-                                        ),
-                                        color = if (isChartSelected) colors.foreground else colors.mutedForeground
-                                    )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusMedium))
+                                .background(colors.card) // zinc-900 surface
+                                .border(
+                                    width = 1.dp,
+                                    color = colors.border, // zinc-800 subtle outline
+                                    shape = RoundedCornerShape(ShadcnTheme.shapes.radiusMedium)
+                                )
+                                .padding(3.dp)
+                        ) {
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                // Chart Tab Button
+                                val isChartSelected = currentTab == DeviceScreenTab.CHART
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isChartSelected) colors.secondary else Color.Transparent)
+                                        .clickable { currentTab = DeviceScreenTab.CHART },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.ShowChart,
+                                            contentDescription = null,
+                                            tint = if (isChartSelected) colors.foreground else colors.mutedForeground,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Chart",
+                                            style = typography.caption.copy(
+                                                fontWeight = if (isChartSelected) FontWeight.SemiBold else FontWeight.Normal
+                                            ),
+                                            color = if (isChartSelected) colors.foreground else colors.mutedForeground
+                                        )
+                                    }
                                 }
-                            }
 
-                            // Config Tab Button
-                            val isConfigSelected = currentTab == DeviceScreenTab.CONFIG
-                            val isConfigEnabled = device.isConnected
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (isConfigSelected) colors.secondary else Color.Transparent)
-                                    .then(
-                                        if (isConfigEnabled) {
-                                            Modifier.clickable { currentTab = DeviceScreenTab.CONFIG }
-                                        } else {
-                                            Modifier
-                                        }
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Settings,
-                                        contentDescription = null,
-                                        tint = if (!isConfigEnabled) {
-                                            colors.mutedForeground.copy(alpha = 0.35f)
-                                        } else if (isConfigSelected) {
-                                            colors.foreground
-                                        } else {
-                                            colors.mutedForeground
-                                        },
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Config",
-                                        style = typography.caption.copy(
-                                            fontWeight = if (isConfigSelected) FontWeight.SemiBold else FontWeight.Normal
+                                // Settings Tab Button
+                                val isSettingsSelected = currentTab == DeviceScreenTab.SETTINGS
+                                val isSettingsEnabled = device.isConnected
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isSettingsSelected) colors.secondary else Color.Transparent)
+                                        .then(
+                                            if (isSettingsEnabled) {
+                                                Modifier.clickable { currentTab = DeviceScreenTab.SETTINGS }
+                                            } else {
+                                                Modifier
+                                            }
                                         ),
-                                        color = if (!isConfigEnabled) {
-                                            colors.mutedForeground.copy(alpha = 0.35f)
-                                        } else if (isConfigSelected) {
-                                            colors.foreground
-                                        } else {
-                                            colors.mutedForeground
-                                        }
-                                    )
-                                }
-                            }
-
-                            // Logs Tab Button (Terminal / Verbose debug logs)
-                            val isLogsSelected = currentTab == DeviceScreenTab.LOGS
-                            val isLogsEnabled = device.isConnected
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (isLogsSelected) colors.secondary else Color.Transparent)
-                                    .then(
-                                        if (isLogsEnabled) {
-                                            Modifier.clickable { currentTab = DeviceScreenTab.LOGS }
-                                        } else {
-                                            Modifier
-                                        }
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Code,
-                                        contentDescription = null,
-                                        tint = if (!isLogsEnabled) {
-                                            colors.mutedForeground.copy(alpha = 0.35f)
-                                        } else if (isLogsSelected) {
-                                            colors.foreground
-                                        } else {
-                                            colors.mutedForeground
-                                        },
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Logs",
-                                        style = typography.caption.copy(
-                                            fontWeight = if (isLogsSelected) FontWeight.SemiBold else FontWeight.Normal
-                                        ),
-                                        color = if (!isLogsEnabled) {
-                                            colors.mutedForeground.copy(alpha = 0.35f)
-                                        } else if (isLogsSelected) {
-                                            colors.foreground
-                                        } else {
-                                            colors.mutedForeground
-                                        }
-                                    )
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Settings,
+                                            contentDescription = null,
+                                            tint = if (!isSettingsEnabled) {
+                                                colors.mutedForeground.copy(alpha = 0.35f)
+                                            } else if (isSettingsSelected) {
+                                                colors.foreground
+                                            } else {
+                                                colors.mutedForeground
+                                            },
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Settings",
+                                            style = typography.caption.copy(
+                                                fontWeight = if (isSettingsSelected) FontWeight.SemiBold else FontWeight.Normal
+                                            ),
+                                            color = if (!isSettingsEnabled) {
+                                                colors.mutedForeground.copy(alpha = 0.35f)
+                                            } else if (isSettingsSelected) {
+                                                colors.foreground
+                                            } else {
+                                                colors.mutedForeground
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -392,36 +351,44 @@ fun DeviceDetailScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            when (currentTab) {
-                DeviceScreenTab.CHART -> {
-                    val configuredUnits = deviceConfigsMap[device.address]?.let { cfg ->
-                        try { org.json.JSONObject(cfg).optString("units", "") } catch (_: Exception) { "" }
-                    }?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
-                    DeviceChartContent(
-                        device = device,
-                        lastReading = deviceReading,
-                        configuredUnits = configuredUnits,
-                        isConfigured = isConfigured,
-                        service = service,
-                        onNavigateToConfig = { currentTab = DeviceScreenTab.CONFIG },
-                        onOpenFirmwareUpdate = { showFirmwareUpdate = true }
-                    )
-                }
-                DeviceScreenTab.CONFIG -> {
-                    DeviceConfigScreen(
-                        deviceAddress = deviceAddress,
-                        deviceName = customName.ifBlank { device.name },
-                        service = service,
-                        showHeader = false,
-                        onOpenFirmwareUpdate = { showFirmwareUpdate = true },
-                        onDismiss = onDismiss
-                    )
-                }
-                DeviceScreenTab.LOGS -> {
-                    DeviceLogsScreen(
-                        device = device,
-                        service = service
-                    )
+            if (showLogsSubPage) {
+                DeviceLogsScreen(
+                    device = device,
+                    service = service,
+                    onDismiss = { showLogsSubPage = false }
+                )
+            } else {
+                when (currentTab) {
+                    DeviceScreenTab.CHART -> {
+                        val configuredUnits = deviceConfigsMap[device.address]?.let { cfg ->
+                            try {
+                                org.json.JSONObject(cfg).optString("units", "")
+                            } catch (_: Exception) {
+                                ""
+                            }
+                        }?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: "mg/dL"
+                        DeviceChartContent(
+                            device = device,
+                            lastReading = deviceReading,
+                            configuredUnits = configuredUnits,
+                            isConfigured = isConfigured,
+                            service = service,
+                            onNavigateToConfig = { currentTab = DeviceScreenTab.SETTINGS },
+                            onOpenFirmwareUpdate = { showFirmwareUpdate = true }
+                        )
+                    }
+
+                    DeviceScreenTab.SETTINGS -> {
+                        DeviceConfigScreen(
+                            deviceAddress = deviceAddress,
+                            deviceName = customName.ifBlank { device.name },
+                            service = service,
+                            showHeader = false,
+                            onOpenFirmwareUpdate = { showFirmwareUpdate = true },
+                            onOpenLogs = { showLogsSubPage = true },
+                            onDismiss = onDismiss
+                        )
+                    }
                 }
             }
         }
@@ -454,7 +421,8 @@ fun DeviceChartContent(
         }
     }
 
-    val units = configuredUnits.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: lastReading?.units?.takeIf { it.isNotBlank() } ?: "mg/dL"
+    val units = configuredUnits.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address)
+    ?: lastReading?.units?.takeIf { it.isNotBlank() } ?: "mg/dL"
     val isMmol = units.equals("mmol/l", ignoreCase = true)
 
     Column(
@@ -517,7 +485,12 @@ fun DeviceChartContent(
             }
             val deltaFormatted = if (isMmol) {
                 val mmolVal = lastReading.delta / 18.0182f
-                if (lastReading.delta == 0) "+0.0" else String.format(java.util.Locale.US, "%s%.1f", if (lastReading.delta > 0) "+" else "", mmolVal)
+                if (lastReading.delta == 0) "+0.0" else String.format(
+                    java.util.Locale.US,
+                    "%s%.1f",
+                    if (lastReading.delta > 0) "+" else "",
+                    mmolVal
+                )
             } else {
                 "${if (lastReading.delta > 0) "+" else ""}${lastReading.delta}"
             }
@@ -630,516 +603,565 @@ fun DeviceChartContent(
                 ShadcnCard(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                // Confirmation Dialog States
-                var showResetDialog by remember { mutableStateOf(false) }
-                var showPowerOffDialog by remember { mutableStateOf(false) }
-                var isFindingDevice by remember { mutableStateOf(false) }
-                val coroutineScope = rememberCoroutineScope()
+                    // Confirmation Dialog States
+                    var showResetDialog by remember { mutableStateOf(false) }
+                    var showPowerOffDialog by remember { mutableStateOf(false) }
+                    var isFindingDevice by remember { mutableStateOf(false) }
+                    val coroutineScope = rememberCoroutineScope()
 
-                // Reset Confirmation Dialog
-                if (showResetDialog) {
-                    androidx.compose.ui.window.Dialog(
-                        onDismissRequest = { showResetDialog = false },
-                        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.75f))
-                                .padding(24.dp),
-                            contentAlignment = Alignment.Center
+                    // Reset Confirmation Dialog
+                    if (showResetDialog) {
+                        androidx.compose.ui.window.Dialog(
+                            onDismissRequest = { showResetDialog = false },
+                            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
                         ) {
-                            Column(
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusLarge))
-                                    .background(colors.card)
-                                    .border(
-                                        BorderStroke(1.dp, colors.border),
-                                        RoundedCornerShape(ShadcnTheme.shapes.radiusLarge)
-                                    )
-                                    .padding(20.dp)
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.75f))
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = "Restart Device",
-                                    style = typography.h2,
-                                    color = colors.foreground
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text(
-                                    text = "Are you sure you want to reboot ${device.name}? The device will restart and disconnect momentarily.",
-                                    style = typography.body,
-                                    color = colors.mutedForeground
-                                )
-                                Spacer(modifier = Modifier.height(20.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    ShadcnButton(
-                                        onClick = { showResetDialog = false },
-                                        variant = ShadcnButtonVariant.GHOST
-                                    ) {
-                                        Text("Cancel", style = typography.body, color = colors.mutedForeground)
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    ShadcnButton(
-                                        onClick = {
-                                            showResetDialog = false
-                                            service?.rebootDevice(device.address)
-                                        },
-                                        variant = ShadcnButtonVariant.SECONDARY
-                                    ) {
-                                        Text(
-                                            text = "Restart",
-                                            style = typography.body,
-                                            fontWeight = FontWeight.Bold,
-                                            color = colors.foreground
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusLarge))
+                                        .background(colors.card)
+                                        .border(
+                                            BorderStroke(1.dp, colors.border),
+                                            RoundedCornerShape(ShadcnTheme.shapes.radiusLarge)
                                         )
+                                        .padding(20.dp)
+                                ) {
+                                    Text(
+                                        text = "Restart Device",
+                                        style = typography.h2,
+                                        color = colors.foreground
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = "Are you sure you want to reboot ${device.name}? The device will restart and disconnect momentarily.",
+                                        style = typography.body,
+                                        color = colors.mutedForeground
+                                    )
+                                    Spacer(modifier = Modifier.height(20.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        ShadcnButton(
+                                            onClick = { showResetDialog = false },
+                                            variant = ShadcnButtonVariant.GHOST
+                                        ) {
+                                            Text("Cancel", style = typography.body, color = colors.mutedForeground)
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        ShadcnButton(
+                                            onClick = {
+                                                showResetDialog = false
+                                                service?.rebootDevice(device.address)
+                                            },
+                                            variant = ShadcnButtonVariant.SECONDARY
+                                        ) {
+                                            Text(
+                                                text = "Restart",
+                                                style = typography.body,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.foreground
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                // Power Off Confirmation Dialog
-                if (showPowerOffDialog) {
-                    androidx.compose.ui.window.Dialog(
-                        onDismissRequest = { showPowerOffDialog = false },
-                        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.75f))
-                                .padding(24.dp),
-                            contentAlignment = Alignment.Center
+                    // Power Off Confirmation Dialog
+                    if (showPowerOffDialog) {
+                        androidx.compose.ui.window.Dialog(
+                            onDismissRequest = { showPowerOffDialog = false },
+                            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
                         ) {
-                            Column(
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusLarge))
-                                    .background(colors.card)
-                                    .border(
-                                        BorderStroke(1.dp, colors.destructive.copy(alpha = 0.4f)),
-                                        RoundedCornerShape(ShadcnTheme.shapes.radiusLarge)
-                                    )
-                                    .padding(20.dp)
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.75f))
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = "Turn Off Device",
-                                    style = typography.h2,
-                                    color = colors.destructive
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text(
-                                    text = "Are you sure you want to shut down ${device.name}? To turn it back on, press and hold the hardware power button.",
-                                    style = typography.body,
-                                    color = colors.mutedForeground
-                                )
-                                Spacer(modifier = Modifier.height(20.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    ShadcnButton(
-                                        onClick = { showPowerOffDialog = false },
-                                        variant = ShadcnButtonVariant.GHOST
-                                    ) {
-                                        Text("Cancel", style = typography.body, color = colors.mutedForeground)
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    ShadcnButton(
-                                        onClick = {
-                                            showPowerOffDialog = false
-                                            service?.powerOffDevice(device.address)
-                                        },
-                                        variant = ShadcnButtonVariant.DESTRUCTIVE
-                                    ) {
-                                        Text(
-                                            text = "Turn Off",
-                                            style = typography.body,
-                                            fontWeight = FontWeight.Bold,
-                                            color = colors.destructiveForeground
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusLarge))
+                                        .background(colors.card)
+                                        .border(
+                                            BorderStroke(1.dp, colors.destructive.copy(alpha = 0.4f)),
+                                            RoundedCornerShape(ShadcnTheme.shapes.radiusLarge)
                                         )
+                                        .padding(20.dp)
+                                ) {
+                                    Text(
+                                        text = "Turn Off Device",
+                                        style = typography.h2,
+                                        color = colors.destructive
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = "Are you sure you want to shut down ${device.name}? To turn it back on, press and hold the hardware power button.",
+                                        style = typography.body,
+                                        color = colors.mutedForeground
+                                    )
+                                    Spacer(modifier = Modifier.height(20.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        ShadcnButton(
+                                            onClick = { showPowerOffDialog = false },
+                                            variant = ShadcnButtonVariant.GHOST
+                                        ) {
+                                            Text("Cancel", style = typography.body, color = colors.mutedForeground)
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        ShadcnButton(
+                                            onClick = {
+                                                showPowerOffDialog = false
+                                                service?.powerOffDevice(device.address)
+                                            },
+                                            variant = ShadcnButtonVariant.DESTRUCTIVE
+                                        ) {
+                                            Text(
+                                                text = "Turn Off",
+                                                style = typography.body,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.destructiveForeground
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                // Main Controls Column
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    // Header with device info badges
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    // Main Controls Column
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Tune,
-                                contentDescription = null,
-                                tint = colors.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Device Controls",
-                                style = typography.h3,
-                                color = colors.foreground,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                        // Header with device info badges
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Bolt,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Quick Actions",
+                                    style = typography.h3,
+                                    color = colors.foreground,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                ShadcnBadge(
+                                    text = "${device.status.batteryPct}%${if (device.status.isCharging) "(+)" else ""}",
+                                    variant = ShadcnButtonVariant.SECONDARY
+                                )
+                                ShadcnBadge(
+                                    text = device.status.version,
+                                    variant = ShadcnButtonVariant.SECONDARY,
+                                    modifier = Modifier.clickable(onClick = onOpenFirmwareUpdate)
+                                )
+                            }
                         }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 1. Brightness Section (levels 76, 153, 204, 255)
+                        val brightnessLevels = listOf(
+                            Pair(76, "30%"),
+                            Pair(153, "60%"),
+                            Pair(204, "80%"),
+                            Pair(255, "100%")
+                        )
+                        val currentBrightness = device.status.brightness
+
+                        Text(
+                            text = "Screen Brightness",
+                            style = typography.caption.copy(fontWeight = FontWeight.Medium),
+                            color = colors.mutedForeground
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            brightnessLevels.forEach { (level, label) ->
+                                val isSelected = currentBrightness == level
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(38.dp)
+                                        .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusMedium))
+                                        .background(if (isSelected) colors.primary.copy(alpha = 0.15f) else colors.secondary)
+                                        .border(
+                                            BorderStroke(
+                                                1.dp,
+                                                if (isSelected) colors.primary else colors.border
+                                            ),
+                                            RoundedCornerShape(ShadcnTheme.shapes.radiusMedium)
+                                        )
+                                        .clickable {
+                                            service?.setDeviceBrightness(device.address, level)
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.BrightnessMedium,
+                                            contentDescription = null,
+                                            tint = if (isSelected) colors.primary else colors.mutedForeground,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = label,
+                                            style = typography.caption.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                            ),
+                                            color = if (isSelected) colors.primary else colors.foreground
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 2. Speaker Volume Section (levels 0: Off, 1: 35%, 2: 70%, 3: 100%)
+                        val volumeLevels = listOf(
+                            Pair(0, "Off"),
+                            Pair(1, "35%"),
+                            Pair(2, "70%"),
+                            Pair(3, "100%")
+                        )
+                        val currentVolume = device.status.volume
+
+                        Text(
+                            text = "Speaker Volume",
+                            style = typography.caption.copy(fontWeight = FontWeight.Medium),
+                            color = colors.mutedForeground
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            volumeLevels.forEach { (level, label) ->
+                                val isSelected = currentVolume == level
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(38.dp)
+                                        .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusMedium))
+                                        .background(if (isSelected) colors.primary.copy(alpha = 0.15f) else colors.secondary)
+                                        .border(
+                                            BorderStroke(
+                                                1.dp,
+                                                if (isSelected) colors.primary else colors.border
+                                            ),
+                                            RoundedCornerShape(ShadcnTheme.shapes.radiusMedium)
+                                        )
+                                        .clickable {
+                                            service?.setDeviceVolume(device.address, level)
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (level == 0) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                            contentDescription = null,
+                                            tint = if (isSelected) colors.primary else colors.mutedForeground,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = label,
+                                            style = typography.caption.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                            ),
+                                            color = if (isSelected) colors.primary else colors.foreground
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 3. Toggles Section: Night Mode & Light Theme in unified cards
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(ShadcnTheme.shapes.radiusMedium),
+                            color = colors.card,
+                            border = BorderStroke(1.dp, colors.border)
+                        ) {
+                            Column {
+                                // Night Mode row
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Bedtime,
+                                            contentDescription = null,
+                                            tint = if (device.status.isNightMode) colors.primary else colors.mutedForeground,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text(
+                                                text = "Enable Night Mode",
+                                                style = typography.body,
+                                                fontWeight = FontWeight.Medium,
+                                                color = colors.foreground
+                                            )
+                                            Text(
+                                                text = "Auto screen off after 30s on new reading. Tap to wake. Active 22:00-07:00",
+                                                style = typography.caption,
+                                                color = colors.mutedForeground
+                                            )
+                                        }
+                                    }
+                                    Switch(
+                                        checked = device.status.isNightMode,
+                                        onCheckedChange = { checked ->
+                                            service?.setDeviceNightMode(device.address, checked)
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = colors.primaryForeground,
+                                            checkedTrackColor = colors.primary,
+                                            uncheckedThumbColor = colors.mutedForeground,
+                                            uncheckedTrackColor = colors.secondary
+                                        )
+                                    )
+                                }
+
+                                HorizontalDivider(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    thickness = 1.dp,
+                                    color = colors.border
+                                )
+
+                                // Light Theme row (Off = Dark theme active)
+                                val isLightTheme = !device.status.isDarkTheme
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.WbSunny,
+                                            contentDescription = null,
+                                            tint = if (device.status.isLightTheme) colors.primary else colors.mutedForeground,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text(
+                                                text = "Enable Light Theme",
+                                                style = typography.body,
+                                                fontWeight = FontWeight.Medium,
+                                                color = colors.foreground
+                                            )
+                                            Text(
+                                                text = if (isLightTheme) "White high-contrast background" else "Dark theme active when disabled",
+                                                style = typography.caption,
+                                                color = colors.mutedForeground
+                                            )
+                                        }
+                                    }
+                                    Switch(
+                                        checked = isLightTheme,
+                                        onCheckedChange = { lightChecked ->
+                                            // When light is ON, darkTheme is false
+                                            service?.setDeviceTheme(device.address, !lightChecked)
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = colors.primaryForeground,
+                                            checkedTrackColor = colors.primary,
+                                            uncheckedThumbColor = colors.mutedForeground,
+                                            uncheckedTrackColor = colors.secondary
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 4. Combined Action Row: Find Device (flex width) + Power Menu (icon button)
+                        var showPowerMenu by remember { mutableStateOf(false) }
 
                         Row(
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            ShadcnBadge(
-                                text = "${device.status.batteryPct}%${if (device.status.isCharging) "(+)" else ""}",
-                                variant = ShadcnButtonVariant.SECONDARY
-                            )
-                            ShadcnBadge(
-                                text = device.status.version,
-                                variant = ShadcnButtonVariant.SECONDARY,
-                                modifier = Modifier.clickable(onClick = onOpenFirmwareUpdate)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // 1. Brightness Section (levels 76, 153, 204, 255)
-                    val brightnessLevels = listOf(
-                        Pair(76, "30%"),
-                        Pair(153, "60%"),
-                        Pair(204, "80%"),
-                        Pair(255, "100%")
-                    )
-                    val currentBrightness = device.status.brightness
-
-                    Text(
-                        text = "Brightness",
-                        style = typography.caption.copy(fontWeight = FontWeight.Medium),
-                        color = colors.mutedForeground
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        brightnessLevels.forEach { (level, label) ->
-                            val isSelected = currentBrightness == level
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(38.dp)
-                                    .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusMedium))
-                                    .background(if (isSelected) colors.primary.copy(alpha = 0.15f) else colors.secondary)
-                                    .border(
-                                        BorderStroke(
-                                            1.dp,
-                                            if (isSelected) colors.primary else colors.border
-                                        ),
-                                        RoundedCornerShape(ShadcnTheme.shapes.radiusMedium)
-                                    )
-                                    .clickable {
-                                        service?.setDeviceBrightness(device.address, level)
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.BrightnessMedium,
-                                        contentDescription = null,
-                                        tint = if (isSelected) colors.primary else colors.mutedForeground,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = label,
-                                        style = typography.caption.copy(
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                        ),
-                                        color = if (isSelected) colors.primary else colors.foreground
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // 1b. Speaker Volume Section (levels 0: Off, 1: 35%, 2: 70%, 3: 100%)
-                    val volumeLevels = listOf(
-                        Pair(0, "Off"),
-                        Pair(1, "35%"),
-                        Pair(2, "70%"),
-                        Pair(3, "100%")
-                    )
-                    val currentVolume = device.status.volume
-
-                    Text(
-                        text = "Speaker Volume",
-                        style = typography.caption.copy(fontWeight = FontWeight.Medium),
-                        color = colors.mutedForeground
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        volumeLevels.forEach { (level, label) ->
-                            val isSelected = currentVolume == level
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(38.dp)
-                                    .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusMedium))
-                                    .background(if (isSelected) colors.primary.copy(alpha = 0.15f) else colors.secondary)
-                                    .border(
-                                        BorderStroke(
-                                            1.dp,
-                                            if (isSelected) colors.primary else colors.border
-                                        ),
-                                        RoundedCornerShape(ShadcnTheme.shapes.radiusMedium)
-                                    )
-                                    .clickable {
-                                        service?.setDeviceVolume(device.address, level)
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = if (level == 0) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                                        contentDescription = null,
-                                        tint = if (isSelected) colors.primary else colors.mutedForeground,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = label,
-                                        style = typography.caption.copy(
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                        ),
-                                        color = if (isSelected) colors.primary else colors.foreground
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // 2. Theme Selection Section (Dark / Light)
-                    val isDark = device.status.isDarkTheme
-                    Text(
-                        text = "Display Theme",
-                        style = typography.caption.copy(fontWeight = FontWeight.Medium),
-                        color = colors.mutedForeground
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // Dark Theme Pill
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(38.dp)
-                                .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusMedium))
-                                .background(if (isDark) colors.primary.copy(alpha = 0.15f) else colors.secondary)
-                                .border(
-                                    BorderStroke(
-                                        1.dp,
-                                        if (isDark) colors.primary else colors.border
-                                    ),
-                                    RoundedCornerShape(ShadcnTheme.shapes.radiusMedium)
-                                )
-                                .clickable {
-                                    service?.setDeviceTheme(device.address, true)
+                            // Find Device Button
+                            ShadcnButton(
+                                onClick = {
+                                    if (!isFindingDevice) {
+                                        isFindingDevice = true
+                                        service?.findDevice(device.address)
+                                        coroutineScope.launch {
+                                            kotlinx.coroutines.delay(8000L)
+                                            isFindingDevice = false
+                                        }
+                                    }
                                 },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                variant = if (isFindingDevice) ShadcnButtonVariant.SECONDARY else ShadcnButtonVariant.OUTLINE,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp)
+                            ) {
                                 Icon(
-                                    imageVector = Icons.Default.DarkMode,
+                                    imageVector = if (isFindingDevice) Icons.Default.VolumeUp else Icons.Default.Search,
                                     contentDescription = null,
-                                    tint = if (isDark) colors.primary else colors.mutedForeground,
+                                    tint = if (isFindingDevice) colors.primary else colors.foreground,
                                     modifier = Modifier.size(15.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "Dark Theme",
-                                    style = typography.caption.copy(
-                                        fontWeight = if (isDark) FontWeight.Bold else FontWeight.Normal
-                                    ),
-                                    color = if (isDark) colors.primary else colors.foreground
+                                    text = if (isFindingDevice) "Playing Sound..." else "Find Device",
+                                    style = typography.body,
+                                    color = if (isFindingDevice) colors.primary else colors.foreground,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
-                        }
 
-                        // Light Theme Pill
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(38.dp)
-                                .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusMedium))
-                                .background(if (!isDark) colors.primary.copy(alpha = 0.15f) else colors.secondary)
-                                .border(
-                                    BorderStroke(
-                                        1.dp,
-                                        if (!isDark) colors.primary else colors.border
-                                    ),
-                                    RoundedCornerShape(ShadcnTheme.shapes.radiusMedium)
-                                )
-                                .clickable {
-                                    service?.setDeviceTheme(device.address, false)
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.LightMode,
-                                    contentDescription = null,
-                                    tint = if (!isDark) colors.primary else colors.mutedForeground,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Light Theme",
-                                    style = typography.caption.copy(
-                                        fontWeight = if (!isDark) FontWeight.Bold else FontWeight.Normal
-                                    ),
-                                    color = if (!isDark) colors.primary else colors.foreground
-                                )
-                            }
-                        }
-                    }
+                            // Power Dropdown Button (like Windows start menu power button)
+                            Box {
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusMedium))
+                                        .background(colors.card)
+                                        .border(
+                                            BorderStroke(1.dp, colors.border),
+                                            RoundedCornerShape(ShadcnTheme.shapes.radiusMedium)
+                                        )
+                                        .clickable { showPowerMenu = true },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PowerSettingsNew,
+                                        contentDescription = "Power Options",
+                                        tint = colors.foreground,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // 5. Find Device Action
-                    Text(
-                        text = "Device Finder",
-                        style = typography.caption.copy(fontWeight = FontWeight.Medium),
-                        color = colors.mutedForeground
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    ShadcnButton(
-                        onClick = {
-                            if (!isFindingDevice) {
-                                isFindingDevice = true
-                                service?.findDevice(device.address)
-                                coroutineScope.launch {
-                                    // Visual feedback active during the pattern (~8 seconds)
-                                    kotlinx.coroutines.delay(8000L)
-                                    isFindingDevice = false
+                                DropdownMenu(
+                                    expanded = showPowerMenu,
+                                    onDismissRequest = { showPowerMenu = false },
+                                    modifier = Modifier
+                                        .background(colors.card)
+                                        .border(1.dp, colors.border)
+                                ) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = "Restart",
+                                                color = colors.foreground,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Refresh,
+                                                contentDescription = null,
+                                                tint = colors.foreground,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        },
+                                        onClick = {
+                                            showPowerMenu = false
+                                            showResetDialog = true
+                                        }
+                                    )
+                                    HorizontalDivider(color = colors.border)
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = "Turn Off",
+                                                color = colors.destructive,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.PowerSettingsNew,
+                                                contentDescription = null,
+                                                tint = colors.destructive,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        },
+                                        onClick = {
+                                            showPowerMenu = false
+                                            showPowerOffDialog = true
+                                        }
+                                    )
                                 }
                             }
-                        },
-                        variant = if (isFindingDevice) ShadcnButtonVariant.SECONDARY else ShadcnButtonVariant.OUTLINE,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = if (isFindingDevice) Icons.Default.VolumeUp else Icons.Default.Search,
-                            contentDescription = null,
-                            tint = if (isFindingDevice) colors.primary else colors.foreground,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (isFindingDevice) "Playing Alert Sound..." else "Find Device",
-                            style = typography.body,
-                            color = if (isFindingDevice) colors.primary else colors.foreground,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // 3 & 4. Device Reset and Turn Off Actions
-                    Text(
-                        text = "Power & System",
-                        style = typography.caption.copy(fontWeight = FontWeight.Medium),
-                        color = colors.mutedForeground
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // Reset Device
-                        ShadcnButton(
-                            onClick = { showResetDialog = true },
-                            variant = ShadcnButtonVariant.OUTLINE,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = null,
-                                tint = colors.foreground,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Restart",
-                                style = typography.body,
-                                color = colors.foreground,
-                                fontWeight = FontWeight.Medium
-                            )
                         }
-
-                        // Turn Off Device
-                        ShadcnButton(
-                            onClick = { showPowerOffDialog = true },
-                            variant = ShadcnButtonVariant.DESTRUCTIVE,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PowerSettingsNew,
-                                contentDescription = null,
-                                tint = colors.destructiveForeground,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Turn Off",
-                                style = typography.body,
-                                color = colors.destructiveForeground,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
+                        Spacer(modifier = Modifier.height(12.dp))
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
     }
-}
 }
 
 
 @Composable
 fun DeviceLogsScreen(
     device: SugarotaDevice,
-    service: SugarotaBleService?
+    service: SugarotaBleService?,
+    onDismiss: (() -> Unit)? = null
 ) {
     val colors = ShadcnTheme.colors
     val typography = ShadcnTheme.typography
@@ -1166,6 +1188,31 @@ fun DeviceLogsScreen(
             .fillMaxSize()
             .padding(16.dp)
     ) {
+        if (onDismiss != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back to Settings",
+                        tint = colors.foreground
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Device & BLE Logs",
+                    style = typography.h2,
+                    color = colors.foreground
+                )
+            }
+        }
         // Debug Mode Switch Header Card
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -1323,7 +1370,11 @@ fun DeviceLogsScreen(
                                                     lineHeight = 16.sp
                                                 ),
                                                 color = when {
-                                                    line.contains("error", ignoreCase = true) || line.contains("failed", ignoreCase = true) -> Color(0xFFF87171)
+                                                    line.contains("error", ignoreCase = true) || line.contains(
+                                                        "failed",
+                                                        ignoreCase = true
+                                                    ) -> Color(0xFFF87171)
+
                                                     line.contains("Connected", ignoreCase = true) -> Color(0xFF4ADE80)
                                                     line.contains("write", ignoreCase = true) -> Color(0xFF38BDF8)
                                                     line.contains("Status", ignoreCase = true) -> Color(0xFFFBBF24)

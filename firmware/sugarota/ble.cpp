@@ -427,6 +427,7 @@ void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* vers
     }
     int volToSend = (volume >= 0) ? volume : volumeLevel;
     doc["volume"] = volToSend;
+    doc["night_mode"] = nightModeEnabled;
     if (requestRefresh) {
         doc["request_refresh"] = true;
     }

@@ -96,7 +96,10 @@ class MainActivity : ComponentActivity() {
     }
 
     @Suppress("DEPRECATION")
-    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: android.content.res.Configuration
+    ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         android.util.Log.d("SugarotaPip", "onPictureInPictureModeChanged(Boolean, Config): $isInPictureInPictureMode")
         isInPipMode = isInPictureInPictureMode
@@ -151,7 +154,10 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             isInPipMode = isInPictureInPictureMode
             addOnPictureInPictureModeChangedListener { info ->
-                android.util.Log.d("SugarotaPip", "addOnPictureInPictureModeChangedListener: ${info.isInPictureInPictureMode}")
+                android.util.Log.d(
+                    "SugarotaPip",
+                    "addOnPictureInPictureModeChangedListener: ${info.isInPictureInPictureMode}"
+                )
                 isInPipMode = info.isInPictureInPictureMode
             }
         }
@@ -174,9 +180,15 @@ class MainActivity : ComponentActivity() {
                     )
                 ) {
                     if (isInPipMode) {
-                        val deviceReadings by bleService?.deviceReadings?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
-                        val globalReading by bleService?.lastReading?.collectAsState() ?: remember { mutableStateOf(null) }
-                        val deviceConfigsMap by bleService?.deviceConfigsFlow?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
+                        val deviceReadings by bleService?.deviceReadings?.collectAsState() ?: remember {
+                            mutableStateOf(
+                                emptyMap()
+                            )
+                        }
+                        val globalReading by bleService?.lastReading?.collectAsState()
+                            ?: remember { mutableStateOf(null) }
+                        val deviceConfigsMap by bleService?.deviceConfigsFlow?.collectAsState()
+                            ?: remember { mutableStateOf(emptyMap()) }
                         val primaryAddr = bleService?.getPrimaryDeviceAddress()
                         val activePipAddr = pipDeviceAddress ?: primaryAddr
                         val reading = (activePipAddr?.let { deviceReadings[it] }) ?: globalReading
@@ -185,9 +197,12 @@ class MainActivity : ComponentActivity() {
                             if (!cfgJson.isNullOrBlank()) {
                                 try {
                                     org.json.JSONObject(cfgJson).optString("units", "")
-                                } catch (_: Exception) { "" }
+                                } catch (_: Exception) {
+                                    ""
+                                }
                             } else ""
-                        }?.takeIf { it.isNotBlank() } ?: bleService?.getDeviceUnits(activePipAddr) ?: reading?.units ?: "mg/dL"
+                        }?.takeIf { it.isNotBlank() } ?: bleService?.getDeviceUnits(activePipAddr) ?: reading?.units
+                        ?: "mg/dL"
                         val units = configuredUnits.ifBlank { reading?.units ?: "mg/dL" }
                         PipGlucoseChartContent(
                             reading = reading,
@@ -255,6 +270,16 @@ class MainActivity : ComponentActivity() {
         bleService?.connectDevice(address)
     }
 
+    override fun onResume() {
+        super.onResume()
+        SugarotaBleService.isAppInForeground = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        SugarotaBleService.isAppInForeground = false
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -264,6 +289,29 @@ class MainActivity : ComponentActivity() {
                 enterPipMode()
             }
         }
+    }
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+            val isRinging = bleService?.isRinging?.value == true
+            if (isRinging) {
+                when (event.keyCode) {
+                    android.view.KeyEvent.KEYCODE_VOLUME_UP,
+                    android.view.KeyEvent.KEYCODE_VOLUME_DOWN,
+                    android.view.KeyEvent.KEYCODE_VOLUME_MUTE,
+                    android.view.KeyEvent.KEYCODE_POWER,
+                    android.view.KeyEvent.KEYCODE_HEADSETHOOK -> {
+                        android.util.Log.i(
+                            "MainActivity",
+                            "Hardware button (${event.keyCode}) pressed while ringing -> silencing alert"
+                        )
+                        bleService?.stopFindPhoneAlert(sendBleConfirmation = true)
+                        return true
+                    }
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onDestroy() {
@@ -313,7 +361,8 @@ fun CompanionAppContent(
     val lastReading by service?.lastReading?.collectAsState() ?: remember { mutableStateOf(null) }
     val isRinging by service?.isRinging?.collectAsState() ?: remember { mutableStateOf(false) }
 
-    val connectingDevices by service?.connectingDevicesState?.collectAsState() ?: remember { mutableStateOf(emptySet()) }
+    val connectingDevices by service?.connectingDevicesState?.collectAsState()
+        ?: remember { mutableStateOf(emptySet()) }
     val pairingDevices by service?.pairingDevicesState?.collectAsState() ?: remember { mutableStateOf(emptySet()) }
 
     // Dialog state for confirming Forget scenario
@@ -328,6 +377,15 @@ fun CompanionAppContent(
     var hasCheckedAppUpdate by remember { mutableStateOf(false) }
     var appUpdateError by remember { mutableStateOf<String?>(null) }
     val appContext = androidx.compose.ui.platform.LocalContext.current
+    var showEnableBtDialog by remember { mutableStateOf(false) }
+
+    val ensureBluetooth: (() -> Unit) -> Unit = { action ->
+        if (service?.isBluetoothEnabled() == true) {
+            action()
+        } else {
+            showEnableBtDialog = true
+        }
+    }
     val appUpdateManager = remember(appContext) { AppUpdateManager(appContext) }
     val installedAppVersion = remember(appContext) {
         try {
@@ -375,12 +433,17 @@ fun CompanionAppContent(
         val shouldTrigger = hasReachedThreshold || (distance >= scanThresholdPx)
         val activeService = currentService
         if ((distance > 0f || shouldTrigger) && !isHandlingRelease) {
-            android.util.Log.i("SugarotaPull", "onPullRelease: distance=$distance, threshold=$scanThresholdPx, shouldTrigger=$shouldTrigger, service=${if (activeService != null) "Ready" else "NULL"}")
+            android.util.Log.i(
+                "SugarotaPull",
+                "onPullRelease: distance=$distance, threshold=$scanThresholdPx, shouldTrigger=$shouldTrigger, service=${if (activeService != null) "Ready" else "NULL"}"
+            )
             isHandlingRelease = true
             hasReachedThreshold = false
             if (shouldTrigger) {
-                android.util.Log.i("SugarotaPull", "Calling activeService?.triggerScan()")
-                activeService?.triggerScan()
+                ensureBluetooth {
+                    android.util.Log.i("SugarotaPull", "Calling activeService?.triggerScan()")
+                    activeService?.triggerScan()
+                }
             }
             coroutineScope.launch {
                 try {
@@ -521,11 +584,72 @@ fun CompanionAppContent(
                     actionIconContentColor = colors.primary
                 )
             )
+        },
+        bottomBar = {
+            if (isRinging) {
+                Surface(
+                    color = colors.background,
+                    shadowElevation = 8.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444)),
+                        shape = RoundedCornerShape(ShadcnTheme.shapes.radiusMedium),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .clickable { service?.stopFindPhoneAlert(sendBleConfirmation = true) }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.NotificationsActive,
+                                contentDescription = "Ringing",
+                                tint = Color.White,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Finding Phone",
+                                    style = typography.body.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp),
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Tap anywhere or press volume key to stop",
+                                    style = typography.caption,
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            ShadcnButton(
+                                onClick = { service?.stopFindPhoneAlert(sendBleConfirmation = true) },
+                                variant = ShadcnButtonVariant.SECONDARY,
+                                modifier = Modifier.defaultMinSize(minWidth = 76.dp, minHeight = 42.dp)
+                            ) {
+                                Text(
+                                    text = "STOP",
+                                    color = Color(0xFFEF4444),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     ) { padding ->
         val nestedScrollConnection = remember(scanThresholdPx, maxPullPx) {
             object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
-                override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                override fun onPreScroll(
+                    available: androidx.compose.ui.geometry.Offset,
+                    source: androidx.compose.ui.input.nestedscroll.NestedScrollSource
+                ): androidx.compose.ui.geometry.Offset {
                     // While pulling down, if dragging back upward before release
                     if (available.y < 0 && pullDistancePx > 0f) {
                         val consumed = (-available.y).coerceAtMost(pullDistancePx)
@@ -538,7 +662,11 @@ fun CompanionAppContent(
                     return androidx.compose.ui.geometry.Offset.Zero
                 }
 
-                override fun onPostScroll(consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                override fun onPostScroll(
+                    consumed: androidx.compose.ui.geometry.Offset,
+                    available: androidx.compose.ui.geometry.Offset,
+                    source: androidx.compose.ui.input.nestedscroll.NestedScrollSource
+                ): androidx.compose.ui.geometry.Offset {
                     // When scrolled all the way to top and dragging further down
                     if (available.y > 0 && !isScanning) {
                         val newDistance = (pullDistancePx + available.y * 0.75f).coerceAtMost(maxPullPx)
@@ -556,7 +684,10 @@ fun CompanionAppContent(
                     return androidx.compose.ui.unit.Velocity.Zero
                 }
 
-                override suspend fun onPostFling(consumed: androidx.compose.ui.unit.Velocity, available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
+                override suspend fun onPostFling(
+                    consumed: androidx.compose.ui.unit.Velocity,
+                    available: androidx.compose.ui.unit.Velocity
+                ): androidx.compose.ui.unit.Velocity {
                     currentOnPullRelease()
                     return androidx.compose.ui.unit.Velocity.Zero
                 }
@@ -578,7 +709,8 @@ fun CompanionAppContent(
                                 awaitEachGesture {
                                     awaitFirstDown(requireUnconsumed = false)
                                     do {
-                                        val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                        val event =
+                                            awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
                                     } while (event.changes.any { it.pressed })
                                     if (pullDistancePx > 0f || hasReachedThreshold) {
                                         currentOnPullRelease()
@@ -641,60 +773,9 @@ fun CompanionAppContent(
                 }
             }
 
-            // Active Find Phone Ringing Banner
-            if (isRinging) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444)),
-                    shape = RoundedCornerShape(ShadcnTheme.shapes.radiusMedium),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.NotificationsActive,
-                            contentDescription = "Ringing",
-                            tint = Color.White,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Finding Phone",
-                                style = typography.body.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White
-                            )
-                            Text(
-                                text = "Device requested find phone alert",
-                                style = typography.caption,
-                                color = Color.White.copy(alpha = 0.9f)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        ShadcnButton(
-                            onClick = { service?.stopFindPhoneAlert(sendBleConfirmation = true) },
-                            variant = ShadcnButtonVariant.SECONDARY,
-                            modifier = Modifier.defaultMinSize(minWidth = 72.dp)
-                        ) {
-                            Text(
-                                text = "STOP",
-                                color = Color(0xFFEF4444),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
-                }
-            }
-
             // Display prompt banner if an unbonded device is connected and awaiting pairing
-            val unbondedConnectedDevices = sortedDeviceList.filter { 
-                it.isConnected && !it.isBonded && !dismissedPairingAddresses.contains(it.address) 
+            val unbondedConnectedDevices = sortedDeviceList.filter {
+                it.isConnected && !it.isBonded && !dismissedPairingAddresses.contains(it.address)
             }
             if (unbondedConnectedDevices.isNotEmpty()) {
                 val primaryUnbonded = unbondedConnectedDevices.first()
@@ -733,9 +814,12 @@ fun CompanionAppContent(
                             )
                         }
                         Spacer(modifier = Modifier.width(8.dp))
-                        val isPairingBanner = pairingDevices.contains(primaryUnbonded.address) || connectingDevices.contains(primaryUnbonded.address)
+                        val isPairingBanner =
+                            pairingDevices.contains(primaryUnbonded.address) || connectingDevices.contains(
+                                primaryUnbonded.address
+                            )
                         ShadcnButton(
-                            onClick = { service?.pairDevice(primaryUnbonded.address) },
+                            onClick = { ensureBluetooth { service?.pairDevice(primaryUnbonded.address) } },
                             variant = ShadcnButtonVariant.DEFAULT,
                             isLoading = isPairingBanner,
                             modifier = Modifier.defaultMinSize(minWidth = 84.dp)
@@ -765,395 +849,350 @@ fun CompanionAppContent(
                 }
             }
 
-                val pairedDisplays = remember(sortedDeviceList) { sortedDeviceList.filter { it.isBonded } }
-                val unpairedDisplays = remember(sortedDeviceList) { sortedDeviceList.filter { !it.isBonded } }
+            val pairedDisplays = remember(sortedDeviceList) { sortedDeviceList.filter { it.isBonded } }
+            val unpairedDisplays = remember(sortedDeviceList) { sortedDeviceList.filter { !it.isBonded } }
 
-                if (sortedDeviceList.isEmpty()) {
-                    val context = androidx.compose.ui.platform.LocalContext.current
-                    val currentAppVersion = remember(context) {
-                        try {
-                            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                            pInfo.versionName ?: "v0.09.09.0"
-                        } catch (e: Exception) {
-                            "v0.09.09.0"
-                        }
+            if (sortedDeviceList.isEmpty()) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val currentAppVersion = remember(context) {
+                    try {
+                        val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                        pInfo.versionName ?: "v0.09.09.0"
+                    } catch (e: Exception) {
+                        "v0.09.09.0"
                     }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState()),
-                        contentAlignment = Alignment.Center
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
-                        ) {
-                            androidx.compose.foundation.Image(
-                                painter = androidx.compose.ui.res.painterResource(id = org.sugarota.companion.R.drawable.ic_sugarota_logo),
-                                contentDescription = "Sugarota Logo",
-                                modifier = Modifier
-                                    .size(88.dp)
-                                    .padding(bottom = 12.dp)
-                            )
-                            Text(
-                                text = "Sugarota Companion",
-                                style = typography.h3,
-                                color = colors.foreground,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = currentAppVersion,
-                                style = typography.caption,
-                                color = colors.mutedForeground.copy(alpha = 0.7f)
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "Power on Sugarota display near this smartphone to scan & pair.",
-                                style = typography.caption,
-                                color = colors.mutedForeground,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                        }
+                        androidx.compose.foundation.Image(
+                            painter = androidx.compose.ui.res.painterResource(id = org.sugarota.companion.R.drawable.ic_sugarota_logo),
+                            contentDescription = "Sugarota Logo",
+                            modifier = Modifier
+                                .size(88.dp)
+                                .padding(bottom = 12.dp)
+                        )
+                        Text(
+                            text = "Sugarota Companion",
+                            style = typography.h3,
+                            color = colors.foreground,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = currentAppVersion,
+                            style = typography.caption,
+                            color = colors.mutedForeground.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Power on Sugarota display near this smartphone to scan & pair.",
+                            style = typography.caption,
+                            color = colors.mutedForeground,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
                     }
-                } else {
-                    val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
-                    var draggedDeviceAddress by remember { mutableStateOf<String?>(null) }
-                    var settlingDeviceAddress by remember { mutableStateOf<String?>(null) }
-                    var dragDisplacementY by remember { mutableFloatStateOf(0f) }
-                    val settleOffsetY = remember { Animatable(0f) }
-                    // Single stable state instance across re-renders to prevent pointerInput closure from holding a stale delegate
-                    var currentOrderList by remember { mutableStateOf(pairedDisplays) }
-                    var initialDragIndex by remember { mutableIntStateOf(-1) }
-                    var initialItemCenters by remember { mutableStateOf<Map<Int, Float>>(emptyMap()) }
-                    var initialItemOffsets by remember { mutableStateOf<Map<Int, Float>>(emptyMap()) }
-                    val dragScope = rememberCoroutineScope()
-                    val currentPairedDisplays by rememberUpdatedState(pairedDisplays)
-                    val listContext = androidx.compose.ui.platform.LocalContext.current
+                }
+            } else {
+                val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+                var draggedDeviceAddress by remember { mutableStateOf<String?>(null) }
+                var settlingDeviceAddress by remember { mutableStateOf<String?>(null) }
+                var dragDisplacementY by remember { mutableFloatStateOf(0f) }
+                val settleOffsetY = remember { Animatable(0f) }
+                // Single stable state instance across re-renders to prevent pointerInput closure from holding a stale delegate
+                var currentOrderList by remember { mutableStateOf(pairedDisplays) }
+                var initialDragIndex by remember { mutableIntStateOf(-1) }
+                var initialItemCenters by remember { mutableStateOf<Map<Int, Float>>(emptyMap()) }
+                var initialItemOffsets by remember { mutableStateOf<Map<Int, Float>>(emptyMap()) }
+                val dragScope = rememberCoroutineScope()
+                val currentPairedDisplays by rememberUpdatedState(pairedDisplays)
+                val listContext = androidx.compose.ui.platform.LocalContext.current
 
-                    // Sync when pairedDisplays changes outside of active drag session
-                    LaunchedEffect(pairedDisplays) {
-                        if (draggedDeviceAddress == null && settlingDeviceAddress == null) {
-                            currentOrderList = pairedDisplays
-                        }
+                // Sync when pairedDisplays changes outside of active drag session
+                LaunchedEffect(pairedDisplays) {
+                    if (draggedDeviceAddress == null && settlingDeviceAddress == null) {
+                        currentOrderList = pairedDisplays
                     }
+                }
 
-                    var swipedDeviceAddress by remember { mutableStateOf<String?>(null) }
+                var swipedDeviceAddress by remember { mutableStateOf<String?>(null) }
 
-                    LazyColumn(
-                        state = lazyListState,
-                        modifier = Modifier
-                            .weight(1f)
-                            .pointerInput(Unit) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { offset ->
-                                        val items = lazyListState.layoutInfo.visibleItemsInfo
-                                        val hitItem = items.firstOrNull {
-                                            offset.y.toInt() in it.offset..(it.offset + it.size)
-                                        }
-                                        val pairedHeaderOffset = if (currentOrderList.isNotEmpty()) 1 else 0
-                                        val hitOrderIndex = hitItem?.let { it.index - pairedHeaderOffset }
-                                        if (hitItem != null && hitOrderIndex != null && hitOrderIndex in currentOrderList.indices) {
-                                            initialDragIndex = hitOrderIndex
-                                            draggedDeviceAddress = currentOrderList.getOrNull(hitOrderIndex)?.address
-                                            dragDisplacementY = 0f
-                                            settlingDeviceAddress = null
-                                            // Capture static initial slot geometry so we never read stale layoutInfo mid-drag
-                                            // Map item positions to currentOrderList indices (item.index - pairedHeaderOffset)
-                                            initialItemCenters = items
-                                                .filter { (it.index - pairedHeaderOffset) in currentOrderList.indices }
-                                                .associate { (it.index - pairedHeaderOffset) to (it.offset + it.size / 2f) }
-                                            initialItemOffsets = items
-                                                .filter { (it.index - pairedHeaderOffset) in currentOrderList.indices }
-                                                .associate { (it.index - pairedHeaderOffset) to it.offset.toFloat() }
-                                        }
-                                    },
-                                    onDrag = { change, dragAmount ->
-                                        change.consume()
-                                        val currentAddr = draggedDeviceAddress ?: return@detectDragGesturesAfterLongPress
-                                        dragDisplacementY += dragAmount.y
-
-                                        val currentPos = currentOrderList.indexOfFirst { it.address == currentAddr }
-                                        if (currentPos == -1 || initialDragIndex !in initialItemCenters) return@detectDragGesturesAfterLongPress
-
-                                        val startCenter = initialItemCenters[initialDragIndex] ?: return@detectDragGesturesAfterLongPress
-                                        val currentDraggedCenter = startCenter + dragDisplacementY
-
-                                        // Slot swap check with directional hysteresis (requires crossing 60% towards the target slot, providing a 20% deadband)
-                                        val nextCenter = initialItemCenters[currentPos + 1]
-                                        val prevCenter = initialItemCenters[currentPos - 1]
-                                        val curCenter = initialItemCenters[currentPos] ?: startCenter
-
-                                        val targetIndex = when {
-                                            nextCenter != null && currentDraggedCenter > curCenter + (nextCenter - curCenter) * 0.6f -> currentPos + 1
-                                            prevCenter != null && currentDraggedCenter < curCenter - (curCenter - prevCenter) * 0.6f -> currentPos - 1
-                                            else -> null
-                                        }
-
-                                        // Swap synchronously in state
-                                        if (targetIndex != null && targetIndex in currentOrderList.indices) {
-                                            val reordered = currentOrderList.toMutableList()
-                                            val item = reordered.removeAt(currentPos)
-                                            reordered.add(targetIndex, item)
-                                            currentOrderList = reordered
-                                        }
-                                    },
-                                    onDragEnd = {
-                                        val currentAddr = draggedDeviceAddress
-                                        if (currentAddr != null) {
-                                            val currentPos = currentOrderList.indexOfFirst { it.address == currentAddr }
-                                            val originOffset = initialItemOffsets[initialDragIndex] ?: 0f
-                                            val currentSlotOffset = initialItemOffsets[currentPos] ?: originOffset
-                                            val currentVisualTranslationY = dragDisplacementY - (currentSlotOffset - originOffset)
-
-                                            draggedDeviceAddress = null
-                                            settlingDeviceAddress = currentAddr
-
-                                            dragScope.launch {
-                                                settleOffsetY.snapTo(currentVisualTranslationY)
-                                                settleOffsetY.animateTo(
-                                                    0f,
-                                                    spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioLowBouncy)
-                                                )
-                                                settlingDeviceAddress = null
-                                                val finalOrder = currentOrderList.map { it.address }
-                                                currentService?.saveDeviceOrder(finalOrder)
-                                            }
-                                        } else {
-                                            draggedDeviceAddress = null
-                                        }
-                                    },
-                                    onDragCancel = {
-                                        draggedDeviceAddress = null
-                                        settlingDeviceAddress = null
-                                        currentOrderList = currentPairedDisplays
+                LazyColumn(
+                    state = lazyListState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .pointerInput(Unit) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { offset ->
+                                    val items = lazyListState.layoutInfo.visibleItemsInfo
+                                    val hitItem = items.firstOrNull {
+                                        offset.y.toInt() in it.offset..(it.offset + it.size)
                                     }
-                                )
-                            },
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // Section 1: Paired displays
-                        if (currentOrderList.isNotEmpty()) {
-                            item(key = "header_paired") {
-                                Text(
-                                    text = "Paired displays",
-                                    style = typography.h3,
-                                    color = colors.mutedForeground,
-                                    modifier = Modifier.padding(bottom = 2.dp)
-                                )
+                                    val pairedHeaderOffset = if (currentOrderList.isNotEmpty()) 1 else 0
+                                    val hitOrderIndex = hitItem?.let { it.index - pairedHeaderOffset }
+                                    if (hitItem != null && hitOrderIndex != null && hitOrderIndex in currentOrderList.indices) {
+                                        initialDragIndex = hitOrderIndex
+                                        draggedDeviceAddress = currentOrderList.getOrNull(hitOrderIndex)?.address
+                                        dragDisplacementY = 0f
+                                        settlingDeviceAddress = null
+                                        // Capture static initial slot geometry so we never read stale layoutInfo mid-drag
+                                        // Map item positions to currentOrderList indices (item.index - pairedHeaderOffset)
+                                        initialItemCenters = items
+                                            .filter { (it.index - pairedHeaderOffset) in currentOrderList.indices }
+                                            .associate { (it.index - pairedHeaderOffset) to (it.offset + it.size / 2f) }
+                                        initialItemOffsets = items
+                                            .filter { (it.index - pairedHeaderOffset) in currentOrderList.indices }
+                                            .associate { (it.index - pairedHeaderOffset) to it.offset.toFloat() }
+                                    }
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val currentAddr = draggedDeviceAddress ?: return@detectDragGesturesAfterLongPress
+                                    dragDisplacementY += dragAmount.y
+
+                                    val currentPos = currentOrderList.indexOfFirst { it.address == currentAddr }
+                                    if (currentPos == -1 || initialDragIndex !in initialItemCenters) return@detectDragGesturesAfterLongPress
+
+                                    val startCenter =
+                                        initialItemCenters[initialDragIndex] ?: return@detectDragGesturesAfterLongPress
+                                    val currentDraggedCenter = startCenter + dragDisplacementY
+
+                                    // Slot swap check with directional hysteresis (requires crossing 60% towards the target slot, providing a 20% deadband)
+                                    val nextCenter = initialItemCenters[currentPos + 1]
+                                    val prevCenter = initialItemCenters[currentPos - 1]
+                                    val curCenter = initialItemCenters[currentPos] ?: startCenter
+
+                                    val targetIndex = when {
+                                        nextCenter != null && currentDraggedCenter > curCenter + (nextCenter - curCenter) * 0.6f -> currentPos + 1
+                                        prevCenter != null && currentDraggedCenter < curCenter - (curCenter - prevCenter) * 0.6f -> currentPos - 1
+                                        else -> null
+                                    }
+
+                                    // Swap synchronously in state
+                                    if (targetIndex != null && targetIndex in currentOrderList.indices) {
+                                        val reordered = currentOrderList.toMutableList()
+                                        val item = reordered.removeAt(currentPos)
+                                        reordered.add(targetIndex, item)
+                                        currentOrderList = reordered
+                                    }
+                                },
+                                onDragEnd = {
+                                    val currentAddr = draggedDeviceAddress
+                                    if (currentAddr != null) {
+                                        val currentPos = currentOrderList.indexOfFirst { it.address == currentAddr }
+                                        val originOffset = initialItemOffsets[initialDragIndex] ?: 0f
+                                        val currentSlotOffset = initialItemOffsets[currentPos] ?: originOffset
+                                        val currentVisualTranslationY =
+                                            dragDisplacementY - (currentSlotOffset - originOffset)
+
+                                        draggedDeviceAddress = null
+                                        settlingDeviceAddress = currentAddr
+
+                                        dragScope.launch {
+                                            settleOffsetY.snapTo(currentVisualTranslationY)
+                                            settleOffsetY.animateTo(
+                                                0f,
+                                                spring(
+                                                    stiffness = Spring.StiffnessMediumLow,
+                                                    dampingRatio = Spring.DampingRatioLowBouncy
+                                                )
+                                            )
+                                            settlingDeviceAddress = null
+                                            val finalOrder = currentOrderList.map { it.address }
+                                            currentService?.saveDeviceOrder(finalOrder)
+                                        }
+                                    } else {
+                                        draggedDeviceAddress = null
+                                    }
+                                },
+                                onDragCancel = {
+                                    draggedDeviceAddress = null
+                                    settlingDeviceAddress = null
+                                    currentOrderList = currentPairedDisplays
+                                }
+                            )
+                        },
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Section 1: Paired displays
+                    if (currentOrderList.isNotEmpty()) {
+                        item(key = "header_paired") {
+                            Text(
+                                text = "Paired displays",
+                                style = typography.h3,
+                                color = colors.mutedForeground,
+                                modifier = Modifier.padding(bottom = 2.dp)
+                            )
+                        }
+                    }
+
+                    items(
+                        items = currentOrderList,
+                        key = { it.address }
+                    ) { device ->
+                        val isDragging = draggedDeviceAddress == device.address
+                        val isSettling = settlingDeviceAddress == device.address
+                        val currentPos = currentOrderList.indexOfFirst { it.address == device.address }
+                        val originOffset = initialItemOffsets[initialDragIndex] ?: 0f
+                        val currentSlotOffset = initialItemOffsets[currentPos] ?: originOffset
+                        val activeVisualTranslationY = if (isDragging) {
+                            dragDisplacementY - (currentSlotOffset - originOffset)
+                        } else if (isSettling) {
+                            settleOffsetY.value
+                        } else 0f
+
+                        val devReading = deviceReadings[device.address]
+                            ?: if (device.address == currentOrderList.firstOrNull()?.address) lastReading else null
+                        val isConfigured = deviceConfigured[device.address] ?: true
+
+                        // Custom horizontal swipe-to-forget with snap threshold
+                        val currentDensity = androidx.compose.ui.platform.LocalDensity.current
+                        val maxSwipePx = with(currentDensity) { -90.dp.toPx() } // snap distance
+                        val swipeOffsetX = remember(device.address) { androidx.compose.animation.core.Animatable(0f) }
+                        val swipeScope = rememberCoroutineScope()
+
+                        // Auto-close swipe when another card becomes active
+                        LaunchedEffect(swipedDeviceAddress) {
+                            if (swipedDeviceAddress != device.address && swipeOffsetX.value != 0f) {
+                                swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
                             }
                         }
 
-                        items(
-                            items = currentOrderList,
-                            key = { it.address }
-                        ) { device ->
-                            val isDragging = draggedDeviceAddress == device.address
-                            val isSettling = settlingDeviceAddress == device.address
-                            val currentPos = currentOrderList.indexOfFirst { it.address == device.address }
-                            val originOffset = initialItemOffsets[initialDragIndex] ?: 0f
-                            val currentSlotOffset = initialItemOffsets[currentPos] ?: originOffset
-                            val activeVisualTranslationY = if (isDragging) {
-                                dragDisplacementY - (currentSlotOffset - originOffset)
-                            } else if (isSettling) {
-                                settleOffsetY.value
-                            } else 0f
-
-                            val devReading = deviceReadings[device.address] ?: if (device.address == currentOrderList.firstOrNull()?.address) lastReading else null
-                            val isConfigured = deviceConfigured[device.address] ?: true
-
-                            // Custom horizontal swipe-to-forget with snap threshold
-                            val currentDensity = androidx.compose.ui.platform.LocalDensity.current
-                            val maxSwipePx = with(currentDensity) { -90.dp.toPx() } // snap distance
-                            val swipeOffsetX = remember(device.address) { androidx.compose.animation.core.Animatable(0f) }
-                            val swipeScope = rememberCoroutineScope()
-
-                            // Auto-close swipe when another card becomes active
-                            LaunchedEffect(swipedDeviceAddress) {
-                                if (swipedDeviceAddress != device.address && swipeOffsetX.value != 0f) {
-                                    swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (!isDragging && !isSettling) {
+                                        Modifier.animateItemPlacement(
+                                            animationSpec = spring(
+                                                stiffness = Spring.StiffnessHigh,
+                                                dampingRatio = Spring.DampingRatioNoBouncy
+                                            )
+                                        )
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                                .zIndex(if (isDragging || isSettling) 10f else 1f)
+                                .graphicsLayer {
+                                    if (isDragging || isSettling) {
+                                        this.translationY = activeVisualTranslationY
+                                        this.scaleX = 1.03f
+                                        this.scaleY = 1.03f
+                                        this.shadowElevation = 20f
+                                    }
+                                }
+                                .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusLarge))
+                        ) {
+                            // Background Forget action button, revealed only when swiping left
+                            if (swipeOffsetX.value < -2f) {
+                                Box(
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .background(Color(0xFFDC2626)) // destructive red
+                                        .clickable {
+                                            deviceToForget = device
+                                            swipedDeviceAddress = null
+                                            swipeScope.launch {
+                                                swipeOffsetX.animateTo(
+                                                    0f,
+                                                    spring(stiffness = Spring.StiffnessMediumLow)
+                                                )
+                                            }
+                                        }
+                                        .padding(end = 22.dp),
+                                    contentAlignment = Alignment.CenterEnd
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DeleteOutline,
+                                            contentDescription = "Forget",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Forget",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            style = typography.caption
+                                        )
+                                    }
                                 }
                             }
 
+                            // Foreground Device Card with constrained swipe offset
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .then(
-                                        if (!isDragging && !isSettling) {
-                                            Modifier.animateItemPlacement(
-                                                animationSpec = spring(
-                                                    stiffness = Spring.StiffnessHigh,
-                                                    dampingRatio = Spring.DampingRatioNoBouncy
-                                                )
-                                            )
-                                        } else {
-                                            Modifier
-                                        }
-                                    )
-                                    .zIndex(if (isDragging || isSettling) 10f else 1f)
-                                    .graphicsLayer {
-                                        if (isDragging || isSettling) {
-                                            this.translationY = activeVisualTranslationY
-                                            this.scaleX = 1.03f
-                                            this.scaleY = 1.03f
-                                            this.shadowElevation = 20f
-                                        }
-                                    }
-                                    .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusLarge))
-                            ) {
-                                // Background Forget action button, revealed only when swiping left
-                                if (swipeOffsetX.value < -2f) {
-                                    Box(
-                                        modifier = Modifier
-                                            .matchParentSize()
-                                            .background(Color(0xFFDC2626)) // destructive red
-                                            .clickable {
-                                                deviceToForget = device
-                                                swipedDeviceAddress = null
-                                                swipeScope.launch {
-                                                    swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
-                                                }
-                                            }
-                                            .padding(end = 22.dp),
-                                        contentAlignment = Alignment.CenterEnd
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.DeleteOutline,
-                                                contentDescription = "Forget",
-                                                tint = Color.White,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = "Forget",
-                                                color = Color.White,
-                                                fontWeight = FontWeight.Bold,
-                                                style = typography.caption
-                                            )
-                                        }
-                                    }
-                                }
-
-                                // Foreground Device Card with constrained swipe offset
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .offset { IntOffset(swipeOffsetX.value.toInt(), 0) }
-                                        .pointerInput(isDragging) {
-                                            if (!isDragging) {
-                                                detectHorizontalDragGestures(
-                                                    onDragEnd = {
-                                                        swipeScope.launch {
-                                                            if (swipeOffsetX.value <= maxSwipePx * 0.5f) {
-                                                                swipedDeviceAddress = device.address
-                                                                swipeOffsetX.animateTo(maxSwipePx, spring(stiffness = Spring.StiffnessMediumLow))
-                                                            } else {
-                                                                if (swipedDeviceAddress == device.address) {
-                                                                    swipedDeviceAddress = null
-                                                                }
-                                                                swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
-                                                            }
-                                                        }
-                                                    },
-                                                    onDragCancel = {
-                                                        if (swipedDeviceAddress == device.address) {
-                                                            swipedDeviceAddress = null
-                                                        }
-                                                        swipeScope.launch {
-                                                            swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
-                                                        }
-                                                    },
-                                                    onHorizontalDrag = { change, dragAmount ->
-                                                        change.consume()
-                                                        val newOffset = (swipeOffsetX.value + dragAmount).coerceIn(maxSwipePx, 0f)
-                                                        if (dragAmount < 0f && swipedDeviceAddress != device.address) {
+                                    .offset { IntOffset(swipeOffsetX.value.toInt(), 0) }
+                                    .pointerInput(isDragging) {
+                                        if (!isDragging) {
+                                            detectHorizontalDragGestures(
+                                                onDragEnd = {
+                                                    swipeScope.launch {
+                                                        if (swipeOffsetX.value <= maxSwipePx * 0.5f) {
                                                             swipedDeviceAddress = device.address
-                                                        }
-                                                        swipeScope.launch {
-                                                            swipeOffsetX.snapTo(newOffset)
+                                                            swipeOffsetX.animateTo(
+                                                                maxSwipePx,
+                                                                spring(stiffness = Spring.StiffnessMediumLow)
+                                                            )
+                                                        } else {
+                                                            if (swipedDeviceAddress == device.address) {
+                                                                swipedDeviceAddress = null
+                                                            }
+                                                            swipeOffsetX.animateTo(
+                                                                0f,
+                                                                spring(stiffness = Spring.StiffnessMediumLow)
+                                                            )
                                                         }
                                                     }
-                                                )
-                                            }
+                                                },
+                                                onDragCancel = {
+                                                    if (swipedDeviceAddress == device.address) {
+                                                        swipedDeviceAddress = null
+                                                    }
+                                                    swipeScope.launch {
+                                                        swipeOffsetX.animateTo(
+                                                            0f,
+                                                            spring(stiffness = Spring.StiffnessMediumLow)
+                                                        )
+                                                    }
+                                                },
+                                                onHorizontalDrag = { change, dragAmount ->
+                                                    change.consume()
+                                                    val newOffset =
+                                                        (swipeOffsetX.value + dragAmount).coerceIn(maxSwipePx, 0f)
+                                                    if (dragAmount < 0f && swipedDeviceAddress != device.address) {
+                                                        swipedDeviceAddress = device.address
+                                                    }
+                                                    swipeScope.launch {
+                                                        swipeOffsetX.snapTo(newOffset)
+                                                    }
+                                                }
+                                            )
                                         }
-                                ) {
-                                    val configuredUnits = deviceConfigsMap[device.address]?.let { cfg ->
-                                        try { org.json.JSONObject(cfg).optString("units", "") } catch (_: Exception) { "" }
-                                    }?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: devReading?.units ?: "mg/dL"
-                                    val devUnits = configuredUnits.ifBlank { devReading?.units ?: "mg/dL" }
-                                    val isConnecting = connectingDevices.contains(device.address)
-                                    val isPairing = pairingDevices.contains(device.address)
-                                    DeviceCard(
-                                        device = device,
-                                        bridgeStatusText = bridgeStatusText,
-                                        lastReading = devReading,
-                                        units = devUnits,
-                                        isConfigured = isConfigured,
-                                        isConnecting = isConnecting,
-                                        isPairing = isPairing,
-                                        onClick = {
-                                            if (swipeOffsetX.value < -5f) {
-                                                swipeScope.launch {
-                                                    swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
-                                                }
-                                            } else {
-                                                if (!device.isBonded) {
-                                                    android.widget.Toast.makeText(listContext, "Pair display first", android.widget.Toast.LENGTH_SHORT).show()
-                                                } else if (service?.getCachedConfig(device.address).isNullOrBlank()) {
-                                                    android.widget.Toast.makeText(listContext, "Waiting for device config...", android.widget.Toast.LENGTH_SHORT).show()
-                                                    service?.readDeviceConfig(device.address)
-                                                } else {
-                                                    targetDeviceTab = DeviceScreenTab.CHART
-                                                    selectedDeviceAddress = device.address
-                                                }
-                                            }
-                                        },
-                                        onConfigureClick = {
-                                            if (!device.isBonded) {
-                                                android.widget.Toast.makeText(listContext, "Pair display first", android.widget.Toast.LENGTH_SHORT).show()
-                                            } else if (service?.getCachedConfig(device.address).isNullOrBlank()) {
-                                                android.widget.Toast.makeText(listContext, "Waiting for device config...", android.widget.Toast.LENGTH_SHORT).show()
-                                                service?.readDeviceConfig(device.address)
-                                            } else {
-                                                targetDeviceTab = DeviceScreenTab.CONFIG
-                                                selectedDeviceAddress = device.address
-                                            }
-                                        },
-                                        onConnect = { service?.connectDevice(device.address) },
-                                        onSync = { service?.triggerManualSync() },
-                                        onDisconnect = { service?.disconnectDevice(device.address) },
-                                        onPair = { service?.pairDevice(device.address) }
-                                    )
-                                }
-                            }
-                        }
-
-                        // Section 2: Unpaired displays
-                        if (unpairedDisplays.isNotEmpty()) {
-                            item(key = "header_unpaired") {
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Unpaired displays",
-                                    style = typography.h3,
-                                    color = colors.mutedForeground,
-                                    modifier = Modifier.padding(bottom = 2.dp)
-                                )
-                            }
-
-                            items(
-                                items = unpairedDisplays,
-                                key = { it.address }
-                            ) { device ->
-                                val devReading = deviceReadings[device.address]
-                                val isConfigured = deviceConfigured[device.address] ?: true
+                                    }
+                            ) {
                                 val configuredUnits = deviceConfigsMap[device.address]?.let { cfg ->
-                                    try { org.json.JSONObject(cfg).optString("units", "") } catch (_: Exception) { "" }
-                                }?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address) ?: devReading?.units ?: "mg/dL"
+                                    try {
+                                        org.json.JSONObject(cfg).optString("units", "")
+                                    } catch (_: Exception) {
+                                        ""
+                                    }
+                                }?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address)
+                                ?: devReading?.units ?: "mg/dL"
                                 val devUnits = configuredUnits.ifBlank { devReading?.units ?: "mg/dL" }
                                 val isConnecting = connectingDevices.contains(device.address)
                                 val isPairing = pairingDevices.contains(device.address)
@@ -1166,41 +1205,142 @@ fun CompanionAppContent(
                                     isConnecting = isConnecting,
                                     isPairing = isPairing,
                                     onClick = {
-                                        android.widget.Toast.makeText(listContext, "Pair display first", android.widget.Toast.LENGTH_SHORT).show()
+                                        if (swipeOffsetX.value < -5f) {
+                                            swipeScope.launch {
+                                                swipeOffsetX.animateTo(
+                                                    0f,
+                                                    spring(stiffness = Spring.StiffnessMediumLow)
+                                                )
+                                            }
+                                        } else {
+                                            if (!device.isBonded) {
+                                                android.widget.Toast.makeText(
+                                                    listContext,
+                                                    "Pair display first",
+                                                    android.widget.Toast.LENGTH_SHORT
+                                                ).show()
+                                            } else if (service?.getCachedConfig(device.address).isNullOrBlank()) {
+                                                android.widget.Toast.makeText(
+                                                    listContext,
+                                                    "Waiting for device config...",
+                                                    android.widget.Toast.LENGTH_SHORT
+                                                ).show()
+                                                service?.readDeviceConfig(device.address)
+                                            } else {
+                                                targetDeviceTab = DeviceScreenTab.CHART
+                                                selectedDeviceAddress = device.address
+                                            }
+                                        }
                                     },
                                     onConfigureClick = {
-                                        android.widget.Toast.makeText(listContext, "Pair display first", android.widget.Toast.LENGTH_SHORT).show()
+                                        if (!device.isBonded) {
+                                            android.widget.Toast.makeText(
+                                                listContext,
+                                                "Pair display first",
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
+                                        } else if (service?.getCachedConfig(device.address).isNullOrBlank()) {
+                                            android.widget.Toast.makeText(
+                                                listContext,
+                                                "Waiting for device config...",
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
+                                            service?.readDeviceConfig(device.address)
+                                        } else {
+                                            targetDeviceTab = DeviceScreenTab.SETTINGS
+                                            selectedDeviceAddress = device.address
+                                        }
                                     },
-                                    onConnect = { service?.connectDevice(device.address) },
-                                    onSync = { service?.triggerManualSync() },
+                                    onConnect = { ensureBluetooth { service?.connectDevice(device.address) } },
+                                    onSync = { ensureBluetooth { service?.triggerManualSync() } },
                                     onDisconnect = { service?.disconnectDevice(device.address) },
-                                    onPair = { service?.pairDevice(device.address) }
+                                    onPair = { ensureBluetooth { service?.pairDevice(device.address) } }
                                 )
                             }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(12.dp))
-                val context = androidx.compose.ui.platform.LocalContext.current
-                val appVersion = remember(context) {
-                    try {
-                        val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                        pInfo.versionName ?: "v0.09.09.0"
-                    } catch (e: Exception) {
-                        "v0.09.09.0"
+                    // Section 2: Unpaired displays
+                    if (unpairedDisplays.isNotEmpty()) {
+                        item(key = "header_unpaired") {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Unpaired displays",
+                                style = typography.h3,
+                                color = colors.mutedForeground,
+                                modifier = Modifier.padding(bottom = 2.dp)
+                            )
+                        }
+
+                        items(
+                            items = unpairedDisplays,
+                            key = { it.address }
+                        ) { device ->
+                            val devReading = deviceReadings[device.address]
+                            val isConfigured = deviceConfigured[device.address] ?: true
+                            val configuredUnits = deviceConfigsMap[device.address]?.let { cfg ->
+                                try {
+                                    org.json.JSONObject(cfg).optString("units", "")
+                                } catch (_: Exception) {
+                                    ""
+                                }
+                            }?.takeIf { it.isNotBlank() } ?: service?.getDeviceUnits(device.address)
+                            ?: devReading?.units ?: "mg/dL"
+                            val devUnits = configuredUnits.ifBlank { devReading?.units ?: "mg/dL" }
+                            val isConnecting = connectingDevices.contains(device.address)
+                            val isPairing = pairingDevices.contains(device.address)
+                            DeviceCard(
+                                device = device,
+                                bridgeStatusText = bridgeStatusText,
+                                lastReading = devReading,
+                                units = devUnits,
+                                isConfigured = isConfigured,
+                                isConnecting = isConnecting,
+                                isPairing = isPairing,
+                                onClick = {
+                                    android.widget.Toast.makeText(
+                                        listContext,
+                                        "Pair display first",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                onConfigureClick = {
+                                    android.widget.Toast.makeText(
+                                        listContext,
+                                        "Pair display first",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                onConnect = { ensureBluetooth { service?.connectDevice(device.address) } },
+                                onSync = { ensureBluetooth { service?.triggerManualSync() } },
+                                onDisconnect = { service?.disconnectDevice(device.address) },
+                                onPair = { ensureBluetooth { service?.pairDevice(device.address) } }
+                            )
+                        }
                     }
                 }
-                Text(
-                    text = "Sugarota Companion $appVersion",
-                    style = typography.caption,
-                    color = colors.mutedForeground.copy(alpha = 0.6f),
-                    modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .padding(bottom = 6.dp)
-                )
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val appVersion = remember(context) {
+                try {
+                    val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                    pInfo.versionName ?: "v0.09.09.0"
+                } catch (e: Exception) {
+                    "v0.09.09.0"
+                }
+            }
+            Text(
+                text = "Sugarota Companion $appVersion",
+                style = typography.caption,
+                color = colors.mutedForeground.copy(alpha = 0.6f),
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(bottom = 6.dp)
+            )
         }
+    }
 
     // Confirmation Dialog for Forget Device scenario
     if (deviceToForget != null) {
@@ -1281,7 +1421,8 @@ fun CompanionAppContent(
     if (hasCheckedAppUpdate) {
         val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
         val release = appUpdateResult
-        val isNewer = if (release != null) appUpdateManager.compareCalVer(release.version, installedAppVersion) > 0 else false
+        val isNewer =
+            if (release != null) appUpdateManager.compareCalVer(release.version, installedAppVersion) > 0 else false
 
         androidx.compose.ui.window.Dialog(
             onDismissRequest = { hasCheckedAppUpdate = false },
@@ -1459,6 +1600,110 @@ fun CompanionAppContent(
         }
     }
 
+    if (showEnableBtDialog) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showEnableBtDialog = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.75f))
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(ShadcnTheme.shapes.radiusLarge))
+                        .background(colors.card)
+                        .border(1.dp, colors.border, RoundedCornerShape(ShadcnTheme.shapes.radiusLarge))
+                        .padding(20.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF38BDF8).copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.BluetoothDisabled,
+                                contentDescription = null,
+                                tint = Color(0xFF38BDF8),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Bluetooth is Off",
+                            style = typography.h3,
+                            color = colors.foreground,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Bluetooth is required to connect to Sugarota displays, synchronize glucose readings, and manage devices. Please turn on Bluetooth to continue.",
+                        style = typography.body,
+                        color = colors.mutedForeground,
+                        lineHeight = 20.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ShadcnButton(
+                            onClick = { showEnableBtDialog = false },
+                            variant = ShadcnButtonVariant.GHOST
+                        ) {
+                            Text("Cancel", color = colors.mutedForeground)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        ShadcnButton(
+                            onClick = {
+                                showEnableBtDialog = false
+                                try {
+                                    val enableBtIntent =
+                                        Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE).apply {
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        }
+                                    appContext.startActivity(enableBtIntent)
+                                } catch (_: Exception) {
+                                    try {
+                                        val settingsIntent =
+                                            Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS).apply {
+                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                            }
+                                        appContext.startActivity(settingsIntent)
+                                    } catch (_: Exception) {
+                                    }
+                                }
+                            },
+                            variant = ShadcnButtonVariant.DEFAULT
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Bluetooth,
+                                    contentDescription = null,
+                                    tint = colors.primaryForeground,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Turn On", color = colors.primaryForeground, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Device Detail Screen (animated full screen overlay with Chart & Config tabs)
     AnimatedVisibility(
         visible = selectedDeviceAddress != null,
@@ -1497,6 +1742,7 @@ fun DeviceConfigScreen(
     service: SugarotaBleService?,
     showHeader: Boolean = true,
     onOpenFirmwareUpdate: (() -> Unit)? = null,
+    onOpenLogs: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     BackHandler(onBack = onDismiss)
@@ -1760,9 +2006,11 @@ fun DeviceConfigScreen(
 
                             try {
                                 val root = try {
-                                     if (rawConfigText.trim().startsWith("{")) org.json.JSONObject(rawConfigText) else org.json.JSONObject()
+                                    if (rawConfigText.trim()
+                                            .startsWith("{")
+                                    ) org.json.JSONObject(rawConfigText) else org.json.JSONObject()
                                 } catch (e: Exception) {
-                                     org.json.JSONObject()
+                                    org.json.JSONObject()
                                 }
 
                                 root.put("provider", provider)
@@ -1806,12 +2054,12 @@ fun DeviceConfigScreen(
                                 }
 
                                 service.writeConfig(deviceAddress, finalJson) { success ->
-                                     isSaving = false
-                                     if (success) {
-                                         statusMessage = "Saved in real time!"
-                                     } else {
-                                         statusMessage = "Failed to write configuration"
-                                     }
+                                    isSaving = false
+                                    if (success) {
+                                        statusMessage = "Saved in real time!"
+                                    } else {
+                                        statusMessage = "Failed to write configuration"
+                                    }
                                 }
                             } catch (e: Exception) {
                                 isSaving = false
@@ -1824,7 +2072,7 @@ fun DeviceConfigScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "Save & Apply",
+                            text = "Save & Send to device",
                             style = typography.body,
                             fontWeight = FontWeight.Bold,
                             color = colors.primaryForeground
@@ -1855,7 +2103,11 @@ fun DeviceConfigScreen(
                 statusMessage?.let { msg ->
                     ShadcnBadge(
                         text = msg,
-                        variant = if (msg.contains("Saved", ignoreCase = true) || msg.contains("Success", ignoreCase = true)) ShadcnButtonVariant.DEFAULT else ShadcnButtonVariant.DESTRUCTIVE,
+                        variant = if (msg.contains("Saved", ignoreCase = true) || msg.contains(
+                                "Success",
+                                ignoreCase = true
+                            )
+                        ) ShadcnButtonVariant.DEFAULT else ShadcnButtonVariant.DESTRUCTIVE,
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(14.dp))
@@ -2096,7 +2348,7 @@ fun DeviceConfigScreen(
                 ) {
                     listOf("AUTO", "BLE_ONLY", "WIFI_ONLY").forEach { mode ->
                         val isSelected = connectionMode.equals(mode, ignoreCase = true)
-                        val label = when(mode) {
+                        val label = when (mode) {
                             "BLE_ONLY" -> "BLE Only"
                             "WIFI_ONLY" -> "Wi-Fi Only"
                             else -> "Auto (Smart)"
@@ -2173,37 +2425,93 @@ fun DeviceConfigScreen(
 
                 ShadcnCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = "Time Zone",
-                            style = typography.caption,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.foreground
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Time Zone",
+                                style = typography.caption,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.foreground
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable {
+                                        val tz = java.util.TimeZone.getDefault()
+                                        val now = System.currentTimeMillis()
+                                        gmtOffsetSec = tz.rawOffset / 1000L
+                                        daylightOffsetSec = if (tz.inDaylightTime(java.util.Date(now))) 3600 else 0
+                                    }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Sync,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Use Phone's",
+                                    style = typography.caption,
+                                    fontWeight = FontWeight.Medium,
+                                    color = colors.primary
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(6.dp))
 
                         val timeZones = listOf(
-                            -28800L to "GMT -8:00 (PST)",
-                            -21600L to "GMT -6:00 (CST)",
-                            -18000L to "GMT -5:00 (EST)",
-                            0L to "GMT +0:00 (UTC)",
-                            3600L to "GMT +1:00 (CET)",
-                            7200L to "GMT +2:00 (EET)",
-                            10800L to "GMT +3:00 (MSK / TRT)",
-                            14400L to "GMT +4:00 (GST)",
-                            18000L to "GMT +5:00 (PKT)",
-                            21600L to "GMT +6:00 (BST)",
-                            25200L to "GMT +7:00 (ICT)",
-                            28800L to "GMT +8:00 (SGT / CST)",
-                            32400L to "GMT +9:00 (JST)",
-                            36000L to "GMT +10:00 (AEST)"
+                            -43200L to "GMT -12:00 (Baker Island)",
+                            -39600L to "GMT -11:00 (Samoa, Niue)",
+                            -36000L to "GMT -10:00 (Hawaii, HST)",
+                            -32400L to "GMT -9:00 (Alaska, AKST)",
+                            -28800L to "GMT -8:00 (Pacific, PST)",
+                            -25200L to "GMT -7:00 (Mountain, MST)",
+                            -21600L to "GMT -6:00 (Central, CST)",
+                            -18000L to "GMT -5:00 (Eastern, EST)",
+                            -14400L to "GMT -4:00 (Atlantic, AST)",
+                            -12600L to "GMT -3:30 (Newfoundland, NST)",
+                            -10800L to "GMT -3:00 (Brasilia, ART)",
+                            -7200L to "GMT -2:00 (South Georgia)",
+                            -3600L to "GMT -1:00 (Azores, Cape Verde)",
+                            0L to "GMT +0:00 (UTC / GMT / WET)",
+                            3600L to "GMT +1:00 (Central Europe, CET)",
+                            7200L to "GMT +2:00 (Eastern Europe, EET)",
+                            10800L to "GMT +3:00 (Moscow, MSK / TRT)",
+                            12600L to "GMT +3:30 (Iran, IRST)",
+                            14400L to "GMT +4:00 (Gulf, GST)",
+                            16200L to "GMT +4:30 (Afghanistan, AFT)",
+                            18000L to "GMT +5:00 (Pakistan, PKT)",
+                            19800L to "GMT +5:30 (India, IST)",
+                            20700L to "GMT +5:45 (Nepal, NPT)",
+                            21600L to "GMT +6:00 (Bangladesh, BST)",
+                            23400L to "GMT +6:30 (Myanmar, MMT)",
+                            25200L to "GMT +7:00 (Indochina, ICT)",
+                            28800L to "GMT +8:00 (Singapore, SGT / CST)",
+                            32400L to "GMT +9:00 (Japan, JST / KST)",
+                            34200L to "GMT +9:30 (ACST, Darwin / Adelaide)",
+                            36000L to "GMT +10:00 (AEST, Sydney / Brisbane)",
+                            39600L to "GMT +11:00 (Solomon Is., Vladivostok)",
+                            43200L to "GMT +12:00 (New Zealand, NZST)",
+                            46800L to "GMT +13:00 (Tonga, Phoenix Is.)",
+                            50400L to "GMT +14:00 (Line Islands)"
                         )
 
                         var expandedTz by remember { mutableStateOf(false) }
                         val currentTzLabel = timeZones.find { it.first == gmtOffsetSec }?.second
                             ?: run {
-                                val hrs = gmtOffsetSec / 3600
-                                val sign = if (hrs >= 0) "+" else ""
-                                "GMT $sign$hrs:00"
+                                val totalMinutes = gmtOffsetSec / 60
+                                val hrs = totalMinutes / 60
+                                val mins = kotlin.math.abs(totalMinutes % 60)
+                                val sign = if (gmtOffsetSec >= 0) "+" else "-"
+                                val absHrs = kotlin.math.abs(hrs)
+                                if (mins > 0) "GMT $sign$absHrs:${mins.toString().padStart(2, '0')}"
+                                else "GMT $sign$absHrs:00"
                             }
 
                         Box(modifier = Modifier.fillMaxWidth()) {
@@ -2365,6 +2673,66 @@ fun DeviceConfigScreen(
                     }
                 }
 
+                if (onOpenLogs != null) {
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    Text(
+                        text = "DIAGNOSTICS & SYSTEM",
+                        style = typography.caption,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.foreground
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Real-time BLE communication and device debugging logs",
+                        style = typography.caption,
+                        color = colors.mutedForeground
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    ShadcnCard(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Device & BLE Logs",
+                                    style = typography.body,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.foreground
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "View live serial output & packets",
+                                    style = typography.caption,
+                                    color = colors.mutedForeground
+                                )
+                            }
+
+                            ShadcnButton(
+                                onClick = onOpenLogs,
+                                variant = ShadcnButtonVariant.SECONDARY
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Code,
+                                    contentDescription = null,
+                                    tint = colors.foreground,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Open Logs",
+                                    style = typography.caption,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.foreground
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(20.dp))
                 ShadcnButton(
                     onClick = { showRawJson = !showRawJson },
@@ -2506,7 +2874,8 @@ fun TrendArrowIcon(
             val spacing = 5.dp.toPx()
             for (offsetY in listOf(-spacing / 2, spacing / 2)) {
                 val shaftStart = androidx.compose.ui.geometry.Offset(x = 1.dp.toPx(), y = size.height / 2 + offsetY)
-                val shaftEnd = androidx.compose.ui.geometry.Offset(x = size.width - 5.dp.toPx(), y = size.height / 2 + offsetY)
+                val shaftEnd =
+                    androidx.compose.ui.geometry.Offset(x = size.width - 5.dp.toPx(), y = size.height / 2 + offsetY)
                 drawLine(
                     color = tint,
                     start = shaftStart,
@@ -2522,7 +2891,11 @@ fun TrendArrowIcon(
                 drawPath(
                     path = headPath,
                     color = tint,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeW * 0.85f, cap = cap, join = join)
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = strokeW * 0.85f,
+                        cap = cap,
+                        join = join
+                    )
                 )
             }
         } else {
@@ -2530,7 +2903,7 @@ fun TrendArrowIcon(
             val centerY = size.height / 2
             val shaftStart = androidx.compose.ui.geometry.Offset(x = 2.dp.toPx(), y = centerY)
             val shaftEnd = androidx.compose.ui.geometry.Offset(x = size.width - 4.dp.toPx(), y = centerY)
-            
+
             // Shaft
             drawLine(
                 color = tint,
@@ -2768,7 +3141,12 @@ fun DeviceCard(
                 }
                 val deltaVal = if (isMmol) {
                     val mmolVal = lastReading.delta / 18.0182f
-                    if (lastReading.delta == 0) "+0.0" else String.format(java.util.Locale.US, "%s%.1f", if (lastReading.delta > 0) "+" else "", mmolVal)
+                    if (lastReading.delta == 0) "+0.0" else String.format(
+                        java.util.Locale.US,
+                        "%s%.1f",
+                        if (lastReading.delta > 0) "+" else "",
+                        mmolVal
+                    )
                 } else {
                     "${if (lastReading.delta > 0) "+" else ""}${lastReading.delta}"
                 }
@@ -2866,7 +3244,11 @@ fun CompanionAppPreview() {
                     name = "Sugarota-D695",
                     address = "20:6E:F1:9B:D6:95",
                     isConnected = true,
-                    status = org.sugarota.companion.model.DeviceStatus(batteryPct = 85, isCharging = true, version = "v0.09.04.8")
+                    status = org.sugarota.companion.model.DeviceStatus(
+                        batteryPct = 85,
+                        isCharging = true,
+                        version = "v0.09.04.8"
+                    )
                 ),
                 bridgeStatusText = "Synced 208 → (+0) at 18:00",
                 lastReading = org.sugarota.companion.model.GlucoseData(
@@ -2886,7 +3268,11 @@ fun CompanionAppPreview() {
                     name = "Sugarota-LivingRoom",
                     address = "20:6E:F1:9B:AA:11",
                     isConnected = false,
-                    status = org.sugarota.companion.model.DeviceStatus(batteryPct = 42, isCharging = false, version = "v0.09.04.8")
+                    status = org.sugarota.companion.model.DeviceStatus(
+                        batteryPct = 42,
+                        isCharging = false,
+                        version = "v0.09.04.8"
+                    )
                 ),
                 bridgeStatusText = "Idle",
                 lastReading = null,

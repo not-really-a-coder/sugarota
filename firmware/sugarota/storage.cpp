@@ -293,6 +293,62 @@ void clearCrashLog() {
   }
 }
 
+void appendBatteryLog(float voltage, int pct, bool isCharging, bool screenOn, bool wifiActive) {
+  if (!LittleFS.begin()) return;
+
+  // Keep battery log bounded to 16KB (~300-400 entries)
+  if (LittleFS.exists("/battery.log")) {
+    File check = LittleFS.open("/battery.log", "r");
+    if (check && check.size() > 16384) {
+      check.close();
+      LittleFS.remove("/battery.log");
+    } else if (check) {
+      check.close();
+    }
+  }
+
+  File f = LittleFS.open("/battery.log", "a");
+  if (!f) return;
+
+  time_t now = time(NULL);
+  struct tm ti;
+  localtime_r(&now, &ti);
+  char timeBuf[32];
+  if (now > 1700000000LL) {
+    snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d",
+             ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday, ti.tm_hour, ti.tm_min, ti.tm_sec);
+  } else {
+    unsigned long upSec = millis() / 1000;
+    snprintf(timeBuf, sizeof(timeBuf), "up_%lum%lus", upSec / 60, upSec % 60);
+  }
+
+  char entry[128];
+  snprintf(entry, sizeof(entry), "%s,%.3f,%d,%d,%d,%d\n",
+           timeBuf, voltage, pct, isCharging ? 1 : 0, screenOn ? 1 : 0, wifiActive ? 1 : 0);
+  f.print(entry);
+  f.close();
+}
+
+String readBatteryLog() {
+  if (!LittleFS.exists("/battery.log")) {
+    return "No battery logs recorded.\n";
+  }
+  File f = LittleFS.open("/battery.log", "r");
+  if (!f) {
+    return "Failed to open battery log.\n";
+  }
+  String content = f.readString();
+  f.close();
+  return content;
+}
+
+void clearBatteryLog() {
+  if (LittleFS.exists("/battery.log")) {
+    LittleFS.remove("/battery.log");
+    DBG_PRINTLN("SYSTEM: Battery log cleared.");
+  }
+}
+
 void loadBondedPhones() {
   bondedPhoneCount = 0;
   if (!LittleFS.exists("/phones.json")) {

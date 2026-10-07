@@ -700,22 +700,24 @@ bool isNightModeActive() {
 }
 
 void drawMoonIcon(int x, int y, uint16_t color) {
-  // 10x12 crisp crescent moon icon (facing right)
-  static const uint16_t moonBitmap[12] = {
-    0b0000111000,
-    0b0011111100,
-    0b0111100000,
-    0b1111000000,
-    0b1111000000,
-    0b1111000000,
-    0b1111000000,
-    0b1111000000,
-    0b0111100000,
-    0b0011111100,
-    0b0000111000,
-    0b0000000000
+  // 10x14 crescent moon icon (height 14px matching font cap height at textSize 2)
+  static const uint16_t moonBitmap[14] = {
+    0b0000011100,
+    0b0001111110,
+    0b0011111000,
+    0b0111110000,
+    0b1111100000,
+    0b1111100000,
+    0b1111100000,
+    0b1111100000,
+    0b1111100000,
+    0b1111100000,
+    0b0111110000,
+    0b0011111000,
+    0b0001111110,
+    0b0000011100
   };
-  for (int row = 0; row < 12; row++) {
+  for (int row = 0; row < 14; row++) {
     uint16_t rowBits = moonBitmap[row];
     for (int col = 0; col < 10; col++) {
       if (rowBits & (1 << (9 - col))) {
@@ -745,8 +747,8 @@ void drawStatusBar() {
   int leftOffset = 15 + strlen(timeStr) * 12 + 4; // ~79px
 
   if (isNightModeActive()) {
-    // Moon icon near the clock
-    drawMoonIcon(leftOffset, 8, isDarkTheme ? CYAN : 0x001F);
+    // Moon icon near the clock: 14px tall at y=7 (aligned with font), WHITE in dark theme, BLACK in light theme
+    drawMoonIcon(leftOffset, 7, textColor);
     leftOffset += 14;
   }
 
@@ -792,11 +794,7 @@ void drawStatusBar() {
     bool showBat = true;
 
     if (currentBatteryPct <= 3) {
-      if (!debugMode) {
-        batColor = textColor;
-      } else {
-        batColor = RED;
-      }
+      batColor = RED;
       if ((millis() / 1000) % 2 != 0) {
         showBat = false;
       }
@@ -858,7 +856,7 @@ void drawStatusBar() {
           sections = 3;
         else if (currentBatteryPct >= 20)
           sections = 2;
-        else if (currentBatteryPct >= 6)
+        else if (currentBatteryPct > 3)
           sections = 1;
 
         for (int i = 0; i < sections; i++) {
@@ -990,6 +988,12 @@ void drawVerticalScreen() {
   uint16_t cardBorder = isDarkTheme ? ZINC_BORDER : 0xC618;
   uint16_t activeCardBg = isDarkTheme ? 0x2965 : 0xBDF7;
 
+  // Theme-aware accent colors (crisp high contrast in light mode):
+  uint16_t accentGreen = isDarkTheme ? GREEN : 0x03E0; // Emerald bright in dark, deep green in light
+  uint16_t accentBlue  = isDarkTheme ? CYAN  : 0x0277; // Cyan in dark, bold royal blue in light
+  uint16_t iconBgBlue  = isDarkTheme ? 0x1A2F : 0xD67F; // Soft tinted background pill
+  uint16_t iconBgGreen = isDarkTheme ? 0x12E8 : 0xDE56;
+
   gfx->fillScreen(bgColor);
 
   if (verticalSubscreen == 0) {
@@ -1011,8 +1015,8 @@ void drawVerticalScreen() {
     int yA = 80;
     gfx->fillRoundRect(btnX, yA, btnW, btnH, 8, cardBg);
     gfx->drawRoundRect(btnX, yA, btnW, btnH, 8, cardBorder);
-    gfx->fillCircle(86, yA + 38, 18, 0x1A2F);
-    gfx->setTextColor(CYAN);
+    gfx->fillCircle(86, yA + 38, 18, iconBgBlue);
+    gfx->setTextColor(accentBlue);
     gfx->setTextSize(2);
     gfx->setCursor(86 - 5, yA + 30);
     gfx->print("P");
@@ -1032,7 +1036,7 @@ void drawVerticalScreen() {
       }
       if (connectedCount > 0) {
         snprintf(txtA2, sizeof(txtA2), "%d Online", connectedCount);
-        gfx->setTextColor(GREEN);
+        gfx->setTextColor(accentGreen);
       } else {
         snprintf(txtA2, sizeof(txtA2), "%d Offline", bondedPhoneCount);
         gfx->setTextColor(GRAY);
@@ -1049,7 +1053,7 @@ void drawVerticalScreen() {
     int yB = 230;
     gfx->fillRoundRect(btnX, yB, btnW, btnH, 8, cardBg);
     gfx->drawRoundRect(btnX, yB, btnW, btnH, 8, cardBorder);
-    gfx->fillCircle(86, yB + 38, 18, 0x2A20);
+    gfx->fillCircle(86, yB + 38, 18, isDarkTheme ? 0x2A20 : 0xFDE8);
     gfx->setTextColor(ORANGE);
     gfx->setTextSize(2);
     gfx->setCursor(86 - 5, yB + 30);
@@ -1071,8 +1075,8 @@ void drawVerticalScreen() {
     int yC = 380;
     gfx->fillRoundRect(btnX, yC, btnW, btnH, 8, cardBg);
     gfx->drawRoundRect(btnX, yC, btnW, btnH, 8, cardBorder);
-    gfx->fillCircle(86, yC + 38, 18, 0x12E8);
-    gfx->setTextColor(GREEN);
+    gfx->fillCircle(86, yC + 38, 18, iconBgGreen);
+    gfx->setTextColor(accentGreen);
     gfx->setTextSize(2);
     gfx->setCursor(86 - 5, yC + 30);
     gfx->print("S");
@@ -1126,8 +1130,8 @@ void drawVerticalScreen() {
       int py = volBaseY + row * (pillH + pillGapY);
       bool isSel = (volumeLevel == i);
       gfx->fillRoundRect(px, py, pillW, pillH, 6, isSel ? activeCardBg : cardBg);
-      gfx->drawRoundRect(px, py, pillW, pillH, 6, isSel ? GREEN : cardBorder);
-      gfx->setTextColor(isSel ? GREEN : fgColor);
+      gfx->drawRoundRect(px, py, pillW, pillH, 6, isSel ? accentGreen : cardBorder);
+      gfx->setTextColor(isSel ? accentGreen : fgColor);
       gfx->setTextSize(2);
       int16_t bx, by; uint16_t bw, bh;
       gfx->getTextBounds(volLabels[i], 0, 0, &bx, &by, &bw, &bh);
@@ -1153,8 +1157,8 @@ void drawVerticalScreen() {
       int py = brightBaseY + row * (pillH + pillGapY);
       bool isSel = (brightnessLevel == brightPresets[i]);
       gfx->fillRoundRect(px, py, pillW, pillH, 6, isSel ? activeCardBg : cardBg);
-      gfx->drawRoundRect(px, py, pillW, pillH, 6, isSel ? CYAN : cardBorder);
-      gfx->setTextColor(isSel ? CYAN : fgColor);
+      gfx->drawRoundRect(px, py, pillW, pillH, 6, isSel ? accentBlue : cardBorder);
+      gfx->setTextColor(isSel ? accentBlue : fgColor);
       gfx->setTextSize(2);
       int16_t bx, by; uint16_t bw, bh;
       gfx->getTextBounds(brightLabels[i], 0, 0, &bx, &by, &bw, &bh);
@@ -1173,16 +1177,16 @@ void drawVerticalScreen() {
     // Toggle container
     int togW = 144, togH = 46, togX = 14, togY = 368;
     gfx->fillRoundRect(togX, togY, togW, togH, 8, cardBg);
-    gfx->drawRoundRect(togX, togY, togW, togH, 8, nightModeEnabled ? 0x3CFE : cardBorder);
+    gfx->drawRoundRect(togX, togY, togW, togH, 8, nightModeEnabled ? accentBlue : cardBorder);
 
-    gfx->setTextColor(nightModeEnabled ? 0x3CFE : fgColor);
+    gfx->setTextColor(nightModeEnabled ? accentBlue : fgColor);
     gfx->setTextSize(2);
     gfx->setCursor(togX + 16, togY + 14);
     gfx->print(nightModeEnabled ? "On" : "Off");
 
     // Switch pill inside container
     int swW = 44, swH = 24, swX = togX + togW - swW - 12, swY = togY + 11;
-    gfx->fillRoundRect(swX, swY, swW, swH, 12, nightModeEnabled ? 0x3CFE : 0x4208);
+    gfx->fillRoundRect(swX, swY, swW, swH, 12, nightModeEnabled ? accentBlue : (isDarkTheme ? 0x4208 : 0xCE59));
     int knobX = nightModeEnabled ? (swX + swW - 20) : (swX + 4);
     gfx->fillCircle(knobX + 8, swY + 12, 8, WHITE);
 
@@ -1200,7 +1204,7 @@ void drawVerticalScreen() {
     int backBtnX = 14, backBtnY = 565, backBtnW = 144, backBtnH = 48;
     gfx->fillRoundRect(backBtnX, backBtnY, backBtnW, backBtnH, 8, cardBg);
     gfx->drawRoundRect(backBtnX, backBtnY, backBtnW, backBtnH, 8, cardBorder);
-    gfx->setTextColor(CYAN);
+    gfx->setTextColor(accentBlue);
     gfx->setTextSize(2);
     const char* backTxt = "< Back";
     gfx->getTextBounds(backTxt, 0, 0, &bx, &by, &bw, &bh);
@@ -1302,10 +1306,10 @@ void drawVerticalScreen() {
           gfx->setCursor(pillX + (pillW - bw) / 2, pillY + 38);
           gfx->print(s2);
         } else if (isConn) {
-          // Cyan Ring Phone button pill (Double height: 64, two strings)
-          gfx->fillRoundRect(pillX, pillY, pillW, pillH, 8, 0x1A2F);
-          gfx->drawRoundRect(pillX, pillY, pillW, pillH, 8, CYAN);
-          gfx->setTextColor(CYAN);
+          // Ring Phone button pill (Double height: 64, two strings)
+          gfx->fillRoundRect(pillX, pillY, pillW, pillH, 8, iconBgBlue);
+          gfx->drawRoundRect(pillX, pillY, pillW, pillH, 8, accentBlue);
+          gfx->setTextColor(accentBlue);
           gfx->setTextSize(2);
           const char* s1 = "Ring";
           const char* s2 = "Phone";
@@ -1317,9 +1321,9 @@ void drawVerticalScreen() {
           gfx->print(s2);
         } else {
           // Offline container
-          gfx->fillRoundRect(pillX, pillY, pillW, pillH, 8, 0x18E3);
+          gfx->fillRoundRect(pillX, pillY, pillW, pillH, 8, cardBg);
           gfx->drawRoundRect(pillX, pillY, pillW, pillH, 8, cardBorder);
-          gfx->setTextColor(0x632C); // Muted gray
+          gfx->setTextColor(GRAY);
           gfx->setTextSize(1);
           const char* disTxt1 = "Phone";
           const char* disTxt2 = "Offline";
@@ -1337,7 +1341,7 @@ void drawVerticalScreen() {
     int backBtnX = 14, backBtnY = 565, backBtnW = 144, backBtnH = 48;
     gfx->fillRoundRect(backBtnX, backBtnY, backBtnW, backBtnH, 8, cardBg);
     gfx->drawRoundRect(backBtnX, backBtnY, backBtnW, backBtnH, 8, cardBorder);
-    gfx->setTextColor(CYAN);
+    gfx->setTextColor(accentBlue);
     gfx->setTextSize(2);
     const char* backTxt = "< Back";
     int16_t bx, by; uint16_t bw, bh;

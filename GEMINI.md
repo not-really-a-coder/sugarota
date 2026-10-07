@@ -11,6 +11,7 @@ All builds, deployments, and checks MUST be executed via `just`. Never run raw c
 - Android Logs: `just logs-android`
 - Device Listing: `just devices`
 - Firmware Crash Log: `just crash-log` (V1 uses `COM6` by default; for V2 use `just crash-log port="COM8"`)
+- Battery Telemetry Log: `just battery-log` (clear: `just clear-battery-log`)
 - Web Installer Server: `just installer` (runs on `http://localhost:8123`, auto-runs CalVer watcher)
 
 # Architecture & Local Maps

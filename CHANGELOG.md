@@ -2,6 +2,26 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## 2026-10-07 — Battery Indicator Refinements & Dedicated Telemetry Logging
+Firmware v0.10.07.5
+
+This release fixes low battery icon coloring and segment metrics on the display, and introduces a dedicated background battery telemetry logger with serial retrieval tooling.
+
+### Firmware & Display Interface
+
+- Battery icon now correctly turns red and blinks at 3% or lower in all operating modes
+- Adjusted battery icon segment drawing so that 1 section remains visible between 4% and 19%, leaving only the empty outline at 3% or lower
+- Added LittleFS-backed battery telemetry log (`/battery.log`) recording voltage, percentage, charging state, screen state, and network status every 5 minutes or on 1% battery drops
+- Added `GET_BATTERY_LOG` and `CLEAR_BATTERY_LOG` serial CDC commands to query and reset battery metrics
+- Theme-aware accent colors and high-contrast pills applied to vertical menus and settings subscreen
+- Ensured Night Mode wake trigger relies accurately on `isNightModeActive()`
+
+### Tooling & Automation
+
+- Added `utils/read_battery.ps1` and Justfile recipes `just battery-log` and `just clear-battery-log` to read and reset telemetry data over serial
+
+---
+
 ## 2026-10-05 — Night Mode, Power Optimization & Companion Sync
 Firmware v0.10.05.32 | Android App v0.10.05.0 | Web installer v0.10.04.0
 

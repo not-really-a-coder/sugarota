@@ -471,9 +471,9 @@ void parseResponse(const String& payload) {
   }
   isFetching = false;
   fetchStartTime = 0;
-  if (nightModeEnabled) {
+  if (isNightModeActive()) {
     triggerNightModeWake();
-    if (isNightModeActive() && brightnessLevel == 0) {
+    if (brightnessLevel == 0) {
       setBrightness(76);
     }
   }

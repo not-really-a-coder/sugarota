@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.10.05.32"
+#define SUGAROTA_VERSION "v0.10.07.5"
 
 #include "config.h"
 #include "storage.h"
@@ -367,6 +367,15 @@ void checkSerialConsole() {
     }
     else if (command == "CLEAR_CRASH_LOG") {
       clearCrashLog();
+      Serial.println("CONF_OK");
+    }
+    else if (command == "GET_BATTERY_LOG") {
+      Serial.println("--- BEGIN BATTERY LOG ---");
+      Serial.print(readBatteryLog());
+      Serial.println("--- END BATTERY LOG ---");
+    }
+    else if (command == "CLEAR_BATTERY_LOG") {
+      clearBatteryLog();
       Serial.println("CONF_OK");
     }
   }

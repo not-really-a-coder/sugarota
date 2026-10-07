@@ -1,4 +1,6 @@
 #include "battery.h"
+#include "storage.h"
+#include <WiFi.h>
 
 // Forward declarations
 void updateUI();
@@ -152,20 +154,33 @@ void updateBattery() {
 
   int targetPct = getBatteryPercentage(avgV);
   
+  bool pctChanged = false;
   if (currentBatteryPct == -1) {
     currentBatteryPct = targetPct;
     lastBatteryPctUpdate = millis();
+    pctChanged = true;
     updateUI();
   } else {
     if (currentBatteryPct != targetPct) {
       currentBatteryPct = targetPct;
       lastBatteryPctUpdate = millis();
+      pctChanged = true;
       updateUI();
     }
   }
   
   DBG_PRINTF("Battery: %.2fV (Avg: %.2fV) Target: %d%% Disp: %d%%%s\n", 
              currentV, avgV, targetPct, currentBatteryPct, wasUSBPlugged ? " [Charging]" : "");
+
+  // Dedicated Battery Telemetry Logging:
+  // Log on initial boot, on every 1% battery change, or at least every 5 minutes (300,000ms)
+  static unsigned long lastBatteryLogTime = 0;
+  if (pctChanged || (millis() - lastBatteryLogTime >= 300000) || (lastBatteryLogTime == 0)) {
+    lastBatteryLogTime = millis();
+    bool screenOn = (brightnessLevel > 0);
+    bool wifiActive = (WiFi.status() == WL_CONNECTED || isConfigMode);
+    appendBatteryLog(avgV, currentBatteryPct, wasUSBPlugged, screenOn, wifiActive);
+  }
   
   // Only shut down for low battery if USB is definitely not plugged in AND an actual depleted battery is connected.
   // When running purely on USB or without battery, ADC may read 0.0V - 1.5V; never shut down in that state.

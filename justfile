@@ -63,6 +63,14 @@ sync-version target="all":
 crash-log port="COM6":
     ./utils/read_crash.ps1 -PortName {{port}}
 
+# Retrieve battery telemetry log from device over serial (V1: COM6, V2: COM8; e.g. just battery-log)
+battery-log port="COM6":
+    ./utils/read_battery.ps1 -PortName {{port}}
+
+# Clear battery telemetry log from device over serial
+clear-battery-log port="COM6":
+    ./utils/read_battery.ps1 -PortName {{port}} -Clear
+
 # Check connected Android devices and serial/COM ports
 devices:
     @Write-Host "=== Connected Android Devices ===" -ForegroundColor Cyan

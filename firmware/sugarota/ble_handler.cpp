@@ -2,6 +2,7 @@
 #include "net_client.h"
 #include "audio.h"
 #include "display.h"
+#include "ui.h"
 #include "ble.h"
 #include "storage.h"
 #include <ESPmDNS.h>
@@ -248,7 +249,7 @@ void handleBLEGlucose(const JsonDocument& doc) {
                (historyCount > 0 ? bgHistory[0].delta : 0),
                tsBuf,
                nextBuf);
-    if (nightModeEnabled) {
+    if (isNightModeActive()) {
       triggerNightModeWake();
     }
     bleUIUpdatePending = true;

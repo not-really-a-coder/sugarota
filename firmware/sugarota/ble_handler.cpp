@@ -214,9 +214,11 @@ void handleBLEGlucose(const JsonDocument& doc) {
   isFetching = false;
   fetchStartTime = 0;
   lastDataFetch = millis();
+  bool isNewReading = false;
   if (historyCount > 0) {
     if (bgHistory[0].timestamp > lastKnownReadingTs) {
       lastKnownReadingTs = bgHistory[0].timestamp;
+      isNewReading = true;
     }
     nextFetchIntervalMs = computeNextFetchDelayMs(bgHistory[0].timestamp, pollIntervalSec);
   } else {
@@ -249,7 +251,7 @@ void handleBLEGlucose(const JsonDocument& doc) {
                (historyCount > 0 ? bgHistory[0].delta : 0),
                tsBuf,
                nextBuf);
-    if (isNightModeActive()) {
+    if (isNightModeActive() && isNewReading) {
       triggerNightModeWake();
     }
     bleUIUpdatePending = true;

@@ -2,6 +2,27 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## 2026-10-08 — Web Installer UI Overhaul & Telemetry/Night Mode Fixes
+Firmware v0.10.08.0 | Web installer v0.10.08.13
+
+This release overhauls the Web Installer with Shadcn UI styled custom select dropdowns and checkboxes, fixes LittleFS battery telemetry logging on firmware, and ensures Night Mode wake triggers only on genuinely new glucose readings.
+
+### Web Installer
+
+- Replaced native browser select inputs with custom Shadcn UI styled dropdown components featuring glowing focus borders, smooth slide/fade animations, and option indicators
+- Introduced custom Shadcn styled checkboxes with glowing active accents across installation options and configuration forms
+- Fixed checkbox label casing inheritance by explicitly disabling uppercase transformations
+- Refined flasher layout aligning progress indicator, new device checkbox, and action buttons in a unified row
+- Added interactive sound effects on option selection and dropdown toggles
+
+### Firmware & Display Interface
+
+- Fixed LittleFS partition mount error preventing `/battery.log` telemetry writes by removing failing default spiffs initialization
+- Prevented premature screen wake in Night Mode during polling when no new glucose reading is received (both BLE and Wi-Fi)
+- Improved status bar network spinner positioning and glucose reading alignment in config and timer modes
+
+---
+
 ## 2026-10-07 — Battery Indicator Refinements, Night Mode Sync & Find Phone UX
 Firmware v0.10.07.16 | Android App v0.10.07.48
 

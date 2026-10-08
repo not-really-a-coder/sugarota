@@ -757,18 +757,19 @@ void drawStatusBar() {
     gfx->setTextColor(ORANGE);
     const char spinnerFrames[] = {'|', '/', '-', '\\'};
     char spinnerChar = spinnerFrames[(millis() / 150) % 4];
-    int spinnerX = isConfigMode ? (leftOffset + 2) : (isTimerMode ? 85 : 90);
+    int spinnerX = leftOffset + 6;
     gfx->setCursor(spinnerX, 7);
     gfx->print(spinnerChar);
     gfx->setTextColor(textColor);
+    leftOffset += 20; // 12px char + 8px gap
   }
 
   bool showBG = false;
-  int bgX = isConfigMode ? (leftOffset + (showSpinner ? 20 : 6)) : 110;
+  int bgX = isConfigMode ? (leftOffset + 4) : 110;
 
   if (isTimerMode) {
     showBG = true;
-    bgX = 110;
+    bgX = max(110, leftOffset + 6);
   }
 
   if (showBG && historyCount > 0) {

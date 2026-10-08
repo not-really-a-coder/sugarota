@@ -451,8 +451,10 @@ void parseResponse(const String& payload) {
     DBG_PRINTF("Success: %d readings. Latest SGV: %d (%s, delta: %+d) at %02d:%02d:%02d\n", 
                   historyCount, bgHistory[0].sgv, bgHistory[0].direction, bgHistory[0].delta, ti->tm_hour, ti->tm_min, ti->tm_sec);
 
+    bool isNewReading = false;
     if (bgHistory[0].timestamp > lastKnownReadingTs) {
       lastKnownReadingTs = bgHistory[0].timestamp;
+      isNewReading = true;
       nextFetchIntervalMs = computeNextFetchDelayMs(bgHistory[0].timestamp, pollIntervalSec);
       DBG_PRINTF("Schedule: New data received (ts=%lld). Next fetch in %lu ms\n", 
                  lastKnownReadingTs, nextFetchIntervalMs);
@@ -460,6 +462,12 @@ void parseResponse(const String& payload) {
       nextFetchIntervalMs = getFetchIntervalMs();
       DBG_PRINTF("Schedule: No newer data (ts=%lld). Next fetch in %lu ms\n", 
                  bgHistory[0].timestamp, nextFetchIntervalMs);
+    }
+    if (isNightModeActive() && isNewReading) {
+      triggerNightModeWake();
+      if (brightnessLevel == 0) {
+        setBrightness(76);
+      }
     }
   } else {
     nextFetchIntervalMs = getFetchIntervalMs();
@@ -471,12 +479,6 @@ void parseResponse(const String& payload) {
   }
   isFetching = false;
   fetchStartTime = 0;
-  if (isNightModeActive()) {
-    triggerNightModeWake();
-    if (brightnessLevel == 0) {
-      setBrightness(76);
-    }
-  }
   updateUI();
 }
 

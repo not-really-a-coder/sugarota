@@ -294,8 +294,6 @@ void clearCrashLog() {
 }
 
 void appendBatteryLog(float voltage, int pct, bool isCharging, bool screenOn, bool wifiActive) {
-  if (!LittleFS.begin()) return;
-
   // Keep battery log bounded to 16KB (~300-400 entries)
   if (LittleFS.exists("/battery.log")) {
     File check = LittleFS.open("/battery.log", "r");

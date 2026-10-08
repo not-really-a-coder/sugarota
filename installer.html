@@ -197,7 +197,7 @@
 
         .panel-title {
             font-family: 'Outfit', sans-serif;
-            font-size: 1.35rem;
+            font-size: 1.1rem;
             font-weight: 800;
             margin-top: 0;
             margin-bottom: 22px;
@@ -299,19 +299,233 @@
         }
 
         .checkbox-group {
-            display: flex;
+            display: inline-flex;
             align-items: center;
             gap: 10px;
-            margin-top: 16px;
             cursor: pointer;
             user-select: none;
         }
 
-        input[type="checkbox"] {
+        /* shadcn-ui Inspired Checkbox */
+        .shadcn-checkbox-wrapper {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             width: 18px;
             height: 18px;
-            accent-color: var(--accent-green);
+            flex-shrink: 0;
+        }
+
+        .shadcn-checkbox-input {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            margin: 0;
             cursor: pointer;
+            z-index: 2;
+        }
+
+        .shadcn-checkbox-box {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            color: #020b05;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+
+        .shadcn-checkbox-box svg {
+            width: 12px;
+            height: 12px;
+            stroke-width: 3;
+            opacity: 0;
+            transform: scale(0.65);
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .shadcn-checkbox-input:checked+.shadcn-checkbox-box {
+            background: var(--accent-green);
+            border-color: var(--accent-green);
+            box-shadow: 0 0 10px var(--accent-green-glow);
+        }
+
+        .shadcn-checkbox-input:checked+.shadcn-checkbox-box svg {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .shadcn-checkbox-input:focus-visible+.shadcn-checkbox-box {
+            outline: 2px solid var(--accent-green);
+            outline-offset: 2px;
+        }
+
+        .checkbox-label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            cursor: pointer;
+            user-select: none;
+            text-transform: none;
+            letter-spacing: 0.01em;
+            line-height: 1.2;
+        }
+
+        /* shadcn-ui Inspired Select Component */
+        .shadcn-select {
+            position: relative;
+            width: 100%;
+            user-select: none;
+        }
+
+        .shadcn-select-trigger {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 0.88rem;
+            color: var(--text-primary);
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            text-align: left;
+        }
+
+        .shadcn-select-trigger:hover {
+            border-color: rgba(255, 255, 255, 0.25);
+            background: rgba(0, 0, 0, 0.55);
+        }
+
+        .shadcn-select.open .shadcn-select-trigger,
+        .shadcn-select-trigger:focus-visible {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 12px rgba(0, 240, 255, 0.25);
+            background: rgba(0, 0, 0, 0.65);
+        }
+
+        .shadcn-select-value {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-weight: 500;
+        }
+
+        .shadcn-select-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            flex-shrink: 0;
+        }
+
+        .shadcn-select.open .shadcn-select-icon {
+            transform: rotate(180deg);
+            color: var(--accent-blue);
+        }
+
+        .shadcn-select-content {
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            background: #0d0d15;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 12px;
+            padding: 6px;
+            box-sizing: border-box;
+            z-index: 100;
+            max-height: 250px;
+            overflow-y: auto;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 16px rgba(0, 240, 255, 0.08);
+            display: none;
+            animation: shadcnSelectFade 0.15s ease-out forwards;
+        }
+
+        @keyframes shadcnSelectFade {
+            from {
+                opacity: 0;
+                transform: translateY(-4px) scale(0.98);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .shadcn-select.open .shadcn-select-content {
+            display: block;
+        }
+
+        .shadcn-select-label {
+            padding: 8px 10px 4px 10px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            user-select: none;
+        }
+
+        .shadcn-select-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-weight: 500;
+        }
+
+        .shadcn-select-item:hover {
+            background: rgba(0, 240, 255, 0.12);
+            color: #ffffff;
+        }
+
+        .shadcn-select-item.selected {
+            background: rgba(0, 255, 102, 0.12);
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+
+        .shadcn-select-item-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            opacity: 0;
+            color: var(--accent-green);
+        }
+
+        .shadcn-select-item.selected .shadcn-select-item-indicator {
+            opacity: 1;
+        }
+
+        .shadcn-select-separator {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.06);
+            margin: 4px -6px;
         }
 
         /* Buttons Container */
@@ -511,7 +725,6 @@
         .terminal-filter-input:focus {
             border-color: var(--accent-blue);
             box-shadow: 0 0 8px rgba(0, 240, 255, 0.25);
-            width: 210px;
         }
 
         .terminal-filter-input::placeholder {
@@ -690,23 +903,29 @@
 
         /* Progress Bar style */
         .progress-container {
-            margin-top: 24px;
             display: none;
-            background: rgba(0, 0, 0, 0.25);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 16px;
-            padding: 20px;
+            flex: 1;
+            min-width: 0;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 8px 12px;
+            box-sizing: border-box;
+        }
+
+        .progress-container.active {
+            display: block;
         }
 
         .progress-bar-bg {
             background: rgba(255, 255, 255, 0.04);
             border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 10px;
-            height: 18px;
+            border-radius: 6px;
+            height: 10px;
             width: 100%;
             overflow: hidden;
             position: relative;
-            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
         }
 
         .progress-bar-fill {
@@ -720,15 +939,33 @@
         .progress-label {
             display: flex;
             justify-content: space-between;
-            font-size: 0.85rem;
-            margin-bottom: 8px;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.72rem;
+            margin-bottom: 5px;
             font-weight: 600;
             color: var(--text-secondary);
             font-family: 'Outfit', sans-serif;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+
+        .progress-label #progress-state-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .progress-label #progress-percentage-text {
             color: var(--accent-green);
+            flex-shrink: 0;
+            font-family: 'Fira Code', monospace;
+        }
+
+        .flash-actions-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-shrink: 0;
         }
 
         @keyframes pulse-green {
@@ -759,7 +996,7 @@
                     style="width: 58px; height: 58px; image-rendering: pixelated; filter: drop-shadow(0 4px 16px rgba(0, 240, 255, 0.4));">
                 <h1 class="logo-title" style="margin: 0;">SUGAROTA CONTROL CENTER</h1>
             </div>
-            <div><span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.10.04.0</span></div>
+            <div><span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.10.08.13</span></div>
         </header>
 
         <!-- Global Connection Status Banner -->
@@ -788,8 +1025,7 @@
 
                 <div class="form-row" style="align-items: flex-end; margin-bottom: 20px;">
                     <div class="form-group" style="margin-bottom: 0;">
-                        <label>Connection Speed (Baud Rate)</label>
-                        <select id="baudrate-select">
+                        <select id="baudrate-select" data-select-label="Connection speed (baud rate)">
                             <option value="115200">115200 (Standard)</option>
                             <option value="460800">460800 (Medium Speed)</option>
                             <option value="921600" selected>921600 (High Speed - Recommended)</option>
@@ -815,11 +1051,21 @@
                 <!-- Logger Terminal -->
                 <div class="terminal-container" style="margin-top: 0; margin-bottom: 20px;">
                     <div class="terminal-header-row">
-                        <label>Console & Log Output</label>
+                        <label id="terminal-header-label">Console & Log Output</label>
                         <div class="terminal-actions-right">
                             <div class="terminal-filter-wrapper">
-                                <input type="text" id="terminal-filter-input" placeholder="Filter logs (min 3 chars)..." autocomplete="off" spellcheck="false" class="terminal-filter-input">
+                                <input type="text" id="terminal-filter-input" placeholder="Filter logs (min 3 chars)..."
+                                    autocomplete="off" spellcheck="false" class="terminal-filter-input">
                             </div>
+                            <button class="btn-icon-micro" id="quick-btn-battery" title="Toggle Battery Telemetry Log">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="2" y="7" width="16" height="10" rx="2" ry="2"></rect>
+                                    <line x1="22" y1="11" x2="22" y2="13"></line>
+                                    <line x1="6" y1="11" x2="6" y2="13"></line>
+                                    <line x1="10" y1="11" x2="10" y2="13"></line>
+                                </svg>
+                            </button>
                             <button class="btn-icon-micro" id="quick-btn-copy" title="Copy log to clipboard">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -858,23 +1104,41 @@
 
                 <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.05); margin: 20px 0;">
 
-                <div class="form-row" style="align-items: flex-end; margin-bottom: 12px;">
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label>Firmware Image Selection</label>
-                        <select id="firmware-mode-select" onchange="toggleFirmwareMode()">
-                            <option value="bundled-full">Bundled Full (Brand New Device)</option>
-                            <option value="bundled">Bundled Update (sugarota.ino.bin)</option>
-                            <option value="custom">Upload Custom Binary (.bin)</option>
-                        </select>
+                <div class="form-row"
+                    style="align-items: center; justify-content: flex-end; margin-bottom: 12px; gap: 16px;">
+                    <!-- Flashing Progress Bar (left of checkbox and button in the same row) -->
+                    <div class="progress-container" id="flash-progress-container">
+                        <div class="progress-label">
+                            <span id="progress-state-text">Handshaking...</span>
+                            <span id="progress-percentage-text">0%</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" id="flash-progress-fill"></div>
+                        </div>
                     </div>
-                    <div style="flex-shrink: 0;">
-                        <button class="btn btn-green btn-inline-action" id="btn-flash" disabled>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2.5">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
-                            </svg>
-                            Flash
-                        </button>
+
+                    <div class="flash-actions-wrapper">
+                        <label class="checkbox-group" for="brand-new-device-checkbox"
+                            style="margin-top: 0; margin-bottom: 0;">
+                            <span class="shadcn-checkbox-wrapper">
+                                <input type="checkbox" id="brand-new-device-checkbox" class="shadcn-checkbox-input">
+                                <span class="shadcn-checkbox-box">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                </span>
+                            </span>
+                            <span class="checkbox-label">New Device</span>
+                        </label>
+                        <div>
+                            <button class="btn btn-green btn-inline-action" id="btn-flash" disabled>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.5">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                                </svg>
+                                Flash
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -893,17 +1157,6 @@
                             <span class="remove-btn" id="btn-remove-file">✕</span>
                         </div>
                         <input type="file" id="custom-file-input" accept=".bin" style="display: none;">
-                    </div>
-                </div>
-
-                <!-- Progress Bar -->
-                <div class="progress-container" id="flash-progress-container">
-                    <div class="progress-label">
-                        <span id="progress-state-text">Handshaking...</span>
-                        <span id="progress-percentage-text">0%</span>
-                    </div>
-                    <div class="progress-bar-bg">
-                        <div class="progress-bar-fill" id="flash-progress-fill"></div>
                     </div>
                 </div>
             </div>
@@ -991,11 +1244,17 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="checkbox-group">
-                                <input type="checkbox" id="wifi-secondary-first">
-                                <label style="margin-bottom: 0; cursor: pointer;">Connect to Secondary Wi-Fi
-                                    First</label>
-                            </div>
+                            <label class="checkbox-group" for="wifi-secondary-first">
+                                <span class="shadcn-checkbox-wrapper">
+                                    <input type="checkbox" id="wifi-secondary-first" class="shadcn-checkbox-input">
+                                    <span class="shadcn-checkbox-box">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <polyline points="20 6 9 17 4 12"></polyline>
+                                        </svg>
+                                    </span>
+                                </span>
+                                <span class="checkbox-label">Connect to Secondary Wi-Fi First</span>
+                            </label>
                         </div>
                     </div>
 
@@ -1126,10 +1385,18 @@
                                     </select>
                                 </div>
                             </div>
-                            <div class="checkbox-group">
-                                <input type="checkbox" id="debug-mode-checkbox" checked>
-                                <label style="margin-bottom: 0; cursor: pointer;">Enable System Debug Logging</label>
-                            </div>
+                            <label class="checkbox-group" for="debug-mode-checkbox">
+                                <span class="shadcn-checkbox-wrapper">
+                                    <input type="checkbox" id="debug-mode-checkbox" class="shadcn-checkbox-input"
+                                        checked>
+                                    <span class="shadcn-checkbox-box">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <polyline points="20 6 9 17 4 12"></polyline>
+                                        </svg>
+                                    </span>
+                                </span>
+                                <span class="checkbox-label">Enable System Debug Logging</span>
+                            </label>
                         </div>
                     </div>
 
@@ -1149,7 +1416,7 @@
     </div>
 
     <script>
-        const INSTALLER_VERSION = "v0.10.04.0";
+        const INSTALLER_VERSION = "v0.10.08.13";
 
         // Toggle Password Visibility Reveal Icon Logic
         function togglePasswordVisibility(inputId, btn) {
@@ -1226,6 +1493,9 @@
         let isAutoScrollEnabled = true;
         let logEntries = [];
         let logFilterQuery = "";
+        let isBatteryLogView = false;
+        let isCapturingBatteryLog = false;
+        let batteryLogEntries = [];
 
         // Tab Navigation Switcher
         function switchTab(tabName) {
@@ -1262,6 +1532,8 @@
         const progressState = document.getElementById("progress-state-text");
 
         // Interactive Command elements
+        const terminalHeaderLabel = document.getElementById("terminal-header-label");
+        const quickBatteryBtn = document.getElementById("quick-btn-battery");
         const quickCopyBtn = document.getElementById("quick-btn-copy");
         const quickPauseBtn = document.getElementById("quick-btn-pause");
         const quickRebootBtn = document.getElementById("quick-btn-reboot");
@@ -1279,9 +1551,10 @@
 
         function renderTerminalLogs() {
             const activeFilter = logFilterQuery && logFilterQuery.length >= 3;
+            const currentEntries = isBatteryLogView ? batteryLogEntries : logEntries;
             const entriesToDisplay = activeFilter
-                ? logEntries.filter(e => filterMatches(e.raw))
-                : logEntries;
+                ? currentEntries.filter(e => filterMatches(e.raw))
+                : currentEntries;
             terminalEl.innerHTML = entriesToDisplay.map(e => e.html).join("");
             if (isAutoScrollEnabled) {
                 terminalEl.scrollTop = terminalEl.scrollHeight;
@@ -1485,9 +1758,42 @@
                             if (trimmedLine.includes("invalid header") || trimmedLine.includes("flash read err") || trimmedLine.includes("No bootable app")) {
                                 if (!isBrandNewDevice) {
                                     isBrandNewDevice = true;
-                                    log("Brand new device detected (partitions not set)! Defaulting to Full Firmware flash.", "var(--accent-yellow)");
-                                    document.getElementById("firmware-mode-select").value = "bundled-full";
+                                    log("Brand new device detected (partitions not set)! Setting Brand new device flash.", "var(--accent-yellow)");
+                                    const bndCheckbox = document.getElementById("brand-new-device-checkbox");
+                                    if (bndCheckbox) bndCheckbox.checked = true;
                                 }
+                            }
+
+                            // Capture battery log stream between delimiters
+                            if (trimmedLine.includes("--- BEGIN BATTERY LOG ---")) {
+                                isCapturingBatteryLog = true;
+                                batteryLogEntries = [];
+                                const markerEntry = { raw: "[BATTERY] Telemetry capture started\n", html: `<span style="color: var(--accent-blue);">--- Sugarota Battery Telemetry Log ---</span>\n` };
+                                batteryLogEntries.push(markerEntry);
+                                if (isBatteryLogView) renderTerminalLogs();
+                                continue;
+                            } else if (trimmedLine.includes("--- END BATTERY LOG ---")) {
+                                isCapturingBatteryLog = false;
+                                const markerEntry = { raw: "[BATTERY] Telemetry capture complete\n", html: `<span style="color: var(--accent-green);">--- End of Battery Telemetry Log ---</span>\n` };
+                                batteryLogEntries.push(markerEntry);
+                                if (isBatteryLogView) renderTerminalLogs();
+                                continue;
+                            }
+
+                            if (isCapturingBatteryLog) {
+                                const cleanBatteryLine = line.replace(/\r/g, "");
+                                const batteryEntry = {
+                                    raw: cleanBatteryLine,
+                                    html: cleanBatteryLine
+                                };
+                                batteryLogEntries.push(batteryEntry);
+                                if (isBatteryLogView && filterMatches(batteryEntry.raw)) {
+                                    terminalEl.innerHTML += batteryEntry.html;
+                                    if (isAutoScrollEnabled) {
+                                        terminalEl.scrollTop = terminalEl.scrollHeight;
+                                    }
+                                }
+                                continue;
                             }
 
                             // Do NOT print configuration JSON, EOF markers, or command queries to the visible log
@@ -1513,7 +1819,7 @@
                             };
                             logEntries.push(entry);
 
-                            if (filterMatches(entry.raw)) {
+                            if (!isBatteryLogView && filterMatches(entry.raw)) {
                                 terminalEl.innerHTML += logEntry;
                                 if (isAutoScrollEnabled) {
                                     terminalEl.scrollTop = terminalEl.scrollHeight;
@@ -1531,11 +1837,17 @@
                         }
                     }
                 } catch (err) {
-                    console.warn("Serial loop error or manual reset:", err);
+                    console.warn("Serial loop error or disconnect:", err);
+                    if (keepReading) {
+                        log(`Serial connection interrupted: ${err.message}`, "var(--accent-red)");
+                        disconnectSerial();
+                    }
                     break;
                 } finally {
                     if (reader) {
-                        reader.releaseLock();
+                        try {
+                            reader.releaseLock();
+                        } catch (e) { }
                     }
                 }
             }
@@ -1837,6 +2149,43 @@
             clearLog();
         });
 
+        // Battery Telemetry Log Toggle View
+        if (quickBatteryBtn) {
+            quickBatteryBtn.addEventListener("click", async () => {
+                SoundEffects.click();
+                isBatteryLogView = !isBatteryLogView;
+                if (isBatteryLogView) {
+                    quickBatteryBtn.classList.add("active");
+                    terminalHeaderLabel.innerText = "Battery Telemetry Log";
+                    if (batteryLogEntries.length === 0) {
+                        batteryLogEntries.push({
+                            raw: "[BATTERY] Requesting telemetry log from device...\n",
+                            html: `<span style="color: var(--accent-blue);">Requesting telemetry log from device...</span>\n`
+                        });
+                    }
+                    renderTerminalLogs();
+                    if (isConnected && port && port.writable) {
+                        sendConsoleCommand("GET_BATTERY_LOG");
+                    } else {
+                        log("Notice: Device is not connected. Connect via USB to query battery log.", "var(--accent-yellow)");
+                    }
+                } else {
+                    quickBatteryBtn.classList.remove("active");
+                    terminalHeaderLabel.innerText = "Console & Log Output";
+                    renderTerminalLogs();
+                }
+            });
+        }
+
+        // Web Serial API Physical USB Disconnect Listener
+        if (navigator.serial) {
+            navigator.serial.addEventListener("disconnect", (event) => {
+                log("USB device physically disconnected from system.", "var(--accent-red)");
+                SoundEffects.warning();
+                disconnectSerial();
+            });
+        }
+
         // Dynamic Firmware Flashing Powered by esptool-js
         flashBtn.addEventListener("click", async () => {
             SoundEffects.click();
@@ -1845,7 +2194,8 @@
                 return;
             }
 
-            const mode = document.getElementById("firmware-mode-select").value;
+            const isBrandNewDeviceSelected = document.getElementById("brand-new-device-checkbox")?.checked;
+            const mode = isBrandNewDeviceSelected ? "bundled-full" : "bundled";
             let filesToFlash = [];
             let firmwareFileName = "sugarota.ino.bin";
 
@@ -2087,6 +2437,158 @@
                 log("Flasher bootloader session finished. Re-pair your device to sync new settings!", "var(--accent-blue)");
             }
         });
+
+        // Shadcn UI Custom Select Component Enhancement
+        function initShadcnSelects() {
+            const selects = document.querySelectorAll("select");
+            selects.forEach(select => {
+                if (select.dataset.shadcnInitialized) return;
+                select.dataset.shadcnInitialized = "true";
+
+                // Hide native select visually while keeping accessible to form/code
+                select.style.display = "none";
+
+                // Container
+                const wrapper = document.createElement("div");
+                wrapper.className = "shadcn-select";
+                wrapper.id = `shadcn-select-${select.id}`;
+
+                // Trigger Button
+                const trigger = document.createElement("button");
+                trigger.type = "button";
+                trigger.className = "shadcn-select-trigger";
+                trigger.setAttribute("aria-haspopup", "listbox");
+                trigger.setAttribute("aria-expanded", "false");
+
+                const valueSpan = document.createElement("span");
+                valueSpan.className = "shadcn-select-value";
+                const selectedOption = select.options[select.selectedIndex] || select.options[0];
+                valueSpan.textContent = selectedOption ? selectedOption.text : "Select option...";
+
+                const iconSpan = document.createElement("span");
+                iconSpan.className = "shadcn-select-icon";
+                iconSpan.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+
+                trigger.appendChild(valueSpan);
+                trigger.appendChild(iconSpan);
+                wrapper.appendChild(trigger);
+
+                // Content / Dropdown Menu
+                const content = document.createElement("div");
+                content.className = "shadcn-select-content";
+                content.setAttribute("role", "listbox");
+
+                // Optional SelectLabel from data-select-label attribute
+                const customLabel = select.getAttribute("data-select-label");
+                if (customLabel) {
+                    const labelEl = document.createElement("div");
+                    labelEl.className = "shadcn-select-label";
+                    labelEl.textContent = customLabel;
+                    content.appendChild(labelEl);
+                    const sep = document.createElement("div");
+                    sep.className = "shadcn-select-separator";
+                    content.appendChild(sep);
+                }
+
+                // Populate Items
+                Array.from(select.options).forEach(opt => {
+                    const item = document.createElement("div");
+                    item.className = "shadcn-select-item" + (opt.selected ? " selected" : "");
+                    item.setAttribute("role", "option");
+                    item.setAttribute("data-value", opt.value);
+
+                    const itemText = document.createElement("span");
+                    itemText.textContent = opt.text;
+
+                    const indicator = document.createElement("span");
+                    indicator.className = "shadcn-select-item-indicator";
+                    indicator.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
+                    item.appendChild(itemText);
+                    item.appendChild(indicator);
+
+                    item.addEventListener("click", (e) => {
+                        e.stopPropagation();
+                        SoundEffects.click();
+                        select.value = opt.value;
+                        valueSpan.textContent = opt.text;
+
+                        // Update selection state
+                        content.querySelectorAll(".shadcn-select-item").forEach(i => i.classList.remove("selected"));
+                        item.classList.add("selected");
+
+                        wrapper.classList.remove("open");
+                        trigger.setAttribute("aria-expanded", "false");
+
+                        // Trigger native change event so all handlers (e.g. toggleProviderFields) run cleanly
+                        select.dispatchEvent(new Event("change", { bubbles: true }));
+                    });
+
+                    content.appendChild(item);
+                });
+
+                wrapper.appendChild(content);
+
+                // Toggle dropdown on trigger click
+                trigger.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    SoundEffects.click();
+                    const isOpen = wrapper.classList.contains("open");
+                    // Close any other open select dropdowns
+                    document.querySelectorAll(".shadcn-select.open").forEach(other => {
+                        if (other !== wrapper) {
+                            other.classList.remove("open");
+                            const otherTrigger = other.querySelector(".shadcn-select-trigger");
+                            if (otherTrigger) otherTrigger.setAttribute("aria-expanded", "false");
+                        }
+                    });
+
+                    if (isOpen) {
+                        wrapper.classList.remove("open");
+                        trigger.setAttribute("aria-expanded", "false");
+                    } else {
+                        wrapper.classList.add("open");
+                        trigger.setAttribute("aria-expanded", "true");
+                    }
+                });
+
+                // Listen for programmatic value updates on native select (e.g., parseRetrievedConfig)
+                select.addEventListener("change", () => {
+                    const currentSelected = select.options[select.selectedIndex];
+                    if (currentSelected) {
+                        valueSpan.textContent = currentSelected.text;
+                        content.querySelectorAll(".shadcn-select-item").forEach(item => {
+                            if (item.getAttribute("data-value") === currentSelected.value) {
+                                item.classList.add("selected");
+                            } else {
+                                item.classList.remove("selected");
+                            }
+                        });
+                    }
+                });
+
+                // Insert wrapper directly after native select
+                select.parentNode.insertBefore(wrapper, select.nextSibling);
+            });
+
+            // Close all select menus when clicking outside
+            document.addEventListener("click", (e) => {
+                if (!e.target.closest(".shadcn-select")) {
+                    document.querySelectorAll(".shadcn-select.open").forEach(wrapper => {
+                        wrapper.classList.remove("open");
+                        const trigger = wrapper.querySelector(".shadcn-select-trigger");
+                        if (trigger) trigger.setAttribute("aria-expanded", "false");
+                    });
+                }
+            });
+        }
+
+        // Initialize custom selects on load
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", initShadcnSelects);
+        } else {
+            initShadcnSelects();
+        }
     </script>
 </body>
 

@@ -2,10 +2,26 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
-## 2026-10-08 — Web Installer UI Overhaul & Telemetry/Night Mode Fixes
-Firmware v0.10.08.0 | Web installer v0.10.08.13
+## 2026-10-08 — Web Installer UI Overhaul, Device Debug Console & Telemetry Fixes
+Firmware v0.10.08.4 | Android App v0.10.08.6 | Web installer v0.10.08.13
 
-This release overhauls the Web Installer with Shadcn UI styled custom select dropdowns and checkboxes, fixes LittleFS battery telemetry logging on firmware, and ensures Night Mode wake triggers only on genuinely new glucose readings.
+This release overhauls the Web Installer with Shadcn UI styled custom select dropdowns and checkboxes, adds live voltage and debug state telemetry notifications to firmware, revamps the Android companion app device logs console with search filtering, hex viewer, auto-scroll controls, and full telemetry inspection, and fixes LittleFS battery logging.
+
+### Firmware & Display Interface
+
+- Added battery voltage (`voltage`) reporting rounded to two decimal places in BLE status notifications
+- Propagated active debug mode state via BLE status notifications on boot and status change loops
+- Fixed LittleFS partition mount error preventing `/battery.log` telemetry writes by removing failing default spiffs initialization
+- Prevented premature screen wake in Night Mode during polling when no new glucose reading is received (both BLE and Wi-Fi)
+- Improved status bar network spinner positioning and glucose reading alignment in config and timer modes
+
+### Android Companion App
+
+- Overhauled Device Logs screen with matching web-console styling, search bar filtering (minimum 3 characters), and line-count badges
+- Added live toggle controls for auto-scroll pin, raw BLE HEX dump logging, and log copy/clear actions
+- Added full device status and telemetry banner displaying battery voltage, charging status, brightness, dark theme, night mode, and active debug flag
+- Extended BLE service to parse battery voltage and debug mode flags from status packets, logging formatted voltage and debug states
+- Enhanced console log syntax coloring matching Shadcn zinc dark theme accents (red errors, neon green connection events, cyan writes, amber status, emerald battery)
 
 ### Web Installer
 
@@ -14,12 +30,6 @@ This release overhauls the Web Installer with Shadcn UI styled custom select dro
 - Fixed checkbox label casing inheritance by explicitly disabling uppercase transformations
 - Refined flasher layout aligning progress indicator, new device checkbox, and action buttons in a unified row
 - Added interactive sound effects on option selection and dropdown toggles
-
-### Firmware & Display Interface
-
-- Fixed LittleFS partition mount error preventing `/battery.log` telemetry writes by removing failing default spiffs initialization
-- Prevented premature screen wake in Night Mode during polling when no new glucose reading is received (both BLE and Wi-Fi)
-- Improved status bar network spinner positioning and glucose reading alignment in config and timer modes
 
 ---
 

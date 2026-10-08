@@ -75,7 +75,7 @@ class SugarotaBleService : Service() {
     val deviceLogs: StateFlow<Map<String, List<String>>> = _deviceLogs.asStateFlow()
 
     fun appendDeviceLog(address: String, message: String) {
-        val timestamp = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date())
+        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
         val logLine = "[$timestamp] $message"
         val currentMap = _deviceLogs.value.toMutableMap()
         val currentList = currentMap[address]?.toMutableList() ?: mutableListOf()
@@ -1899,6 +1899,17 @@ class SugarotaBleService : Service() {
             }
 
             val bat = obj.optInt("battery", 0)
+            val voltage = when {
+                obj.has("voltage") -> {
+                    val rawV = obj.opt("voltage")
+                    when (rawV) {
+                        is Number -> rawV.toFloat()
+                        is String -> rawV.toFloatOrNull() ?: existing.status.batteryVoltage
+                        else -> existing.status.batteryVoltage
+                    }
+                }
+                else -> existing.status.batteryVoltage
+            }
             val chg = obj.optBoolean("charging", false)
             val ver = obj.optString("version", "Unknown")
             val brightness = if (obj.has("brightness")) obj.optInt("brightness", existing.status.brightness) else existing.status.brightness
@@ -1906,9 +1917,25 @@ class SugarotaBleService : Service() {
             val isDebug = if (obj.has("debug")) obj.optBoolean("debug", existing.status.isDebugMode) else existing.status.isDebugMode
             val volume = if (obj.has("volume")) obj.optInt("volume", existing.status.volume) else existing.status.volume
             val isNight = if (obj.has("night_mode")) obj.optBoolean("night_mode", existing.status.isNightMode) else existing.status.isNightMode
-            current[address] = existing.copy(status = DeviceStatus(bat, chg, ver, brightness, isDark, isDebug, volume, isNight))
+            
+            val statusChanged = existing.status.batteryPct != bat ||
+                    existing.status.isCharging != chg ||
+                    Math.abs(existing.status.batteryVoltage - voltage) >= 0.01f ||
+                    existing.status.version != ver ||
+                    existing.status.brightness != brightness ||
+                    existing.status.isDarkTheme != isDark ||
+                    existing.status.isDebugMode != isDebug ||
+                    existing.status.volume != volume ||
+                    existing.status.isNightMode != isNight
+
+            current[address] = existing.copy(status = DeviceStatus(bat, voltage, chg, ver, brightness, isDark, isDebug, volume, isNight))
             _devices.value = current
-            appendDeviceLog(address, "Status received: bat=$bat% chg=$chg ver=$ver debug=$isDebug vol=$volume night=$isNight")
+
+            val voltStr = if (voltage > 0.0f) String.format(java.util.Locale.US, "%.2fV", voltage) else "N/A"
+            if (statusChanged || !deviceConfigs.containsKey(address)) {
+                appendDeviceLog(address, "Battery: $bat% ($voltStr) · Charging: ${if (chg) "YES" else "NO"}")
+                appendDeviceLog(address, "Status received: bat=$bat% ($voltStr) chg=$chg ver=$ver debug=$isDebug vol=$volume night=$isNight")
+            }
 
             // When device notifies status:
             // 1. If we don't have its config yet, attempt to read config now

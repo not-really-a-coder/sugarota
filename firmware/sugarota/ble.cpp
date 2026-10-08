@@ -417,6 +417,7 @@ void SugarotaBLE::notifyStatus(int batteryPct, bool isCharging, const char* vers
 
     JsonDocument doc;
     doc["battery"] = batteryPct;
+    doc["voltage"] = round(currentBatteryVoltage * 100.0f) / 100.0f;
     doc["charging"] = isCharging;
     doc["version"] = version;
     if (brightness >= 0) {

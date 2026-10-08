@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.10.08.0"
+#define SUGAROTA_VERSION "v0.10.08.4"
 
 #include "config.h"
 #include "storage.h"
@@ -495,7 +495,7 @@ void setup() {
     SugarotaBLE::getInstance().setConfigCallback(handleBLEConfig);
     SugarotaBLE::getInstance().setPairingCallback(handleBLEPairingDisplay);
     SugarotaBLE::getInstance().begin("Sugarota");
-    SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
+    SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0, false, debugMode ? 1 : 0);
     
     // Enable pairing mode during boot so phone can connect
     SugarotaBLE::getInstance().enablePairingMode(true);
@@ -854,9 +854,11 @@ void loop() {
   static int lastNotifiedBattery = -1;
   static bool lastNotifiedCharging = false;
   static bool lastNotifiedNightMode = false;
+  static bool lastNotifiedDebug = false;
   bool stateChanged = (currentBatteryPct != lastNotifiedBattery) || 
                       (wasUSBPlugged != lastNotifiedCharging) || 
-                      (nightModeEnabled != lastNotifiedNightMode);
+                      (nightModeEnabled != lastNotifiedNightMode) ||
+                      (debugMode != lastNotifiedDebug);
 
   if (SugarotaBLE::getInstance().isConnected()) {
     if (stateChanged || (millis() - lastBleStatus >= 60000)) {
@@ -864,7 +866,8 @@ void loop() {
       lastNotifiedBattery = currentBatteryPct;
       lastNotifiedCharging = wasUSBPlugged;
       lastNotifiedNightMode = nightModeEnabled;
-      SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0);
+      lastNotifiedDebug = debugMode;
+      SugarotaBLE::getInstance().notifyStatus(currentBatteryPct, wasUSBPlugged, SUGAROTA_VERSION, brightnessLevel, isDarkTheme ? 1 : 0, false, debugMode ? 1 : 0);
     }
   }
 

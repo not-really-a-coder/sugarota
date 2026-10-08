@@ -132,6 +132,7 @@ data class GlucoseData(
 
 data class DeviceStatus(
     val batteryPct: Int = 0,
+    val batteryVoltage: Float = 0.0f,
     val isCharging: Boolean = false,
     val version: String = "Unknown",
     val brightness: Int = 76,

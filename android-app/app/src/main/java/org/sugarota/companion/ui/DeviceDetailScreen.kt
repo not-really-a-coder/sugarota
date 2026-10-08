@@ -777,8 +777,9 @@ fun DeviceChartContent(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                val voltText = if (device.status.batteryVoltage > 0.0f) " (${String.format(java.util.Locale.US, "%.2fV", device.status.batteryVoltage)})" else ""
                                 ShadcnBadge(
-                                    text = "${device.status.batteryPct}%${if (device.status.isCharging) "(+)" else ""}",
+                                    text = "${device.status.batteryPct}%$voltText${if (device.status.isCharging) " (+)" else ""}",
                                     variant = ShadcnButtonVariant.SECONDARY
                                 )
                                 ShadcnBadge(
@@ -1174,11 +1175,25 @@ fun DeviceLogsScreen(
         mutableStateOf(device.status.isDebugMode)
     }
 
+    // Terminal controls matching Web Console
+    var filterQuery by remember { mutableStateOf("") }
+    var isAutoScrollEnabled by remember { mutableStateOf(true) }
+    var isBatteryLogView by remember { mutableStateOf(false) }
+
     val scrollState = rememberScrollState()
 
-    // Auto scroll to bottom when new logs arrive
-    LaunchedEffect(logs.size) {
-        if (logs.isNotEmpty()) {
+    // Filter entries based on search query (minimum 3 chars, matching web console) and battery view toggle
+    val filteredLogs = remember(logs, filterQuery, isBatteryLogView) {
+        logs.filter { line ->
+            val matchesBattery = !isBatteryLogView || line.contains("Battery", ignoreCase = true)
+            val matchesQuery = filterQuery.length < 3 || line.contains(filterQuery, ignoreCase = true)
+            matchesBattery && matchesQuery
+        }
+    }
+
+    // Auto scroll to bottom when new logs arrive (if auto-scroll is enabled)
+    LaunchedEffect(filteredLogs.size, isAutoScrollEnabled) {
+        if (isAutoScrollEnabled && filteredLogs.isNotEmpty()) {
             scrollState.animateScrollTo(scrollState.maxValue)
         }
     }
@@ -1275,63 +1290,153 @@ fun DeviceLogsScreen(
                     border = BorderStroke(1.dp, colors.border)
                 ) {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Terminal Title Bar & Action Buttons
-                        Row(
+                        // Terminal Title Bar & Action Buttons (Aligned with Web Console)
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(Color(0xFF0C0D12))
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0xFF22C55E))
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "TERMINAL OUTPUT (${logs.size})",
-                                    style = typography.caption.copy(
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 0.5.sp
-                                    ),
-                                    color = Color(0xFF94A3B8)
-                                )
-                            }
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                // Copy All Logs Button
-                                IconButton(
-                                    onClick = {
-                                        val fullText = logs.joinToString("\n")
-                                        clipboardManager.setText(AnnotatedString(fullText))
-                                    },
-                                    modifier = Modifier.size(28.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ContentCopy,
-                                        contentDescription = "Copy Logs",
-                                        tint = Color(0xFF94A3B8),
-                                        modifier = Modifier.size(15.dp)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(if (isBatteryLogView) Color(0xFF34D399) else Color(0xFF22C55E))
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = if (isBatteryLogView) "BATTERY TELEMETRY (${filteredLogs.size})" else "CONSOLE OUTPUT (${filteredLogs.size})",
+                                        style = typography.caption.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 0.5.sp
+                                        ),
+                                        color = if (isBatteryLogView) Color(0xFF34D399) else Color(0xFF94A3B8),
+                                        maxLines = 1
                                     )
                                 }
 
-                                // Clear Logs Button
-                                IconButton(
-                                    onClick = {
-                                        service?.clearDeviceLogs(device.address)
-                                    },
-                                    modifier = Modifier.size(28.dp)
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    // Battery Log View Toggle Button
+                                    IconButton(
+                                        onClick = { isBatteryLogView = !isBatteryLogView },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.BatteryChargingFull,
+                                            contentDescription = "Toggle Battery Telemetry",
+                                            tint = if (isBatteryLogView) Color(0xFF34D399) else Color(0xFF94A3B8),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+
+                                    // Pause Auto-Scroll Toggle Button
+                                    IconButton(
+                                        onClick = { isAutoScrollEnabled = !isAutoScrollEnabled },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isAutoScrollEnabled) Icons.Default.ArrowDownward else Icons.Default.Pause,
+                                            contentDescription = if (isAutoScrollEnabled) "Auto-scroll Enabled" else "Auto-scroll Paused",
+                                            tint = if (!isAutoScrollEnabled) Color(0xFFFBBF24) else Color(0xFF94A3B8),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+
+                                    // Copy All Logs Button
+                                    IconButton(
+                                        onClick = {
+                                            val fullText = filteredLogs.joinToString("\n")
+                                            clipboardManager.setText(AnnotatedString(fullText))
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ContentCopy,
+                                            contentDescription = "Copy Logs",
+                                            tint = Color(0xFF94A3B8),
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                    }
+
+                                    // Clear Logs Button
+                                    IconButton(
+                                        onClick = {
+                                            service?.clearDeviceLogs(device.address)
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DeleteOutline,
+                                            contentDescription = "Clear Logs",
+                                            tint = Color(0xFF94A3B8),
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Filter input search bar matching web console
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF040407))
+                                    .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = Color(0xFF64748B),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                androidx.compose.foundation.text.BasicTextField(
+                                    value = filterQuery,
+                                    onValueChange = { filterQuery = it },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    textStyle = typography.caption.copy(
+                                        color = Color(0xFFF1F5F9),
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.5.sp
+                                    ),
+                                    decorationBox = { innerTextField ->
+                                        if (filterQuery.isEmpty()) {
+                                            Text(
+                                                text = "Filter logs (min 3 chars)...",
+                                                style = typography.caption.copy(
+                                                    color = Color(0xFF64748B),
+                                                    fontSize = 11.5.sp
+                                                )
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                )
+                                if (filterQuery.isNotEmpty()) {
                                     Icon(
-                                        imageVector = Icons.Default.DeleteOutline,
-                                        contentDescription = "Clear Logs",
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Clear search",
                                         tint = Color(0xFF94A3B8),
-                                        modifier = Modifier.size(15.dp)
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clickable { filterQuery = "" }
                                     )
                                 }
                             }
@@ -1350,9 +1455,13 @@ fun DeviceLogsScreen(
                                         .fillMaxSize()
                                         .verticalScroll(scrollState)
                                 ) {
-                                    if (logs.isEmpty()) {
+                                    if (filteredLogs.isEmpty()) {
                                         Text(
-                                            text = "> Debug mode active. Waiting for device log output...",
+                                            text = if (logs.isEmpty()) {
+                                                "> Debug mode active. Waiting for device log output..."
+                                            } else {
+                                                "> No log entries match the active filter."
+                                            },
                                             style = typography.caption.copy(
                                                 fontFamily = FontFamily.Monospace,
                                                 fontSize = 12.sp,
@@ -1361,7 +1470,7 @@ fun DeviceLogsScreen(
                                             color = Color(0xFF64748B)
                                         )
                                     } else {
-                                        logs.forEach { line ->
+                                        filteredLogs.forEach { line ->
                                             Text(
                                                 text = line,
                                                 style = typography.caption.copy(
@@ -1373,11 +1482,12 @@ fun DeviceLogsScreen(
                                                     line.contains("error", ignoreCase = true) || line.contains(
                                                         "failed",
                                                         ignoreCase = true
-                                                    ) -> Color(0xFFF87171)
+                                                    ) -> Color(0xFFF87171) // Red (var(--accent-red))
 
-                                                    line.contains("Connected", ignoreCase = true) -> Color(0xFF4ADE80)
-                                                    line.contains("write", ignoreCase = true) -> Color(0xFF38BDF8)
-                                                    line.contains("Status", ignoreCase = true) -> Color(0xFFFBBF24)
+                                                    line.contains("Connected", ignoreCase = true) -> Color(0xFF00FF66) // Neon Green (var(--accent-green))
+                                                    line.contains("write", ignoreCase = true) -> Color(0xFF00F0FF) // Neon Cyan (var(--accent-blue))
+                                                    line.contains("Status", ignoreCase = true) -> Color(0xFFFFB700) // Amber Yellow (var(--accent-yellow))
+                                                    line.contains("Battery", ignoreCase = true) -> Color(0xFF34D399) // Emerald Green
                                                     else -> Color(0xFFCBD5E1)
                                                 }
                                             )

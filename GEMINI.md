@@ -13,6 +13,7 @@ All builds, deployments, and checks MUST be executed via `just`. Never run raw c
 - Firmware Crash Log: `just crash-log` (V1 uses `COM6` by default; for V2 use `just crash-log port="COM8"`)
 - Battery Telemetry Log: `just battery-log` (clear: `just clear-battery-log`)
 - Web Installer Server: `just installer` (runs on `http://localhost:8123`, auto-runs CalVer watcher)
+- Token-Optimized CLI (RTK): Whenever running terminal inspection/git commands directly outside `just`, prefix with `rtk` (e.g. `rtk git status`, `rtk git diff`, `rtk gradlew`, `rtk ls`). If output is truncated or contradictory, use `rtk proxy <cmd>`. Check token savings with `just rtk-gain` or `rtk gain`.
 
 # Architecture & Local Maps
 Detailed module maps and file indices reside directly alongside code in local instructions:

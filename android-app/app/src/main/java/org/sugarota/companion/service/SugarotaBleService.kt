@@ -649,7 +649,7 @@ class SugarotaBleService : Service() {
                             if (characteristic.uuid == BleUuids.CHAR_STATUS) {
                                 parseDeviceStatus(addr, payload)
                                 val configChar = gatt.getService(BleUuids.SUGAROTA_SERVICE)?.getCharacteristic(BleUuids.CHAR_CONFIG)
-                                if (configChar != null && (!deviceConfigs.containsKey(addr) || deviceConfigs[addr].isNullOrBlank())) {
+                                if (configChar != null) {
                                     gatt.readCharacteristic(configChar)
                                 }
                             } else if (characteristic.uuid == BleUuids.CHAR_CONFIG) {
@@ -675,7 +675,7 @@ class SugarotaBleService : Service() {
                         if (characteristic.uuid == BleUuids.CHAR_STATUS) {
                             parseDeviceStatus(addr, payload)
                             val configChar = gatt.getService(BleUuids.SUGAROTA_SERVICE)?.getCharacteristic(BleUuids.CHAR_CONFIG)
-                            if (configChar != null && (!deviceConfigs.containsKey(addr) || deviceConfigs[addr].isNullOrBlank())) {
+                            if (configChar != null) {
                                 gatt.readCharacteristic(configChar)
                             }
                         } else if (characteristic.uuid == BleUuids.CHAR_CONFIG) {
@@ -1063,7 +1063,11 @@ class SugarotaBleService : Service() {
         val gatt = connectedGatts[address] ?: return
         val service = gatt.getService(BleUuids.SUGAROTA_SERVICE) ?: return
         val glucoseChar = service.getCharacteristic(BleUuids.CHAR_GLUCOSE) ?: return
-        val syncJson = GlucoseData.createTimeSyncJson()
+        val deviceTz = getDeviceTimezoneOffsets(address)
+        val syncJson = GlucoseData.createTimeSyncJson(
+            customTzOffsetSec = deviceTz?.first,
+            customDstOffsetSec = deviceTz?.second
+        )
         val bytes = syncJson.toByteArray(Charsets.UTF_8)
         writeCharacteristicSafe(gatt, glucoseChar, bytes, "time_sync")
     }
@@ -1388,11 +1392,22 @@ class SugarotaBleService : Service() {
         val maxPayloadSize = (deviceMtu - 3).coerceAtLeast(20)
 
         val itemsPerPacket = GlucoseData.historyItemsPerPacket()
-        var primaryJson = glucose.toJson(maxHistory = itemsPerPacket, includeTimeSync = isFullSync)
+        val deviceTz = getDeviceTimezoneOffsets(address)
+        var primaryJson = glucose.toJson(
+            maxHistory = itemsPerPacket,
+            includeTimeSync = isFullSync,
+            customTzOffsetSec = deviceTz?.first,
+            customDstOffsetSec = deviceTz?.second
+        )
         var primaryBytes = primaryJson.toByteArray(Charsets.UTF_8)
         if (primaryBytes.size > maxPayloadSize) {
             Log.w("SugarotaBleService", "Primary payload (${primaryBytes.size}) exceeds MTU ($maxPayloadSize). Sending root only.")
-            primaryJson = glucose.copy(history = emptyList()).toJson(maxHistory = 0, includeTimeSync = isFullSync)
+            primaryJson = glucose.copy(history = emptyList()).toJson(
+                maxHistory = 0,
+                includeTimeSync = isFullSync,
+                customTzOffsetSec = deviceTz?.first,
+                customDstOffsetSec = deviceTz?.second
+            )
             primaryBytes = primaryJson.toByteArray(Charsets.UTF_8)
         }
 
@@ -2012,6 +2027,30 @@ class SugarotaBleService : Service() {
             }
         }
         return "mg/dL"
+    }
+
+    /**
+     * Retrieves the device-configured timezone (offset and daylight in seconds).
+     * If explicitly set on the device (e.g. from web installer or web portal), returns Pair(offset, daylight).
+     * If not configured on the device, returns null so caller defaults to phone OS timezone.
+     */
+    fun getDeviceTimezoneOffsets(address: String?): Pair<Long, Int>? {
+        if (address != null) {
+            val cfgJson = deviceConfigs[address]
+            if (!cfgJson.isNullOrBlank()) {
+                try {
+                    val tz = org.json.JSONObject(cfgJson).optJSONObject("timezone")
+                    if (tz != null && tz.has("offset")) {
+                        val offset = tz.optLong("offset", 10800L)
+                        val daylight = tz.optInt("daylight", 0)
+                        return Pair(offset, daylight)
+                    }
+                } catch (e: Exception) {
+                    // Ignore JSON parsing errors
+                }
+            }
+        }
+        return null
     }
 
     private fun formatGlucoseValue(sgv: Int, units: String): String {

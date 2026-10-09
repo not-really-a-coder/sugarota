@@ -294,12 +294,30 @@ void clearCrashLog() {
 }
 
 void appendBatteryLog(float voltage, int pct, bool isCharging, bool screenOn, bool wifiActive) {
-  // Keep battery log bounded to 16KB (~300-400 entries)
+  // Keep battery log bounded to 64KB (~1800 entries, ~6 days)
   if (LittleFS.exists("/battery.log")) {
     File check = LittleFS.open("/battery.log", "r");
-    if (check && check.size() > 16384) {
-      check.close();
-      LittleFS.remove("/battery.log");
+    if (check && check.size() > 65536) {
+      // Rotate: drop oldest ~16KB of lines to keep file circular without losing all history
+      File temp = LittleFS.open("/battery.tmp", "w");
+      if (temp) {
+        check.seek(16384);
+        // Advance to next newline to preserve clean CSV lines
+        while (check.available()) {
+          char c = check.read();
+          if (c == '\n') break;
+        }
+        while (check.available()) {
+          temp.write(check.read());
+        }
+        temp.flush();
+        temp.close();
+        check.close();
+        LittleFS.remove("/battery.log");
+        LittleFS.rename("/battery.tmp", "/battery.log");
+      } else {
+        check.close();
+      }
     } else if (check) {
       check.close();
     }
@@ -324,6 +342,27 @@ void appendBatteryLog(float voltage, int pct, bool isCharging, bool screenOn, bo
   snprintf(entry, sizeof(entry), "%s,%.3f,%d,%d,%d,%d\n",
            timeBuf, voltage, pct, isCharging ? 1 : 0, screenOn ? 1 : 0, wifiActive ? 1 : 0);
   f.print(entry);
+  f.flush();
+  f.close();
+}
+
+void streamBatteryLog(Stream& out) {
+  if (!LittleFS.exists("/battery.log")) {
+    out.println("No battery logs recorded.");
+    return;
+  }
+  File f = LittleFS.open("/battery.log", "r");
+  if (!f) {
+    out.println("Failed to open battery log.");
+    return;
+  }
+  uint8_t buf[256];
+  while (f.available()) {
+    int bytesRead = f.read(buf, sizeof(buf));
+    if (bytesRead > 0) {
+      out.write(buf, bytesRead);
+    }
+  }
   f.close();
 }
 

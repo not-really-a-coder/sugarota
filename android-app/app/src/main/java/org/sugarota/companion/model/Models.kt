@@ -40,7 +40,12 @@ data class GlucoseData(
             else -> direction
         }
 
-    fun toJson(maxHistory: Int = HISTORY_PER_PACKET, includeTimeSync: Boolean = true): String {
+    fun toJson(
+        maxHistory: Int = HISTORY_PER_PACKET,
+        includeTimeSync: Boolean = true,
+        customTzOffsetSec: Long? = null,
+        customDstOffsetSec: Int? = null
+    ): String {
         val obj = JSONObject()
         obj.put("sgv", sgv)
         obj.put("direction", direction)
@@ -50,12 +55,17 @@ data class GlucoseData(
 
         if (includeTimeSync) {
             obj.put("time", System.currentTimeMillis() / 1000) // Current wall clock for BLE time sync
-            val tz = java.util.TimeZone.getDefault()
-            val nowMs = System.currentTimeMillis()
-            val rawOffsetSec = tz.rawOffset / 1000
-            val dstOffsetSec = if (tz.inDaylightTime(java.util.Date(nowMs))) (tz.dstSavings / 1000) else 0
-            obj.put("tz_offset", rawOffsetSec)
-            obj.put("dst_offset", dstOffsetSec)
+            if (customTzOffsetSec != null && customDstOffsetSec != null) {
+                obj.put("tz_offset", customTzOffsetSec)
+                obj.put("dst_offset", customDstOffsetSec)
+            } else {
+                val tz = java.util.TimeZone.getDefault()
+                val nowMs = System.currentTimeMillis()
+                val rawOffsetSec = tz.rawOffset / 1000L
+                val dstOffsetSec = if (tz.inDaylightTime(java.util.Date(nowMs))) (tz.dstSavings / 1000) else 0
+                obj.put("tz_offset", rawOffsetSec)
+                obj.put("dst_offset", dstOffsetSec)
+            }
         }
 
         if (maxHistory > 0 && history.isNotEmpty()) {
@@ -99,16 +109,21 @@ data class GlucoseData(
             return obj.toString()
         }
 
-        fun createTimeSyncJson(): String {
+        fun createTimeSyncJson(customTzOffsetSec: Long? = null, customDstOffsetSec: Int? = null): String {
             val obj = JSONObject()
             obj.put("type", "time_sync")
             obj.put("time", System.currentTimeMillis() / 1000)
-            val tz = java.util.TimeZone.getDefault()
-            val nowMs = System.currentTimeMillis()
-            val rawOffsetSec = tz.rawOffset / 1000
-            val dstOffsetSec = if (tz.inDaylightTime(java.util.Date(nowMs))) (tz.dstSavings / 1000) else 0
-            obj.put("tz_offset", rawOffsetSec)
-            obj.put("dst_offset", dstOffsetSec)
+            if (customTzOffsetSec != null && customDstOffsetSec != null) {
+                obj.put("tz_offset", customTzOffsetSec)
+                obj.put("dst_offset", customDstOffsetSec)
+            } else {
+                val tz = java.util.TimeZone.getDefault()
+                val nowMs = System.currentTimeMillis()
+                val rawOffsetSec = tz.rawOffset / 1000L
+                val dstOffsetSec = if (tz.inDaylightTime(java.util.Date(nowMs))) (tz.dstSavings / 1000) else 0
+                obj.put("tz_offset", rawOffsetSec)
+                obj.put("dst_offset", dstOffsetSec)
+            }
             return obj.toString()
         }
 

@@ -21,7 +21,8 @@ Jetpack Compose + Material 3 Android companion application communicating with Su
 
 ## Build & Scope Directives
 - **Generated & Build Artifacts**: NEVER inspect or search `app/build/`, `.gradle/`, or auto-generated resources (e.g. `R.java`, merged manifests, synthetic BuildConfig). All modifications belong strictly in `app/src/main/`.
-- **Build**: `just build-android`
+- **Build**: `just build-android` (uses `rtk gradlew assembleDebug` to condense output)
 - **Deploy to Devices**: `just run-android`
 - **Logs**: `just logs-android`
+- **Gradle Tasks**: When running ad-hoc Gradle tasks or unit tests, always proxy through RTK: `rtk gradlew testDebugUnitTest` or `rtk gradlew lint`.
 - **Touch Scope**: When editing UI screens or components, do not modify background BLE services or networking layers unless explicitly instructed.

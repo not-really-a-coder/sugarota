@@ -22,6 +22,7 @@ void clearCrashLog();
 
 void appendBatteryLog(float voltage, int pct, bool isCharging, bool screenOn, bool wifiActive);
 String readBatteryLog();
+void streamBatteryLog(Stream& out);
 void clearBatteryLog();
 
 #endif // SUGAROTA_STORAGE_H

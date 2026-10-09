@@ -3,6 +3,7 @@
 ## Critical Scope Directive
 - **Vendor Drivers Scope**: `firmware/sugarota/src/` contains ~8,000 lines of vendor driver code (`esp_codec_dev`, `codec_board`, `tca9554`). **DO NOT index, search, or edit `src/`** unless modifying low-level I2C/I2S audio hardware drivers.
 - **Hardware Reference**: If investigating display/touch registers, check `extras/waveshare_lcd` (v1/v2), not online guesswork.
+- **Log & Error Filtering**: When running serial inspection or analyzing compiler output, pipe through RTK (`rtk err` or `rtk log`) to suppress repetitive noise.
 
 ## Core Source Map (`firmware/sugarota/`)
 - `sugarota.ino`: Main setup/loop, state machine, WiFi connection, and OTA handlers.

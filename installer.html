@@ -996,7 +996,7 @@
                     style="width: 58px; height: 58px; image-rendering: pixelated; filter: drop-shadow(0 4px 16px rgba(0, 240, 255, 0.4));">
                 <h1 class="logo-title" style="margin: 0;">SUGAROTA CONTROL CENTER</h1>
             </div>
-            <div><span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.10.08.13</span></div>
+            <div><span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.10.09.1</span></div>
         </header>
 
         <!-- Global Connection Status Banner -->
@@ -1358,18 +1358,40 @@
                             <div class="form-group">
                                 <label>Timezone</label>
                                 <select id="timezone-offset">
-                                    <option value="0">GMT +0:00 (London)</option>
-                                    <option value="3600">GMT +1:00 (Paris / Berlin)</option>
-                                    <option value="7200">GMT +2:00 (Kyiv / Athens)</option>
-                                    <option value="10800" selected>GMT +3:00 (Moscow / Istanbul)</option>
-                                    <option value="14400">GMT +4:00 (Dubai / Baku)</option>
-                                    <option value="18000">GMT +5:00 (Karachi)</option>
-                                    <option value="21600">GMT +6:00 (Dhaka)</option>
-                                    <option value="25200">GMT +7:00 (Bangkok / Jakarta)</option>
-                                    <option value="28800">GMT +8:00 (Singapore / Beijing)</option>
-                                    <option value="-18000">GMT -5:00 (New York / EST)</option>
-                                    <option value="-21600">GMT -6:00 (Chicago / CST)</option>
-                                    <option value="-28800">GMT -8:00 (Los Angeles / PST)</option>
+                                    <option value="-43200">GMT -12:00 (Baker Island)</option>
+                                    <option value="-39600">GMT -11:00 (Samoa, Niue)</option>
+                                    <option value="-36000">GMT -10:00 (Hawaii, HST)</option>
+                                    <option value="-32400">GMT -9:00 (Alaska, AKST)</option>
+                                    <option value="-28800">GMT -8:00 (Pacific, PST)</option>
+                                    <option value="-25200">GMT -7:00 (Mountain, MST)</option>
+                                    <option value="-21600">GMT -6:00 (Central, CST)</option>
+                                    <option value="-18000">GMT -5:00 (Eastern, EST)</option>
+                                    <option value="-14400">GMT -4:00 (Atlantic, AST)</option>
+                                    <option value="-12600">GMT -3:30 (Newfoundland, NST)</option>
+                                    <option value="-10800">GMT -3:00 (Brasilia, ART)</option>
+                                    <option value="-7200">GMT -2:00 (South Georgia)</option>
+                                    <option value="-3600">GMT -1:00 (Azores, Cape Verde)</option>
+                                    <option value="0">GMT +0:00 (UTC / GMT / WET)</option>
+                                    <option value="3600">GMT +1:00 (Central Europe, CET)</option>
+                                    <option value="7200">GMT +2:00 (Eastern Europe, EET)</option>
+                                    <option value="10800" selected>GMT +3:00 (Moscow, MSK / TRT)</option>
+                                    <option value="12600">GMT +3:30 (Iran, IRST)</option>
+                                    <option value="14400">GMT +4:00 (Gulf, GST)</option>
+                                    <option value="16200">GMT +4:30 (Afghanistan, AFT)</option>
+                                    <option value="18000">GMT +5:00 (Pakistan, PKT)</option>
+                                    <option value="19800">GMT +5:30 (India, IST)</option>
+                                    <option value="20700">GMT +5:45 (Nepal, NPT)</option>
+                                    <option value="21600">GMT +6:00 (Bangladesh, BST)</option>
+                                    <option value="23400">GMT +6:30 (Myanmar, MMT)</option>
+                                    <option value="25200">GMT +7:00 (Indochina, ICT)</option>
+                                    <option value="28800">GMT +8:00 (Singapore, SGT / CST)</option>
+                                    <option value="32400">GMT +9:00 (Japan, JST / KST)</option>
+                                    <option value="34200">GMT +9:30 (ACST, Darwin / Adelaide)</option>
+                                    <option value="36000">GMT +10:00 (AEST, Sydney / Brisbane)</option>
+                                    <option value="39600">GMT +11:00 (Solomon Is., Vladivostok)</option>
+                                    <option value="43200">GMT +12:00 (New Zealand, NZST)</option>
+                                    <option value="46800">GMT +13:00 (Tonga, Phoenix Is.)</option>
+                                    <option value="50400">GMT +14:00 (Line Islands)</option>
                                 </select>
                             </div>
                             <div class="form-row">
@@ -1416,7 +1438,7 @@
     </div>
 
     <script>
-        const INSTALLER_VERSION = "v0.10.08.13";
+        const INSTALLER_VERSION = "v0.10.09.1";
 
         // Toggle Password Visibility Reveal Icon Logic
         function togglePasswordVisibility(inputId, btn) {
@@ -1907,25 +1929,39 @@
                 }
 
                 if (config.units) {
-                    document.getElementById("units-select").value = config.units || "mg/dL";
+                    const uSelect = document.getElementById("units-select");
+                    uSelect.value = config.units || "mg/dL";
+                    uSelect.dispatchEvent(new Event("change", { bubbles: true }));
                 }
 
                 if (config.timezone) {
                     document.getElementById("ntp-server").value = config.timezone.ntp || "pool.ntp.org";
-                    document.getElementById("timezone-offset").value = config.timezone.offset !== undefined ? config.timezone.offset : 10800;
-                    document.getElementById("daylight-offset").value = config.timezone.daylight !== undefined ? config.timezone.daylight : 0;
+                    const tzSelect = document.getElementById("timezone-offset");
+                    tzSelect.value = String(config.timezone.offset !== undefined ? config.timezone.offset : 10800);
+                    tzSelect.dispatchEvent(new Event("change", { bubbles: true }));
+                    const dstSelect = document.getElementById("daylight-offset");
+                    dstSelect.value = String(config.timezone.daylight !== undefined ? config.timezone.daylight : 0);
+                    dstSelect.dispatchEvent(new Event("change", { bubbles: true }));
                 }
 
                 if (config.connection_mode) {
-                    document.getElementById("connection-mode-select").value = config.connection_mode.toUpperCase();
+                    const cmSelect = document.getElementById("connection-mode-select");
+                    cmSelect.value = config.connection_mode.toUpperCase();
+                    cmSelect.dispatchEvent(new Event("change", { bubbles: true }));
                 } else {
-                    document.getElementById("connection-mode-select").value = "AUTO";
+                    const cmSelect = document.getElementById("connection-mode-select");
+                    cmSelect.value = "AUTO";
+                    cmSelect.dispatchEvent(new Event("change", { bubbles: true }));
                 }
 
                 if (config.poll_interval_sec) {
-                    document.getElementById("poll-interval-select").value = String(config.poll_interval_sec);
+                    const piSelect = document.getElementById("poll-interval-select");
+                    piSelect.value = String(config.poll_interval_sec);
+                    piSelect.dispatchEvent(new Event("change", { bubbles: true }));
                 } else {
-                    document.getElementById("poll-interval-select").value = "60";
+                    const piSelect = document.getElementById("poll-interval-select");
+                    piSelect.value = "60";
+                    piSelect.dispatchEvent(new Event("change", { bubbles: true }));
                 }
 
                 document.getElementById("debug-mode-checkbox").checked = config.debug !== false;

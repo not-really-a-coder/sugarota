@@ -9,11 +9,11 @@ default:
 
 # Build Android APK (variant: debug, release)
 build-android variant="debug":
-    ./android-app/gradlew.bat "assemble{{capitalize(variant)}}"
+    cd android-app; rtk gradlew "assemble{{capitalize(variant)}}"
 
 # Install APK to connected device
 install-android variant="debug":
-    ./android-app/gradlew.bat "install{{capitalize(variant)}}"
+    cd android-app; rtk gradlew "install{{capitalize(variant)}}"
 
 # Run Android app helper on all devices (or specific device: device="<serial>")
 run-android device="":
@@ -25,7 +25,7 @@ logs-android device="":
 
 # Clean Android build artifacts
 clean-android:
-    ./android-app/gradlew.bat clean
+    cd android-app; rtk gradlew clean
 
 # --- ESP32-S3 Firmware ---
 
@@ -77,3 +77,17 @@ devices:
     @adb devices
     @Write-Host "`n=== Serial / COM Ports ===" -ForegroundColor Cyan
     @Get-CimInstance Win32_SerialPort | Select-Object DeviceID, Description | Format-Table -AutoSize
+
+# --- RTK & Git Shortcuts ---
+
+# Condensed working tree status via RTK
+status:
+    @rtk git status
+
+# Ultra-condensed diff of working changes via RTK
+diff *args:
+    @rtk git diff {{args}}
+
+# Show RTK token savings summary
+rtk-gain:
+    @rtk gain

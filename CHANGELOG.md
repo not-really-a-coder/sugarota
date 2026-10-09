@@ -2,6 +2,38 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## 2026-10-09 — Timezone Alignment, RTK CLI Integration & Circular Battery Log Rotation
+Firmware v0.10.09.2 | Android App v0.10.09.5 | Web installer v0.10.09.1
+
+This release implements bidirectional timezone synchronization respecting device settings across Web Installer, captive portal, and Android companion app, integrates RTK token compression across development workflows, expands battery telemetry storage to 64KB with automatic FIFO log rotation and non-blocking streaming, and fixes custom select rendering in the Web Installer.
+
+### Firmware & Display Interface
+
+- Implemented chunked serial streaming for `GET_BATTERY_LOG` (`streamBatteryLog`) avoiding heap fragmentation and large memory buffers
+- Expanded LittleFS battery telemetry storage capacity to 64KB (~1,800 records) with automatic 16KB FIFO chunk rotation preserving recent history
+- Ensured `/config.json` timezone and daylight savings offsets take precedence during BLE time synchronization
+
+### Android Companion App
+
+- Added device timezone awareness respecting explicit offsets configured via Web Installer or captive portal
+- Enhanced BLE background service to preserve custom device timezone offsets during periodic and gap-recovery glucose synchronization
+- Unconditionally refreshed device configuration on BLE reconnection to guarantee instant synchronization of settings modified externally
+- Integrated `rtk gradlew` into build and packaging workflows for condensed command output
+
+### Web Installer
+
+- Expanded timezone selector to 34 global GMT offsets (-12:00 to +14:00) matching Companion App definitions
+- Fixed custom Shadcn select dropdown synchronization by dispatching change events when populating retrieved configuration from device
+- Ensured selected timezone and DST offsets map accurately to device `/config.json` schema
+
+### Tooling & Development
+
+- Integrated RTK (Rust Token Killer) across project `justfile` recipes (`status`, `diff`, `rtk-gain`, and Gradle tasks)
+- Updated agent pre-commit procedures and subsystem instruction maps for token-optimized CLI tooling
+- Updated `read_battery.ps1` with chunked buffer accumulation and timeout bounds
+
+---
+
 ## 2026-10-08 — Web Installer UI Overhaul, Device Debug Console & Telemetry Fixes
 Firmware v0.10.08.4 | Android App v0.10.08.6 | Web installer v0.10.08.13
 

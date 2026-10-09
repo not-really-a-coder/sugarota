@@ -7,26 +7,36 @@ param(
 $port = New-Object System.IO.Ports.SerialPort $PortName, $BaudRate
 $port.ReadTimeout = 4000
 $port.WriteTimeout = 3000
-$port.DtrEnable = $true
-$port.RtsEnable = $true
+$port.DtrEnable = $false
+$port.RtsEnable = $false
 $port.NewLine = "`n"
 
 try {
     $port.Open()
-    Start-Sleep -Milliseconds 800
+    Start-Sleep -Milliseconds 400
     $port.DiscardInBuffer()
     if ($Clear) {
         $port.WriteLine("CLEAR_BATTERY_LOG")
-        Start-Sleep -Milliseconds 1000
+        Start-Sleep -Milliseconds 500
         $data = $port.ReadExisting()
         Write-Output "--- CLEAR RESPONSE ---"
         Write-Output $data
     } else {
         $port.WriteLine("GET_BATTERY_LOG")
-        Start-Sleep -Milliseconds 2500
-        $data = $port.ReadExisting()
+        $output = New-Object System.Text.StringBuilder
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        while ($sw.ElapsedMilliseconds -lt 6000) {
+            $chunk = $port.ReadExisting()
+            if ($chunk) {
+                [void]$output.Append($chunk)
+                if ($output.ToString() -match "--- END BATTERY LOG ---") {
+                    break
+                }
+            }
+            Start-Sleep -Milliseconds 100
+        }
         Write-Output "--- BATTERY LOG RESPONSE ---"
-        Write-Output $data
+        Write-Output $output.ToString()
     }
 } catch {
     Write-Output "ERROR: $_"

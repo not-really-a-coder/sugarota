@@ -2,6 +2,29 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## 2026-10-11 — Night Mode Power Optimization, Battery Analytics Dashboard & Hybrid Charging Detection
+Firmware v0.10.11.0
+
+This release optimizes Night Mode power consumption by deep-sleeping audio and IMU peripherals during screen sleep, introduces a 5-second countdown dialog before night sleep, adds a standalone telemetry analytics pipeline and interactive browser dashboard, remaps the Li-Ion discharge curve to empirical data, and replaces static voltage thresholds with hybrid step and slope charging detection.
+
+### Firmware & Display Interface
+
+- Implemented hybrid step-jump and filtered slope detection for USB charging and discharging detection
+- Remapped Li-Ion discharge percentage curve using empirical telemetry for accurate battery tracking
+- Added ES8311 audio codec hardware power-down (`sleepAudio` / `wakeAudio`) and IMU low-power sleep (`sleepIMU` / `wakeIMU`) while display is sleeping in Night Mode
+- Reduced Night Mode screen wake timeout from 30s to 20s and added a 5-second animated countdown dialog prior to night sleep
+- Added display auto-wake to brightness level 150 during active OTA firmware flashing
+- Enhanced dedicated battery telemetry logging to trigger on boot, on every 1% battery change, or at 5-minute heartbeats
+
+### Tooling & Analytics
+
+- Added interactive standalone HTML battery telemetry dashboard (`battery.html`) with dual-axis voltage/percentage charts, cycle filtering, and telemetry metrics
+- Added battery extraction, normalization, and analytics pipeline (`utils/analysis/pipeline.py`) runnable via `just battery-pipeline`
+- Added `just battery-dashboard` recipe to launch local battery analysis in default browser
+- Documented automated battery analysis tools in utility documentation
+
+---
+
 ## 2026-10-09 — Timezone Alignment, RTK CLI Integration & Circular Battery Log Rotation
 Firmware v0.10.09.2 | Android App v0.10.09.5 | Web installer v0.10.09.1
 

@@ -14,5 +14,7 @@ void checkButton(ButtonState &btn, const char* name);
 bool readTouch(int &tx, int &ty);
 void checkTouch();
 void pollIMU();
+void sleepIMU();
+void wakeIMU();
 
 #endif // SUGAROTA_INPUT_H

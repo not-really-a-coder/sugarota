@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.10.09.2"
+#define SUGAROTA_VERSION "v0.10.11.0"
 
 #include "config.h"
 #include "storage.h"
@@ -67,11 +67,16 @@ int volumeLevel = 2; // Default preset 2 (~70%)
 bool nightModeEnabled = false;
 unsigned long nightModeScreenWakeUntil = 0;
 bool nightModeAlertSnoozed = false;
+unsigned long nightModeCountdownUntil = 0;
 
 void triggerNightModeWake() {
-  nightModeScreenWakeUntil = millis() + 30000; // Keep screen on for 30s
-  nightModeAlertSnoozed = true;                 // Touch/wake snoozes the no-data alert
-  stopNightModeDataAlert();
+  nightModeScreenWakeUntil = millis() + 20000; // Requirement 1 & User feedback: 20s wake timeout
+  if (isNightModeAlertActive()) {
+    nightModeAlertSnoozed = true; // Only snooze if alert is actively ringing
+    stopNightModeDataAlert();
+  }
+  wakeIMU();
+  wakeAudio();
   // Hardware brightness and canvas flush are handled safely in the Arduino loop thread
 }
 bool isVerticalMode = false;
@@ -782,44 +787,68 @@ void loop() {
     // Switch to lowest brightness preset (76)
     brightnessLevel = 76;
     nightModeScreenWakeUntil = 0;
-    // Default screen off
-    setBrightness(0);
-    DBG_PRINTLN("NIGHT MODE: Activated (Screen OFF by default, Touch ON)");
+    
+    // Requirement 6: 5 seconds timeout before sleep with countdown dialog (at 22:00 or booted within 22-7)
+    nightModeCountdownUntil = millis() + 5000;
+    setBrightness(76);
+    updateUI();
+    DBG_PRINTLN("NIGHT MODE: Activated (5s countdown dialog before sleep)");
   } else if (!nmActive && wasNightModeActive) {
     // Exited Night Mode (after 07:00 or turned off in settings)
     wasNightModeActive = false;
     nightModeScreenWakeUntil = 0;
+    nightModeCountdownUntil = 0;
     nightModeAlertSnoozed = false;
     stopNightModeDataAlert();
+    wakeIMU();
+    wakeAudio();
     // Restore brightness
     setBrightness((preNightBrightness > 0) ? preNightBrightness : 76);
     updateUI();
-    DBG_PRINTLN("NIGHT MODE: Deactivated (Restored brightness & screen)");
+    DBG_PRINTLN("NIGHT MODE: Deactivated (Restored brightness, screen, IMU & Audio)");
   }
 
   if (nmActive) {
-    // 1. Temporary screen wake timeout (30 seconds)
+    // Requirement 6: Handle 5-second countdown expiration
+    if (nightModeCountdownUntil > 0) {
+      static unsigned long lastCountdownTick = 0;
+      if (millis() >= nightModeCountdownUntil) {
+        nightModeCountdownUntil = 0;
+        setBrightness(0);
+        sleepIMU();
+        sleepAudio();
+        DBG_PRINTLN("NIGHT MODE: 5s countdown complete -> Screen, IMU & Audio Sleep");
+      } else if (millis() - lastCountdownTick >= 1000) {
+        lastCountdownTick = millis();
+        updateUI(); // Refresh 1s tick on countdown dialog
+      }
+    }
+
+    // 1. Temporary screen wake timeout (20 seconds)
     if (nightModeScreenWakeUntil > 0) {
       if (millis() >= nightModeScreenWakeUntil) {
         nightModeScreenWakeUntil = 0;
         setBrightness(0); // turn screen back off
-        DBG_PRINTLN("NIGHT MODE: 30s wake expired -> Screen OFF");
+        sleepIMU();
+        sleepAudio();
+        DBG_PRINTLN("NIGHT MODE: 20s wake expired -> Screen, IMU & Audio Sleep");
       }
     }
 
     // 2. No-data alarm (no update for > 15 minutes)
     // Plays 4 beeps, 1s pause, 4 beeps, 1s pause, 4 beeps every 5 minutes until data arrives
-    if (!isBooting && lastDataFetch > 0 && (millis() - lastDataFetch > 15 * 60 * 1000)) {
+    unsigned long effectiveLastFetch = (lastDataFetch > 0) ? lastDataFetch : 1; // Guard if booted with no initial data
+    if (!isBooting && (millis() - effectiveLastFetch > 15 * 60 * 1000)) {
       if (!nightModeAlertSnoozed && !isNightModeAlertActive()) {
         if (lastNmAlertTrigger == 0 || (millis() - lastNmAlertTrigger >= 5 * 60 * 1000)) {
           lastNmAlertTrigger = millis();
-          startNightModeDataAlert();
-          // Turn screen on at lowest brightness during alert so the user sees the warning message
-          nightModeScreenWakeUntil = millis() + 30000;
+          // Turn screen on at lowest brightness BEFORE alert so user sees warning
+          nightModeScreenWakeUntil = millis() + 20000;
           if (brightnessLevel == 0) {
             setBrightness(76);
             updateUI();
           }
+          startNightModeDataAlert();
         }
       }
     } else {

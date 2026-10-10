@@ -1,0 +1,101 @@
+{
+  "total_records": 458,
+  "discharge_records": 332,
+  "peak_voltage": 4.156,
+  "peak_time": "2026-10-09 22:27:37",
+  "min_voltage": 3.762,
+  "min_time": "2026-10-10 21:32:12",
+  "start_time": "2026-10-09 22:27:37",
+  "end_time": "2026-10-10 21:32:12",
+  "duration_hours": 23.08,
+  "duration_formatted": "23h 4m",
+  "overall_drain_per_hour": 1.99,
+  "screen_off_samples": 114,
+  "screen_on_samples": 218,
+  "milestones": [
+    {
+      "target_pct": 100,
+      "voltage": 4.156,
+      "elapsed_hours": 0.0,
+      "timestamp": "2026-10-09 22:27:37",
+      "screen_on": 1
+    },
+    {
+      "target_pct": 90,
+      "voltage": 4.035,
+      "elapsed_hours": 1.82,
+      "timestamp": "2026-10-10 00:16:39",
+      "screen_on": 0
+    },
+    {
+      "target_pct": 80,
+      "voltage": 3.953,
+      "elapsed_hours": 5.02,
+      "timestamp": "2026-10-10 03:28:42",
+      "screen_on": 1
+    },
+    {
+      "target_pct": 70,
+      "voltage": 3.886,
+      "elapsed_hours": 7.1,
+      "timestamp": "2026-10-10 05:33:44",
+      "screen_on": 1
+    },
+    {
+      "target_pct": 60,
+      "voltage": 3.808,
+      "elapsed_hours": 8.1,
+      "timestamp": "2026-10-10 06:33:45",
+      "screen_on": 1
+    },
+    {
+      "target_pct": 50,
+      "voltage": 3.746,
+      "elapsed_hours": 9.05,
+      "timestamp": "2026-10-10 07:30:43",
+      "screen_on": 1
+    },
+    {
+      "target_pct": 40,
+      "voltage": 3.686,
+      "elapsed_hours": 9.96,
+      "timestamp": "2026-10-10 08:25:14",
+      "screen_on": 1
+    },
+    {
+      "target_pct": 30,
+      "voltage": 3.626,
+      "elapsed_hours": 11.38,
+      "timestamp": "2026-10-10 09:50:15",
+      "screen_on": 1
+    },
+    {
+      "target_pct": 20,
+      "voltage": 3.557,
+      "elapsed_hours": 12.75,
+      "timestamp": "2026-10-10 11:12:46",
+      "screen_on": 1
+    },
+    {
+      "target_pct": 10,
+      "voltage": 3.46,
+      "elapsed_hours": 14.34,
+      "timestamp": "2026-10-10 12:47:48",
+      "screen_on": 1
+    },
+    {
+      "target_pct": 5,
+      "voltage": 3.369,
+      "elapsed_hours": 15.57,
+      "timestamp": "2026-10-10 14:01:48",
+      "screen_on": 1
+    },
+    {
+      "target_pct": 2,
+      "voltage": 3.225,
+      "elapsed_hours": 17.43,
+      "timestamp": "2026-10-10 15:53:20",
+      "screen_on": 1
+    }
+  ]
+}

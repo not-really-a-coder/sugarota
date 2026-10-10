@@ -15,6 +15,7 @@
 .cache/
 build/cache/
 data.bin
+battery_data.json
 compile_commands.json
 
 # Arduino CLI intermediate compile tree

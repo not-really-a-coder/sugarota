@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sugarota Battery Telemetry & Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-card: #131b2e;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-v: #38bdf8;
+            --accent-pct: #34d399;
+            --accent-amber: #fbbf24;
+            --accent-red: #f87171;
+            --border: #23314d;
+            --btn-bg: #1e293b;
+            --btn-hover: #334155;
+            --accent-primary: #0284c7;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-main);
+            padding: 2rem;
+            min-height: 100vh;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 1.5rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .title h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+        }
+
+        .title p {
+            color: var(--text-muted);
+            margin-top: 0.35rem;
+            font-size: 0.95rem;
+        }
+
+        .action-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: var(--btn-bg);
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 0.6rem 1.1rem;
+            border-radius: 0.5rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background: var(--btn-hover);
+            border-color: #475569;
+        }
+
+        .btn-primary {
+            background: #0284c7;
+            border-color: #38bdf8;
+            color: white;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.25);
+        }
+
+        .btn-primary:hover {
+            background: #0369a1;
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.4);
+            color: var(--accent-red);
+        }
+
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.3);
+            border-color: var(--accent-red);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin: 0.4rem 0 0.2rem;
+            color: var(--text-main);
+        }
+
+        .stat-desc {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .chart-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+            position: relative;
+            height: 540px;
+        }
+
+        .chart-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .segmented {
+            display: flex;
+            background: #0a0e17;
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 0.2rem;
+        }
+
+        .segmented button {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.35rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .segmented button.active {
+            background: #1e293b;
+            color: var(--text-main);
+        }
+
+        .segmented button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 900px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+        }
+
+        .panel h3 {
+            font-size: 1.15rem;
+            margin-bottom: 1rem;
+        }
+
+        .milestones-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .milestones-table th,
+        .milestones-table td {
+            padding: 0.55rem 0.6rem;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .milestones-table th {
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.45rem;
+            border-radius: 0.3rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-on {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+        }
+
+        .badge-off {
+            background: rgba(148, 163, 184, 0.15);
+            color: #94a3b8;
+        }
+
+        .badge-active {
+            background: rgba(52, 211, 153, 0.15);
+            color: #34d399;
+        }
+
+        .badge-warn {
+            background: rgba(251, 191, 36, 0.15);
+            color: #fbbf24;
+        }
+
+        .badge-chg {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+            border: 1px solid rgba(245, 158, 11, 0.4);
+        }
+
+        .badge-dischg {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+        }
+
+        #pipelineStatus {
+            font-size: 0.85rem;
+            color: var(--accent-amber);
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(251, 191, 36, 0.3);
+            border-top-color: var(--accent-amber);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <div class="title">
+            <h1>Sugarota Battery Analysis Dashboard</h1>
+            <p>Empirical Discharge Curve, Telemetry Normalization & Calibration Model</p>
+        </div>
+        <div class="action-bar">
+            <span id="pipelineStatus"><span class="spinner"></span> Working over USB...</span>
+            <button class="btn btn-primary" id="btnIngest" onclick="triggerWebSerialPipeline('GET')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Extract logs (USB)
+            </button>
+            <button class="btn btn-danger" id="btnClear" onclick="triggerWebSerialPipeline('CLEAR')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                Clear logs (device and chart)
+            </button>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Discharge Runtime</div>
+            <div class="stat-value" id="cardRuntime" style="color: #38bdf8;">--</div>
+            <div class="stat-desc" id="cardVoltageSpan">--</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Visible Data Points</div>
+            <div class="stat-value" id="cardPoints" style="color: #34d399;">--</div>
+            <div class="stat-desc" id="cardPointsDesc">--</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Discharge Drain Rate</div>
+            <div class="stat-value" id="cardDrainRate" style="color: #a78bfa;">--</div>
+            <div class="stat-desc" id="cardDrainDesc">--</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Cutoff Guard Threshold</div>
+            <div class="stat-value" style="color: #fbbf24;">3.00V - 3.02V</div>
+            <div class="stat-desc">0% mapped to 3.02V for safe shutdown</div>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <div class="chart-controls">
+            <div class="segmented">
+                <button id="viewAllBtn" class="active" onclick="switchView('all')">Full History</button>
+                <button id="viewDischargeBtn" onclick="switchView('discharge')">Biggest Discharge Window</button>
+            </div>
+            <span style="font-size: 0.85rem; color: var(--text-muted);" id="rangeLabel">Points: Real Log Seconds &bull;
+                Fixed Grid: 30m</span>
+        </div>
+        <div style="position: relative; height: calc(100% - 40px); width: 100%;">
+            <canvas id="batteryChart"></canvas>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="panel">
+            <h3 id="milestonesHeading">Discharge Milestones (Biggest Discharge Window)</h3>
+            <table class="milestones-table">
+                <thead>
+                    <tr>
+                        <th>Battery %</th>
+                        <th>Voltage</th>
+                        <th>Elapsed Time</th>
+                        <th>Timestamp</th>
+                        <th>Status</th>
+                        <th>Screen</th>
+                        <th>Brightness</th>
+                        <th>Wi-Fi</th>
+                        <th>BLE</th>
+                        <th>Free Heap</th>
+                    </tr>
+                </thead>
+                <tbody id="milestonesBody">
+                </tbody>
+            </table>
+        </div>
+
+        <div class="panel">
+            <h3>Calibration Model Findings</h3>
+            <ul style="padding-left: 1.25rem; color: var(--text-muted); line-height: 1.8; font-size: 0.9rem;">
+                <li><strong>Empirical Remap:</strong> Voltage knee mapped from 80% to 0% based on 23h 4m actual drain
+                    data.</li>
+                <li><strong>Low-Battery Guard:</strong> 0% aligned to <strong>3.02V</strong> so percentage reaches 0%
+                    before firmware shutdown (&lt;3.00V).</li>
+                <li><strong>Dynamic Telemetry:</strong> Milestone checkpoints, drain slope, and highlights update
+                    dynamically based on the active zoom/view window.</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const initialDataset = [{ "t": "2026-10-09 17:00:50", "x": "2026-10-09T17:00:50", "v": 3.117, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 17:05:50", "x": "2026-10-09T17:05:50", "v": 3.112, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 17:10:50", "x": "2026-10-09T17:10:50", "v": 3.108, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 17:15:50", "x": "2026-10-09T17:15:50", "v": 3.104, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 17:20:50", "x": "2026-10-09T17:20:50", "v": 3.098, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 17:25:50", "x": "2026-10-09T17:25:50", "v": 3.092, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 17:30:50", "x": "2026-10-09T17:30:50", "v": 3.085, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 17:35:50", "x": "2026-10-09T17:35:50", "v": 3.079, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 17:40:50", "x": "2026-10-09T17:40:50", "v": 3.072, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 17:45:50", "x": "2026-10-09T17:45:50", "v": 3.065, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-09 17:50:51", "x": "2026-10-09T17:50:51", "v": 3.06, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 17:55:51", "x": "2026-10-09T17:55:51", "v": 3.056, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 18:00:51", "x": "2026-10-09T18:00:51", "v": 3.052, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 18:05:51", "x": "2026-10-09T18:05:51", "v": 3.047, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 18:10:51", "x": "2026-10-09T18:10:51", "v": 3.042, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 18:15:51", "x": "2026-10-09T18:15:51", "v": 3.037, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 18:20:51", "x": "2026-10-09T18:20:51", "v": 3.032, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-09 18:25:51", "x": "2026-10-09T18:25:51", "v": 3.027, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 18:30:51", "x": "2026-10-09T18:30:51", "v": 3.023, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 18:35:51", "x": "2026-10-09T18:35:51", "v": 3.018, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 18:40:51", "x": "2026-10-09T18:40:51", "v": 3.014, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 18:45:51", "x": "2026-10-09T18:45:51", "v": 3.008, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 18:50:51", "x": "2026-10-09T18:50:51", "v": 3.003, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 18:59:26", "x": "2026-10-09T18:59:26", "v": 3.3, "p": 4, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 18:59:30", "x": "2026-10-09T18:59:30", "v": 3.3, "p": 4, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:00:02", "x": "2026-10-09T19:00:02", "v": 3.303, "p": 4, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:04:13", "x": "2026-10-09T19:04:13", "v": 3.353, "p": 5, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:06:43", "x": "2026-10-09T19:06:43", "v": 3.373, "p": 6, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:09:13", "x": "2026-10-09T19:09:13", "v": 3.39, "p": 7, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:12:13", "x": "2026-10-09T19:12:13", "v": 3.41, "p": 8, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:16:43", "x": "2026-10-09T19:16:43", "v": 3.432, "p": 9, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:19:13", "x": "2026-10-09T19:19:13", "v": 3.516, "p": 16, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:19:24", "x": "2026-10-09T19:19:24", "v": 3.525, "p": 17, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:20:24", "x": "2026-10-09T19:20:24", "v": 3.515, "p": 16, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:21:24", "x": "2026-10-09T19:21:24", "v": 3.523, "p": 17, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:22:54", "x": "2026-10-09T19:22:54", "v": 3.53, "p": 18, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:25:54", "x": "2026-10-09T19:25:54", "v": 3.541, "p": 19, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:28:24", "x": "2026-10-09T19:28:24", "v": 3.551, "p": 20, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:30:54", "x": "2026-10-09T19:30:54", "v": 3.557, "p": 21, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:33:24", "x": "2026-10-09T19:33:24", "v": 3.564, "p": 22, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:36:24", "x": "2026-10-09T19:36:24", "v": 3.572, "p": 23, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:38:54", "x": "2026-10-09T19:38:54", "v": 3.579, "p": 24, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:41:24", "x": "2026-10-09T19:41:24", "v": 3.586, "p": 25, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:44:24", "x": "2026-10-09T19:44:24", "v": 3.592, "p": 26, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:47:54", "x": "2026-10-09T19:47:54", "v": 3.599, "p": 27, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:49:54", "x": "2026-10-09T19:49:54", "v": 3.608, "p": 28, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:50:54", "x": "2026-10-09T19:50:54", "v": 3.614, "p": 29, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:52:24", "x": "2026-10-09T19:52:24", "v": 3.621, "p": 30, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:53:24", "x": "2026-10-09T19:53:24", "v": 3.626, "p": 31, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:54:54", "x": "2026-10-09T19:54:54", "v": 3.633, "p": 32, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:56:26", "x": "2026-10-09T19:56:26", "v": 3.64, "p": 33, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:57:23", "x": "2026-10-09T19:57:23", "v": 3.644, "p": 34, "chg": 1, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:58:53", "x": "2026-10-09T19:58:53", "v": 3.651, "p": 35, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 19:59:51", "x": "2026-10-09T19:59:51", "v": 3.656, "p": 36, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:01:24", "x": "2026-10-09T20:01:24", "v": 3.664, "p": 37, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:02:20", "x": "2026-10-09T20:02:20", "v": 3.669, "p": 38, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:03:53", "x": "2026-10-09T20:03:53", "v": 3.676, "p": 39, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:04:53", "x": "2026-10-09T20:04:53", "v": 3.681, "p": 40, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:06:23", "x": "2026-10-09T20:06:23", "v": 3.688, "p": 41, "chg": 1, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:07:23", "x": "2026-10-09T20:07:23", "v": 3.693, "p": 42, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:08:51", "x": "2026-10-09T20:08:51", "v": 3.7, "p": 43, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:09:53", "x": "2026-10-09T20:09:53", "v": 3.704, "p": 44, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:11:24", "x": "2026-10-09T20:11:24", "v": 3.711, "p": 45, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:12:24", "x": "2026-10-09T20:12:24", "v": 3.717, "p": 46, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:13:26", "x": "2026-10-09T20:13:26", "v": 3.723, "p": 47, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:14:56", "x": "2026-10-09T20:14:56", "v": 3.73, "p": 48, "chg": 1, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:15:57", "x": "2026-10-09T20:15:57", "v": 3.736, "p": 49, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:16:58", "x": "2026-10-09T20:16:58", "v": 3.741, "p": 50, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:17:59", "x": "2026-10-09T20:17:59", "v": 3.747, "p": 51, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:18:59", "x": "2026-10-09T20:18:59", "v": 3.753, "p": 52, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:20:29", "x": "2026-10-09T20:20:29", "v": 3.76, "p": 53, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:21:29", "x": "2026-10-09T20:21:29", "v": 3.765, "p": 54, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:22:29", "x": "2026-10-09T20:22:29", "v": 3.77, "p": 55, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:23:59", "x": "2026-10-09T20:23:59", "v": 3.778, "p": 56, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:24:59", "x": "2026-10-09T20:24:59", "v": 3.784, "p": 57, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:25:59", "x": "2026-10-09T20:25:59", "v": 3.788, "p": 58, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:26:59", "x": "2026-10-09T20:26:59", "v": 3.794, "p": 59, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:28:02", "x": "2026-10-09T20:28:02", "v": 3.8, "p": 60, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:29:35", "x": "2026-10-09T20:29:35", "v": 3.808, "p": 61, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:31:35", "x": "2026-10-09T20:31:35", "v": 3.818, "p": 62, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:33:05", "x": "2026-10-09T20:33:05", "v": 3.825, "p": 63, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:34:35", "x": "2026-10-09T20:34:35", "v": 3.833, "p": 64, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:36:05", "x": "2026-10-09T20:36:05", "v": 3.84, "p": 65, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:38:05", "x": "2026-10-09T20:38:05", "v": 3.851, "p": 66, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:39:05", "x": "2026-10-09T20:39:05", "v": 3.856, "p": 67, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:41:05", "x": "2026-10-09T20:41:05", "v": 3.865, "p": 68, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:43:05", "x": "2026-10-09T20:43:05", "v": 3.874, "p": 69, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:44:35", "x": "2026-10-09T20:44:35", "v": 3.88, "p": 70, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:46:05", "x": "2026-10-09T20:46:05", "v": 3.887, "p": 71, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:48:05", "x": "2026-10-09T20:48:05", "v": 3.895, "p": 72, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:49:35", "x": "2026-10-09T20:49:35", "v": 3.9, "p": 73, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:51:35", "x": "2026-10-09T20:51:35", "v": 3.908, "p": 74, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:53:35", "x": "2026-10-09T20:53:35", "v": 3.914, "p": 75, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:55:05", "x": "2026-10-09T20:55:05", "v": 3.92, "p": 76, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:57:05", "x": "2026-10-09T20:57:05", "v": 3.927, "p": 77, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 20:59:35", "x": "2026-10-09T20:59:35", "v": 3.934, "p": 78, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:02:05", "x": "2026-10-09T21:02:05", "v": 3.941, "p": 79, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:03:35", "x": "2026-10-09T21:03:35", "v": 3.947, "p": 80, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:06:05", "x": "2026-10-09T21:06:05", "v": 3.954, "p": 81, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:09:05", "x": "2026-10-09T21:09:05", "v": 3.961, "p": 82, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:11:05", "x": "2026-10-09T21:11:05", "v": 3.967, "p": 83, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:13:35", "x": "2026-10-09T21:13:35", "v": 3.975, "p": 84, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:15:35", "x": "2026-10-09T21:15:35", "v": 3.98, "p": 85, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:18:35", "x": "2026-10-09T21:18:35", "v": 3.991, "p": 86, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:21:06", "x": "2026-10-09T21:21:06", "v": 4.0, "p": 87, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:23:36", "x": "2026-10-09T21:23:36", "v": 4.009, "p": 88, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:26:06", "x": "2026-10-09T21:26:06", "v": 4.018, "p": 89, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:28:36", "x": "2026-10-09T21:28:36", "v": 4.028, "p": 90, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:31:06", "x": "2026-10-09T21:31:06", "v": 4.038, "p": 91, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:33:06", "x": "2026-10-09T21:33:06", "v": 4.046, "p": 92, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:35:36", "x": "2026-10-09T21:35:36", "v": 4.056, "p": 93, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:37:36", "x": "2026-10-09T21:37:36", "v": 4.066, "p": 94, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:39:36", "x": "2026-10-09T21:39:36", "v": 4.075, "p": 95, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:41:36", "x": "2026-10-09T21:41:36", "v": 4.084, "p": 96, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:44:06", "x": "2026-10-09T21:44:06", "v": 4.093, "p": 97, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:46:36", "x": "2026-10-09T21:46:36", "v": 4.102, "p": 98, "chg": 1, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:49:36", "x": "2026-10-09T21:49:36", "v": 4.112, "p": 99, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:52:36", "x": "2026-10-09T21:52:36", "v": 4.121, "p": 100, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 21:57:36", "x": "2026-10-09T21:57:36", "v": 4.133, "p": 100, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 22:02:36", "x": "2026-10-09T22:02:36", "v": 4.14, "p": 100, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 22:07:36", "x": "2026-10-09T22:07:36", "v": 4.145, "p": 100, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 22:12:37", "x": "2026-10-09T22:12:37", "v": 4.148, "p": 100, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 22:17:37", "x": "2026-10-09T22:17:37", "v": 4.153, "p": 100, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 22:22:37", "x": "2026-10-09T22:22:37", "v": 4.155, "p": 100, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 22:27:37", "x": "2026-10-09T22:27:37", "v": 4.156, "p": 100, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 22:32:37", "x": "2026-10-09T22:32:37", "v": 4.152, "p": 100, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 22:37:37", "x": "2026-10-09T22:37:37", "v": 4.136, "p": 100, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 22:42:07", "x": "2026-10-09T22:42:07", "v": 4.118, "p": 99, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 22:47:03", "x": "2026-10-09T22:47:03", "v": 4.114, "p": 99, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 22:52:03", "x": "2026-10-09T22:52:03", "v": 4.112, "p": 99, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 22:56:07", "x": "2026-10-09T22:56:07", "v": 4.11, "p": 98, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 22:59:37", "x": "2026-10-09T22:59:37", "v": 4.111, "p": 99, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:04:08", "x": "2026-10-09T23:04:08", "v": 4.12, "p": 100, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:09:08", "x": "2026-10-09T23:09:08", "v": 4.137, "p": 100, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:14:08", "x": "2026-10-09T23:14:08", "v": 4.145, "p": 100, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:19:08", "x": "2026-10-09T23:19:08", "v": 4.139, "p": 100, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:24:08", "x": "2026-10-09T23:24:08", "v": 4.134, "p": 100, "chg": 1, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:29:08", "x": "2026-10-09T23:29:08", "v": 4.125, "p": 100, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:30:38", "x": "2026-10-09T23:30:38", "v": 4.12, "p": 99, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:34:08", "x": "2026-10-09T23:34:08", "v": 4.11, "p": 98, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:37:08", "x": "2026-10-09T23:37:08", "v": 4.101, "p": 97, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:41:08", "x": "2026-10-09T23:41:08", "v": 4.091, "p": 96, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:45:38", "x": "2026-10-09T23:45:38", "v": 4.082, "p": 95, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:50:08", "x": "2026-10-09T23:50:08", "v": 4.072, "p": 94, "chg": 0, "scr": 0, "b": 0, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:54:08", "x": "2026-10-09T23:54:08", "v": 4.063, "p": 93, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:59:09", "x": "2026-10-09T23:59:09", "v": 4.055, "p": 93, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-09 23:59:39", "x": "2026-10-09T23:59:39", "v": 4.054, "p": 92, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:04:39", "x": "2026-10-10T00:04:39", "v": 4.05, "p": 92, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:08:09", "x": "2026-10-10T00:08:09", "v": 4.045, "p": 91, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:13:09", "x": "2026-10-10T00:13:09", "v": 4.04, "p": 91, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:16:39", "x": "2026-10-10T00:16:39", "v": 4.035, "p": 90, "chg": 0, "scr": 0, "b": 0, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:21:39", "x": "2026-10-10T00:21:39", "v": 4.03, "p": 90, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:24:39", "x": "2026-10-10T00:24:39", "v": 4.026, "p": 89, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:29:39", "x": "2026-10-10T00:29:39", "v": 4.022, "p": 89, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:34:39", "x": "2026-10-10T00:34:39", "v": 4.018, "p": 89, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:36:09", "x": "2026-10-10T00:36:09", "v": 4.017, "p": 88, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:36:39", "x": "2026-10-10T00:36:39", "v": 4.017, "p": 89, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:37:09", "x": "2026-10-10T00:37:09", "v": 4.017, "p": 88, "chg": 0, "scr": 0, "b": 0, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:42:09", "x": "2026-10-10T00:42:09", "v": 4.016, "p": 88, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:47:09", "x": "2026-10-10T00:47:09", "v": 4.015, "p": 88, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:52:09", "x": "2026-10-10T00:52:09", "v": 4.012, "p": 88, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 00:57:10", "x": "2026-10-10T00:57:10", "v": 4.009, "p": 88, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 01:02:10", "x": "2026-10-10T01:02:10", "v": 4.01, "p": 88, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 01:04:40", "x": "2026-10-10T01:04:40", "v": 4.008, "p": 87, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 01:09:40", "x": "2026-10-10T01:09:40", "v": 4.006, "p": 87, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 01:14:40", "x": "2026-10-10T01:14:40", "v": 4.005, "p": 87, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 01:19:40", "x": "2026-10-10T01:19:40", "v": 4.004, "p": 87, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 01:24:40", "x": "2026-10-10T01:24:40", "v": 4.004, "p": 87, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 01:29:40", "x": "2026-10-10T01:29:40", "v": 4.004, "p": 87, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 01:34:40", "x": "2026-10-10T01:34:40", "v": 4.0, "p": 87, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 01:37:10", "x": "2026-10-10T01:37:10", "v": 3.999, "p": 86, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 01:42:10", "x": "2026-10-10T01:42:10", "v": 3.997, "p": 86, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 01:47:10", "x": "2026-10-10T01:47:10", "v": 3.995, "p": 86, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 01:52:11", "x": "2026-10-10T01:52:11", "v": 3.994, "p": 86, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 01:57:11", "x": "2026-10-10T01:57:11", "v": 3.993, "p": 86, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 02:02:11", "x": "2026-10-10T02:02:11", "v": 3.991, "p": 86, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 02:07:11", "x": "2026-10-10T02:07:11", "v": 3.99, "p": 86, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 02:08:11", "x": "2026-10-10T02:08:11", "v": 3.989, "p": 85, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 02:13:11", "x": "2026-10-10T02:13:11", "v": 3.987, "p": 85, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 02:18:11", "x": "2026-10-10T02:18:11", "v": 3.983, "p": 85, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 02:23:11", "x": "2026-10-10T02:23:11", "v": 3.98, "p": 84, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 02:28:11", "x": "2026-10-10T02:28:11", "v": 3.977, "p": 84, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 02:33:11", "x": "2026-10-10T02:33:11", "v": 3.974, "p": 84, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 02:34:41", "x": "2026-10-10T02:34:41", "v": 3.973, "p": 83, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 02:39:41", "x": "2026-10-10T02:39:41", "v": 3.97, "p": 83, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 02:44:11", "x": "2026-10-10T02:44:11", "v": 3.966, "p": 82, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 02:49:11", "x": "2026-10-10T02:49:11", "v": 3.964, "p": 82, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 02:54:12", "x": "2026-10-10T02:54:12", "v": 3.961, "p": 82, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 02:59:12", "x": "2026-10-10T02:59:12", "v": 3.96, "p": 81, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:04:12", "x": "2026-10-10T03:04:12", "v": 3.958, "p": 81, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:09:12", "x": "2026-10-10T03:09:12", "v": 3.957, "p": 81, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:14:12", "x": "2026-10-10T03:14:12", "v": 3.956, "p": 81, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:19:12", "x": "2026-10-10T03:19:12", "v": 3.956, "p": 81, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:24:12", "x": "2026-10-10T03:24:12", "v": 3.955, "p": 81, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:28:42", "x": "2026-10-10T03:28:42", "v": 3.953, "p": 80, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:29:12", "x": "2026-10-10T03:29:12", "v": 3.953, "p": 81, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:29:42", "x": "2026-10-10T03:29:42", "v": 3.953, "p": 80, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:31:42", "x": "2026-10-10T03:31:42", "v": 3.953, "p": 81, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:32:12", "x": "2026-10-10T03:32:12", "v": 3.953, "p": 80, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:37:12", "x": "2026-10-10T03:37:12", "v": 3.952, "p": 80, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:42:12", "x": "2026-10-10T03:42:12", "v": 3.951, "p": 80, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:47:12", "x": "2026-10-10T03:47:12", "v": 3.951, "p": 80, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:52:13", "x": "2026-10-10T03:52:13", "v": 3.95, "p": 80, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 03:57:13", "x": "2026-10-10T03:57:13", "v": 3.949, "p": 80, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 04:02:13", "x": "2026-10-10T04:02:13", "v": 3.948, "p": 80, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 04:07:13", "x": "2026-10-10T04:07:13", "v": 3.947, "p": 80, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 04:07:43", "x": "2026-10-10T04:07:43", "v": 3.946, "p": 79, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 04:12:43", "x": "2026-10-10T04:12:43", "v": 3.946, "p": 79, "chg": 0, "scr": 0, "b": 0, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 04:17:43", "x": "2026-10-10T04:17:43", "v": 3.944, "p": 79, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 04:22:43", "x": "2026-10-10T04:22:43", "v": 3.943, "p": 79, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 04:27:43", "x": "2026-10-10T04:27:43", "v": 3.941, "p": 79, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 04:31:13", "x": "2026-10-10T04:31:13", "v": 3.939, "p": 78, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 04:36:13", "x": "2026-10-10T04:36:13", "v": 3.937, "p": 78, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 04:41:13", "x": "2026-10-10T04:41:13", "v": 3.935, "p": 78, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 04:43:43", "x": "2026-10-10T04:43:43", "v": 3.933, "p": 77, "chg": 0, "scr": 0, "b": 0, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 04:48:43", "x": "2026-10-10T04:48:43", "v": 3.929, "p": 77, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 04:52:43", "x": "2026-10-10T04:52:43", "v": 3.926, "p": 76, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 04:57:44", "x": "2026-10-10T04:57:44", "v": 3.922, "p": 76, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:01:14", "x": "2026-10-10T05:01:14", "v": 3.92, "p": 75, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:06:14", "x": "2026-10-10T05:06:14", "v": 3.915, "p": 75, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:08:14", "x": "2026-10-10T05:08:14", "v": 3.913, "p": 74, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:13:14", "x": "2026-10-10T05:13:14", "v": 3.908, "p": 74, "chg": 0, "scr": 0, "b": 0, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:15:14", "x": "2026-10-10T05:15:14", "v": 3.906, "p": 73, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:20:14", "x": "2026-10-10T05:20:14", "v": 3.902, "p": 73, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:22:44", "x": "2026-10-10T05:22:44", "v": 3.9, "p": 72, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:27:44", "x": "2026-10-10T05:27:44", "v": 3.894, "p": 72, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:29:14", "x": "2026-10-10T05:29:14", "v": 3.893, "p": 71, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:33:44", "x": "2026-10-10T05:33:44", "v": 3.886, "p": 70, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:38:14", "x": "2026-10-10T05:38:14", "v": 3.88, "p": 69, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:43:14", "x": "2026-10-10T05:43:14", "v": 3.872, "p": 68, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:48:14", "x": "2026-10-10T05:48:14", "v": 3.865, "p": 68, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:48:44", "x": "2026-10-10T05:48:44", "v": 3.864, "p": 67, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:53:45", "x": "2026-10-10T05:53:45", "v": 3.856, "p": 66, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 05:58:45", "x": "2026-10-10T05:58:45", "v": 3.848, "p": 65, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:03:45", "x": "2026-10-10T06:03:45", "v": 3.842, "p": 65, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:06:15", "x": "2026-10-10T06:06:15", "v": 3.84, "p": 64, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:11:15", "x": "2026-10-10T06:11:15", "v": 3.834, "p": 64, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:13:15", "x": "2026-10-10T06:13:15", "v": 3.831, "p": 63, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:18:15", "x": "2026-10-10T06:18:15", "v": 3.825, "p": 63, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:19:15", "x": "2026-10-10T06:19:15", "v": 3.824, "p": 62, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:24:15", "x": "2026-10-10T06:24:15", "v": 3.818, "p": 62, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:26:15", "x": "2026-10-10T06:26:15", "v": 3.816, "p": 61, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:31:15", "x": "2026-10-10T06:31:15", "v": 3.81, "p": 61, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:33:45", "x": "2026-10-10T06:33:45", "v": 3.808, "p": 60, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:38:45", "x": "2026-10-10T06:38:45", "v": 3.801, "p": 60, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:40:15", "x": "2026-10-10T06:40:15", "v": 3.8, "p": 59, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:45:15", "x": "2026-10-10T06:45:15", "v": 3.793, "p": 58, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:49:45", "x": "2026-10-10T06:49:45", "v": 3.788, "p": 57, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:54:46", "x": "2026-10-10T06:54:46", "v": 3.782, "p": 57, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 06:55:16", "x": "2026-10-10T06:55:16", "v": 3.782, "p": 56, "chg": 0, "scr": 0, "b": 0, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:00:12", "x": "2026-10-10T07:00:12", "v": 3.777, "p": 56, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:01:43", "x": "2026-10-10T07:01:43", "v": 3.776, "p": 55, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:06:43", "x": "2026-10-10T07:06:43", "v": 3.77, "p": 55, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:07:13", "x": "2026-10-10T07:07:13", "v": 3.77, "p": 54, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:12:13", "x": "2026-10-10T07:12:13", "v": 3.765, "p": 54, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:13:13", "x": "2026-10-10T07:13:13", "v": 3.764, "p": 53, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:18:13", "x": "2026-10-10T07:18:13", "v": 3.759, "p": 53, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:19:13", "x": "2026-10-10T07:19:13", "v": 3.758, "p": 52, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:24:13", "x": "2026-10-10T07:24:13", "v": 3.753, "p": 52, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:24:43", "x": "2026-10-10T07:24:43", "v": 3.752, "p": 51, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:29:43", "x": "2026-10-10T07:29:43", "v": 3.747, "p": 51, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:30:43", "x": "2026-10-10T07:30:43", "v": 3.746, "p": 50, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:35:43", "x": "2026-10-10T07:35:43", "v": 3.74, "p": 49, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:40:43", "x": "2026-10-10T07:40:43", "v": 3.734, "p": 48, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:45:43", "x": "2026-10-10T07:45:43", "v": 3.729, "p": 48, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:47:13", "x": "2026-10-10T07:47:13", "v": 3.728, "p": 47, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:52:13", "x": "2026-10-10T07:52:13", "v": 3.722, "p": 47, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:52:43", "x": "2026-10-10T07:52:43", "v": 3.721, "p": 46, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 07:56:43", "x": "2026-10-10T07:56:43", "v": 3.716, "p": 45, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:01:43", "x": "2026-10-10T08:01:43", "v": 3.71, "p": 45, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:02:13", "x": "2026-10-10T08:02:13", "v": 3.71, "p": 44, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:06:43", "x": "2026-10-10T08:06:43", "v": 3.704, "p": 43, "chg": 0, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:11:43", "x": "2026-10-10T08:11:43", "v": 3.699, "p": 43, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:12:43", "x": "2026-10-10T08:12:43", "v": 3.698, "p": 42, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:17:43", "x": "2026-10-10T08:17:43", "v": 3.692, "p": 41, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:22:44", "x": "2026-10-10T08:22:44", "v": 3.688, "p": 41, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:25:14", "x": "2026-10-10T08:25:14", "v": 3.686, "p": 40, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:30:14", "x": "2026-10-10T08:30:14", "v": 3.683, "p": 40, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:34:14", "x": "2026-10-10T08:34:14", "v": 3.68, "p": 39, "chg": 0, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:39:44", "x": "2026-10-10T08:39:44", "v": 3.677, "p": 39, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:43:44", "x": "2026-10-10T08:43:44", "v": 3.674, "p": 38, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:48:44", "x": "2026-10-10T08:48:44", "v": 3.67, "p": 38, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:51:14", "x": "2026-10-10T08:51:14", "v": 3.668, "p": 37, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:56:14", "x": "2026-10-10T08:56:14", "v": 3.664, "p": 37, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 08:59:14", "x": "2026-10-10T08:59:14", "v": 3.662, "p": 36, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:04:44", "x": "2026-10-10T09:04:44", "v": 3.657, "p": 36, "chg": 0, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:05:44", "x": "2026-10-10T09:05:44", "v": 3.656, "p": 35, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:10:44", "x": "2026-10-10T09:10:44", "v": 3.653, "p": 35, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:14:44", "x": "2026-10-10T09:14:44", "v": 3.65, "p": 34, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:19:44", "x": "2026-10-10T09:19:44", "v": 3.647, "p": 34, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:24:44", "x": "2026-10-10T09:24:44", "v": 3.645, "p": 34, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:26:14", "x": "2026-10-10T09:26:14", "v": 3.644, "p": 33, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:31:14", "x": "2026-10-10T09:31:14", "v": 3.641, "p": 33, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:36:15", "x": "2026-10-10T09:36:15", "v": 3.638, "p": 32, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:41:15", "x": "2026-10-10T09:41:15", "v": 3.634, "p": 32, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:43:45", "x": "2026-10-10T09:43:45", "v": 3.632, "p": 31, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:48:45", "x": "2026-10-10T09:48:45", "v": 3.627, "p": 31, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:50:15", "x": "2026-10-10T09:50:15", "v": 3.626, "p": 30, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:55:15", "x": "2026-10-10T09:55:15", "v": 3.621, "p": 30, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 09:56:45", "x": "2026-10-10T09:56:45", "v": 3.62, "p": 29, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:01:45", "x": "2026-10-10T10:01:45", "v": 3.617, "p": 29, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:06:45", "x": "2026-10-10T10:06:45", "v": 3.613, "p": 29, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:07:15", "x": "2026-10-10T10:07:15", "v": 3.613, "p": 28, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:12:15", "x": "2026-10-10T10:12:15", "v": 3.61, "p": 28, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:17:15", "x": "2026-10-10T10:17:15", "v": 3.607, "p": 28, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:21:15", "x": "2026-10-10T10:21:15", "v": 3.606, "p": 27, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:26:15", "x": "2026-10-10T10:26:15", "v": 3.603, "p": 27, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:31:15", "x": "2026-10-10T10:31:15", "v": 3.599, "p": 26, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:36:15", "x": "2026-10-10T10:36:15", "v": 3.594, "p": 26, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:38:45", "x": "2026-10-10T10:38:45", "v": 3.591, "p": 25, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:43:45", "x": "2026-10-10T10:43:45", "v": 3.587, "p": 25, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:45:46", "x": "2026-10-10T10:45:46", "v": 3.585, "p": 24, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:50:46", "x": "2026-10-10T10:50:46", "v": 3.58, "p": 24, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:53:46", "x": "2026-10-10T10:53:46", "v": 3.578, "p": 23, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 10:58:46", "x": "2026-10-10T10:58:46", "v": 3.572, "p": 23, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:00:16", "x": "2026-10-10T11:00:16", "v": 3.571, "p": 22, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:05:16", "x": "2026-10-10T11:05:16", "v": 3.565, "p": 22, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:06:16", "x": "2026-10-10T11:06:16", "v": 3.564, "p": 21, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:11:16", "x": "2026-10-10T11:11:16", "v": 3.558, "p": 21, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:12:46", "x": "2026-10-10T11:12:46", "v": 3.557, "p": 20, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:17:46", "x": "2026-10-10T11:17:46", "v": 3.549, "p": 19, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:22:46", "x": "2026-10-10T11:22:46", "v": 3.543, "p": 19, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:25:46", "x": "2026-10-10T11:25:46", "v": 3.54, "p": 18, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:30:46", "x": "2026-10-10T11:30:46", "v": 3.535, "p": 18, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:35:46", "x": "2026-10-10T11:35:46", "v": 3.53, "p": 18, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:36:16", "x": "2026-10-10T11:36:16", "v": 3.53, "p": 17, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:41:13", "x": "2026-10-10T11:41:13", "v": 3.527, "p": 17, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:46:13", "x": "2026-10-10T11:46:13", "v": 3.523, "p": 17, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:50:45", "x": "2026-10-10T11:50:45", "v": 3.52, "p": 16, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 11:55:46", "x": "2026-10-10T11:55:46", "v": 3.514, "p": 16, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 12:00:15", "x": "2026-10-10T12:00:15", "v": 3.51, "p": 15, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 12:05:17", "x": "2026-10-10T12:05:17", "v": 3.505, "p": 15, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 12:09:47", "x": "2026-10-10T12:09:47", "v": 3.499, "p": 14, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 12:14:47", "x": "2026-10-10T12:14:47", "v": 3.494, "p": 14, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 12:17:17", "x": "2026-10-10T12:17:17", "v": 3.49, "p": 13, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 12:22:17", "x": "2026-10-10T12:22:17", "v": 3.485, "p": 13, "chg": 0, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 12:27:17", "x": "2026-10-10T12:27:17", "v": 3.481, "p": 13, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 12:28:47", "x": "2026-10-10T12:28:47", "v": 3.48, "p": 12, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 12:33:47", "x": "2026-10-10T12:33:47", "v": 3.474, "p": 12, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 12:37:47", "x": "2026-10-10T12:37:47", "v": 3.47, "p": 11, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 12:42:47", "x": "2026-10-10T12:42:47", "v": 3.464, "p": 11, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 12:47:48", "x": "2026-10-10T12:47:48", "v": 3.46, "p": 10, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 12:52:48", "x": "2026-10-10T12:52:48", "v": 3.454, "p": 10, "chg": 0, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 12:57:18", "x": "2026-10-10T12:57:18", "v": 3.45, "p": 9, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 13:02:18", "x": "2026-10-10T13:02:18", "v": 3.445, "p": 9, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 13:07:18", "x": "2026-10-10T13:07:18", "v": 3.439, "p": 9, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 13:12:18", "x": "2026-10-10T13:12:18", "v": 3.434, "p": 9, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 13:15:48", "x": "2026-10-10T13:15:48", "v": 3.43, "p": 8, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 13:20:48", "x": "2026-10-10T13:20:48", "v": 3.424, "p": 8, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 13:25:48", "x": "2026-10-10T13:25:48", "v": 3.418, "p": 8, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 13:30:48", "x": "2026-10-10T13:30:48", "v": 3.41, "p": 7, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 13:35:48", "x": "2026-10-10T13:35:48", "v": 3.403, "p": 7, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 13:40:48", "x": "2026-10-10T13:40:48", "v": 3.396, "p": 7, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 13:44:46", "x": "2026-10-10T13:44:46", "v": 3.389, "p": 6, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 13:49:47", "x": "2026-10-10T13:49:47", "v": 3.383, "p": 6, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 13:54:47", "x": "2026-10-10T13:54:47", "v": 3.376, "p": 6, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 13:59:47", "x": "2026-10-10T13:59:47", "v": 3.371, "p": 6, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 14:01:48", "x": "2026-10-10T14:01:48", "v": 3.369, "p": 5, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 14:06:48", "x": "2026-10-10T14:06:48", "v": 3.364, "p": 5, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 14:11:48", "x": "2026-10-10T14:11:48", "v": 3.359, "p": 5, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 14:16:48", "x": "2026-10-10T14:16:48", "v": 3.353, "p": 5, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 14:20:18", "x": "2026-10-10T14:20:18", "v": 3.349, "p": 4, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 14:25:19", "x": "2026-10-10T14:25:19", "v": 3.344, "p": 4, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 14:30:19", "x": "2026-10-10T14:30:19", "v": 3.339, "p": 4, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 14:35:19", "x": "2026-10-10T14:35:19", "v": 3.333, "p": 4, "chg": 0, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 14:40:19", "x": "2026-10-10T14:40:19", "v": 3.326, "p": 4, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 14:45:19", "x": "2026-10-10T14:45:19", "v": 3.32, "p": 4, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 14:50:19", "x": "2026-10-10T14:50:19", "v": 3.314, "p": 4, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 14:55:19", "x": "2026-10-10T14:55:19", "v": 3.307, "p": 4, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 15:00:19", "x": "2026-10-10T15:00:19", "v": 3.3, "p": 4, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 15:05:20", "x": "2026-10-10T15:05:20", "v": 3.294, "p": 4, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 15:10:20", "x": "2026-10-10T15:10:20", "v": 3.287, "p": 3, "chg": 0, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 15:15:20", "x": "2026-10-10T15:15:20", "v": 3.281, "p": 3, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 15:20:20", "x": "2026-10-10T15:20:20", "v": 3.275, "p": 3, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 15:25:20", "x": "2026-10-10T15:25:20", "v": 3.268, "p": 3, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 15:30:20", "x": "2026-10-10T15:30:20", "v": 3.262, "p": 3, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 15:35:20", "x": "2026-10-10T15:35:20", "v": 3.254, "p": 3, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 15:40:18", "x": "2026-10-10T15:40:18", "v": 3.246, "p": 3, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 15:45:20", "x": "2026-10-10T15:45:20", "v": 3.237, "p": 3, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 15:50:20", "x": "2026-10-10T15:50:20", "v": 3.229, "p": 3, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 15:53:20", "x": "2026-10-10T15:53:20", "v": 3.225, "p": 2, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 15:58:20", "x": "2026-10-10T15:58:20", "v": 3.218, "p": 2, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 16:03:21", "x": "2026-10-10T16:03:21", "v": 3.212, "p": 2, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 16:08:21", "x": "2026-10-10T16:08:21", "v": 3.207, "p": 2, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 16:13:21", "x": "2026-10-10T16:13:21", "v": 3.203, "p": 2, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 16:18:21", "x": "2026-10-10T16:18:21", "v": 3.198, "p": 2, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 16:23:19", "x": "2026-10-10T16:23:19", "v": 3.193, "p": 2, "chg": 0, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 16:28:19", "x": "2026-10-10T16:28:19", "v": 3.188, "p": 2, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 16:33:19", "x": "2026-10-10T16:33:19", "v": 3.182, "p": 2, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 16:38:19", "x": "2026-10-10T16:38:19", "v": 3.177, "p": 2, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 16:43:19", "x": "2026-10-10T16:43:19", "v": 3.172, "p": 2, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 16:48:19", "x": "2026-10-10T16:48:19", "v": 3.167, "p": 2, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 16:52:49", "x": "2026-10-10T16:52:49", "v": 3.162, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 16:57:49", "x": "2026-10-10T16:57:49", "v": 3.157, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 17:02:50", "x": "2026-10-10T17:02:50", "v": 3.152, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 17:07:50", "x": "2026-10-10T17:07:50", "v": 3.146, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 17:12:50", "x": "2026-10-10T17:12:50", "v": 3.14, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 17:17:50", "x": "2026-10-10T17:17:50", "v": 3.135, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 17:22:50", "x": "2026-10-10T17:22:50", "v": 3.128, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 17:27:50", "x": "2026-10-10T17:27:50", "v": 3.122, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 17:32:50", "x": "2026-10-10T17:32:50", "v": 3.117, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 17:37:50", "x": "2026-10-10T17:37:50", "v": 3.112, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 17:42:50", "x": "2026-10-10T17:42:50", "v": 3.108, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 17:47:50", "x": "2026-10-10T17:47:50", "v": 3.103, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 17:52:50", "x": "2026-10-10T17:52:50", "v": 3.097, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 17:57:50", "x": "2026-10-10T17:57:50", "v": 3.091, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 18:02:51", "x": "2026-10-10T18:02:51", "v": 3.084, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 18:07:51", "x": "2026-10-10T18:07:51", "v": 3.078, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 18:12:51", "x": "2026-10-10T18:12:51", "v": 3.07, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 18:17:51", "x": "2026-10-10T18:17:51", "v": 3.064, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 18:22:51", "x": "2026-10-10T18:22:51", "v": 3.058, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 18:27:51", "x": "2026-10-10T18:27:51", "v": 3.053, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 18:32:51", "x": "2026-10-10T18:32:51", "v": 3.047, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 18:37:51", "x": "2026-10-10T18:37:51", "v": 3.041, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 18:42:51", "x": "2026-10-10T18:42:51", "v": 3.036, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 18:47:51", "x": "2026-10-10T18:47:51", "v": 3.03, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 18:52:51", "x": "2026-10-10T18:52:51", "v": 3.024, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 18:57:52", "x": "2026-10-10T18:57:52", "v": 3.018, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 19:02:52", "x": "2026-10-10T19:02:52", "v": 3.013, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 19:07:57", "x": "2026-10-10T19:07:57", "v": 3.008, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 19:12:58", "x": "2026-10-10T19:12:58", "v": 3.001, "p": 1, "chg": 0, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:19:38", "x": "2026-10-10T20:19:38", "v": 3.289, "p": 4, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:22:54", "x": "2026-10-10T20:22:54", "v": 3.387, "p": 6, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:24:08", "x": "2026-10-10T20:24:08", "v": 3.392, "p": 7, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:27:08", "x": "2026-10-10T20:27:08", "v": 3.413, "p": 8, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:31:08", "x": "2026-10-10T20:31:08", "v": 3.432, "p": 9, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:35:08", "x": "2026-10-10T20:35:08", "v": 3.451, "p": 10, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:37:38", "x": "2026-10-10T20:37:38", "v": 3.46, "p": 11, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:40:38", "x": "2026-10-10T20:40:38", "v": 3.471, "p": 12, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:44:08", "x": "2026-10-10T20:44:08", "v": 3.481, "p": 13, "chg": 1, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:47:38", "x": "2026-10-10T20:47:38", "v": 3.491, "p": 14, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:51:08", "x": "2026-10-10T20:51:08", "v": 3.501, "p": 15, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:53:08", "x": "2026-10-10T20:53:08", "v": 3.511, "p": 16, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:53:44", "x": "2026-10-10T20:53:44", "v": 3.582, "p": 39, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:54:33", "x": "2026-10-10T20:54:33", "v": 3.599, "p": 40, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:56:33", "x": "2026-10-10T20:56:33", "v": 3.603, "p": 41, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:57:03", "x": "2026-10-10T20:57:03", "v": 3.602, "p": 40, "chg": 1, "scr": 1, "b": 255, "w": 2, "ble": 1, "heap": 0 }, { "t": "2026-10-10 20:57:33", "x": "2026-10-10T20:57:33", "v": 3.603, "p": 41, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:02:33", "x": "2026-10-10T21:02:33", "v": 3.612, "p": 41, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:04:33", "x": "2026-10-10T21:04:33", "v": 3.616, "p": 42, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:05:24", "x": "2026-10-10T21:05:24", "v": 3.621, "p": 42, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:05:42", "x": "2026-10-10T21:05:42", "v": 3.639, "p": 43, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:07:44", "x": "2026-10-10T21:07:44", "v": 3.644, "p": 44, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:11:06", "x": "2026-10-10T21:11:06", "v": 3.655, "p": 45, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:11:36", "x": "2026-10-10T21:11:36", "v": 3.653, "p": 44, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:12:06", "x": "2026-10-10T21:12:06", "v": 3.657, "p": 45, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:16:06", "x": "2026-10-10T21:16:06", "v": 3.669, "p": 46, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:16:18", "x": "2026-10-10T21:16:18", "v": 3.672, "p": 46, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:17:32", "x": "2026-10-10T21:17:32", "v": 3.683, "p": 47, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:18:14", "x": "2026-10-10T21:18:14", "v": 3.681, "p": 47, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:21:14", "x": "2026-10-10T21:21:14", "v": 3.695, "p": 48, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:24:14", "x": "2026-10-10T21:24:14", "v": 3.708, "p": 49, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:28:45", "x": "2026-10-10T21:28:45", "v": 3.72, "p": 50, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:30:24", "x": "2026-10-10T21:30:24", "v": 3.744, "p": 52, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:31:08", "x": "2026-10-10T21:31:08", "v": 3.759, "p": 53, "chg": 1, "scr": 1, "b": 255, "w": 0, "ble": 1, "heap": 0 }, { "t": "2026-10-10 21:32:12", "x": "2026-10-10T21:32:12", "v": 3.762, "p": 54, "chg": 1, "scr": 1, "b": 76, "w": 0, "ble": 0, "heap": 2145722026 }];
+        const cachedRaw = localStorage.getItem('sugarota_battery_dataset');
+        let allDataset = cachedRaw ? JSON.parse(cachedRaw) : initialDataset;
+
+        let dischargeStartIso = '2026-10-09T23:29:08';
+        let dischargeEndIso = '2026-10-10T19:12:58';
+
+        let chart = null;
+        let currentView = 'all';
+
+        const wifiLabels = ['Sleep/Off', 'Connecting', 'Connected/Active'];
+        const bleLabels = ['Uninit', 'Advertising', 'Connected'];
+
+        function getVisibleData(minX, maxX) {
+            if (!minX || !maxX) return allDataset;
+            const t0 = new Date(minX).getTime();
+            const t1 = new Date(maxX).getTime();
+            return allDataset.filter(d => {
+                const dt = new Date(d.x).getTime();
+                return dt >= t0 && dt <= t1;
+            });
+        }
+
+        function getContiguousDischargeSegments(dataset) {
+            const segments = [];
+            let current = [];
+            for (let i = 0; i < dataset.length; i++) {
+                const pt = dataset[i];
+                const prev = current.length ? current[current.length - 1] : null;
+                // Exclude explicit charging flag or clear voltage increase between points
+                const isChg = pt.chg === 1 || (prev && pt.v > prev.v + 0.05);
+                if (isChg) {
+                    if (current.length > 1) segments.push(current);
+                    current = [];
+                } else {
+                    current.push(pt);
+                }
+            }
+            if (current.length > 1) segments.push(current);
+            return segments;
+        }
+
+        function findLongestDischarge(dataset) {
+            const segments = getContiguousDischargeSegments(dataset);
+            if (!segments.length) return [];
+            return segments.reduce((longest, curr) => curr.length > longest.length ? curr : longest, segments[0]);
+        }
+
+        function updateDynamicComponents(minX, maxX) {
+            const visible = getVisibleData(minX, maxX);
+            const longestDischarge = findLongestDischarge(allDataset);
+            const hasDischarge = longestDischarge && longestDischarge.length >= 2;
+            const dischargeBtn = document.getElementById('viewDischargeBtn');
+            if (dischargeBtn) {
+                dischargeBtn.disabled = !hasDischarge;
+                dischargeBtn.title = hasDischarge ? 'View biggest discharge window' : 'No discharge data points available (Device charging or idle)';
+            }
+
+            if (!visible.length) {
+                document.getElementById('cardRuntime').innerText = '0h 0m';
+                document.getElementById('cardVoltageSpan').innerText = '--';
+                document.getElementById('cardPoints').innerText = '0';
+                document.getElementById('cardDrainRate').innerText = '~0.00%/h';
+                document.getElementById('cardDrainDesc').innerText = 'No data points';
+                document.getElementById('milestonesBody').innerHTML = '<tr><td colspan="10" style="text-align:center; padding:1.5rem; color:var(--text-muted);">No data points recorded</td></tr>';
+                return;
+            }
+
+            const isFullHistory = !minX && !maxX;
+
+            let runtimeMs = 0;
+            let netPctDrop = 0;
+            let displayMaxV = 0;
+            let displayMinV = 0;
+            let hasValidDischargePeriod = false;
+
+            if (isFullHistory) {
+                // In Full History: consider ONLY discharge segments, skipping charging
+                const dischargeSegments = getContiguousDischargeSegments(visible);
+                let dischargeVList = [];
+
+                dischargeSegments.forEach(seg => {
+                    const segT0 = new Date(seg[0].x).getTime();
+                    const segT1 = new Date(seg[seg.length - 1].x).getTime();
+                    runtimeMs += Math.max(0, segT1 - segT0);
+                    netPctDrop += Math.max(0, seg[0].p - seg[seg.length - 1].p);
+                    seg.forEach(pt => dischargeVList.push(pt.v));
+                });
+
+                if (dischargeSegments.length > 0 && dischargeVList.length > 0) {
+                    hasValidDischargePeriod = true;
+                    displayMaxV = Math.max(...dischargeVList);
+                    displayMinV = Math.min(...dischargeVList);
+                } else {
+                    displayMaxV = Math.max(...visible.map(d => d.v));
+                    displayMinV = Math.min(...visible.map(d => d.v));
+                }
+            } else {
+                // Dedicated window
+                const t0 = new Date(visible[0].x).getTime();
+                const t1 = new Date(visible[visible.length - 1].x).getTime();
+                runtimeMs = Math.max(0, t1 - t0);
+                netPctDrop = Math.max(0, visible[0].p - visible[visible.length - 1].p);
+                const vList = visible.map(d => d.v);
+                displayMaxV = Math.max(...vList);
+                displayMinV = Math.min(...vList);
+                hasValidDischargePeriod = visible.length >= 2 && !visible.every(d => d.chg === 1);
+            }
+
+            if (!hasValidDischargePeriod || runtimeMs <= 0) {
+                document.getElementById('cardRuntime').innerText = '0h 0m';
+                document.getElementById('cardVoltageSpan').innerText = `${displayMinV.toFixed(3)}V - ${displayMaxV.toFixed(3)}V (Charging / Idle)`;
+                document.getElementById('cardDrainRate').innerText = '~0.00%/h';
+                document.getElementById('cardDrainDesc').innerText = 'No discharge periods detected (Device charging)';
+            } else {
+                const durHours = runtimeMs / 3600000;
+                const h = Math.floor(durHours);
+                const m = Math.floor((durHours - h) * 60);
+
+                document.getElementById('cardRuntime').innerText = `${h}h ${m}m`;
+                document.getElementById('cardVoltageSpan').innerText = `${displayMaxV.toFixed(3)}V down to ${displayMinV.toFixed(3)}V`;
+
+                const drainRate = durHours > 0 ? (netPctDrop / durHours).toFixed(2) : '0.00';
+                document.getElementById('cardDrainRate').innerText = `~${drainRate}%/h`;
+                document.getElementById('cardDrainDesc').innerText = isFullHistory
+                    ? `Net -${netPctDrop}% drop across discharge periods`
+                    : `${visible[0].p}% to ${visible[visible.length - 1].p}% over visible window`;
+            }
+
+            document.getElementById('cardPoints').innerText = visible.length;
+            document.getElementById('cardPointsDesc').innerText = `Out of ${allDataset.length} total logged samples`;
+
+            // Milestone Table calculation: always show the biggest discharge window
+            const milestonesSource = isFullHistory ? longestDischarge : visible;
+            const headingEl = document.getElementById('milestonesHeading');
+            if (headingEl) {
+                headingEl.innerText = isFullHistory
+                    ? 'Discharge Milestones (Biggest Discharge Window)'
+                    : 'Discharge Milestones (Visible Window)';
+            }
+
+            const tbody = document.getElementById('milestonesBody');
+            tbody.innerHTML = '';
+
+            if (!milestonesSource || milestonesSource.length < 2) {
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:1.5rem; color:var(--text-muted);">No discharge window recorded (all samples are charging or insufficient)</td></tr>';
+                return;
+            }
+
+            const milestones = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 5, 2, 0];
+            const seen = new Set();
+            const mStartT = new Date(milestonesSource[0].x).getTime();
+
+            milestones.forEach(target => {
+                const found = milestonesSource.find(d => d.p <= target);
+                if (found && !seen.has(found.p)) {
+                    seen.add(found.p);
+                    const elapsedH = ((new Date(found.x).getTime() - mStartT) / 3600000).toFixed(2);
+                    const chgBadge = found.chg === 1
+                        ? '<span class="badge badge-chg">Charging</span>'
+                        : '<span class="badge badge-dischg">Discharge</span>';
+                    const scrBadge = found.scr ? '<span class="badge badge-on">ON</span>' : '<span class="badge badge-off">OFF</span>';
+                    const wifiBadge = found.w === 2 ? '<span class="badge badge-active">Active</span>' : (found.w === 1 ? '<span class="badge badge-warn">Connecting</span>' : '<span class="badge badge-off">Off</span>');
+                    const bleBadge = found.ble === 2 ? '<span class="badge badge-active">Connected</span>' : (found.ble === 1 ? '<span class="badge badge-warn">Adv</span>' : '<span class="badge badge-off">Off</span>');
+                    const heapStr = found.heap ? `${Math.round(found.heap / 1024)} KB` : '-';
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><strong>${found.p}%</strong></td>
+                        <td>${found.v.toFixed(3)} V</td>
+                        <td>+${elapsedH} h</td>
+                        <td>${found.t}</td>
+                        <td>${chgBadge}</td>
+                        <td>${scrBadge}</td>
+                        <td>${found.b}/255</td>
+                        <td>${wifiBadge}</td>
+                        <td>${bleBadge}</td>
+                        <td>${heapStr}</td>
+                    `;
+                    tbody.appendChild(row);
+                }
+            });
+        }
+
+        function initChart(minX, maxX) {
+            const ctx = document.getElementById('batteryChart').getContext('2d');
+            if (chart) chart.destroy();
+
+            const vPoints = allDataset.map(d => ({ x: d.x, y: d.v, raw: d }));
+            const pPoints = allDataset.map(d => ({ x: d.x, y: d.p, raw: d }));
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Battery Voltage (V)',
+                            data: vPoints,
+                            borderColor: '#38bdf8',
+                            backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                            yAxisID: 'yVoltage',
+                            borderWidth: 2,
+                            tension: 0.15,
+                            pointRadius: 2.5,
+                            pointHoverRadius: 5.5,
+                            pointBackgroundColor: '#38bdf8'
+                        },
+                        {
+                            label: 'Reported Battery (%)',
+                            data: pPoints,
+                            borderColor: '#34d399',
+                            backgroundColor: 'rgba(52, 211, 153, 0.1)',
+                            yAxisID: 'yPct',
+                            borderWidth: 2,
+                            tension: 0.15,
+                            pointRadius: 2.5,
+                            pointHoverRadius: 5.5,
+                            pointBackgroundColor: '#34d399'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'minute',
+                                stepSize: 30,
+                                displayFormats: { minute: 'HH:mm', hour: 'HH:mm' },
+                                tooltipFormat: 'yyyy-MM-dd HH:mm:ss'
+                            },
+                            min: minX,
+                            max: maxX,
+                            ticks: {
+                                color: '#94a3b8',
+                                autoSkip: false,
+                                maxRotation: 45,
+                                minRotation: 45,
+                                font: { size: 11 }
+                            },
+                            grid: { color: '#23314d' }
+                        },
+                        yVoltage: {
+                            type: 'linear',
+                            position: 'left',
+                            min: 2.9,
+                            max: 4.3,
+                            ticks: {
+                                color: '#38bdf8',
+                                stepSize: 0.2,
+                                callback: val => val.toFixed(2) + ' V'
+                            },
+                            grid: { color: '#131b2e' },
+                            title: { display: true, text: 'Voltage (Volts)', color: '#38bdf8', font: { size: 13, weight: '600' } }
+                        },
+                        yPct: {
+                            type: 'linear',
+                            position: 'right',
+                            min: 0,
+                            max: 105,
+                            ticks: {
+                                color: '#34d399',
+                                stepSize: 10,
+                                callback: val => val + ' %'
+                            },
+                            grid: { drawOnChartArea: false },
+                            title: { display: true, text: 'Battery (%)', color: '#34d399', font: { size: 13, weight: '600' } }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                title: items => {
+                                    if (!items.length) return '';
+                                    const d = new Date(items[0].parsed.x);
+                                    const pad = n => String(n).padStart(2, '0');
+                                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+                                },
+                                label: ctx => {
+                                    const pt = ctx.raw.raw;
+                                    if (ctx.datasetIndex === 0) {
+                                        return ` Voltage: ${ctx.parsed.y.toFixed(3)} V`;
+                                    }
+                                    return [
+                                        ` Battery: ${ctx.parsed.y}%`,
+                                        ` Status: ${pt.chg === 1 ? '⚡ Charging' : '🔋 Discharging'}`,
+                                        ` Screen: ${pt.scr ? 'ON' : 'OFF'} (Brightness: ${pt.b}/255)`,
+                                        ` Wi-Fi: ${wifiLabels[pt.w] || 'Off'}`,
+                                        ` BLE: ${bleLabels[pt.ble] || 'Off'}`,
+                                        pt.heap ? ` Free Heap: ${Math.round(pt.heap / 1024)} KB` : ''
+                                    ].filter(Boolean);
+                                }
+                            }
+                        },
+                        legend: {
+                            labels: { color: '#f8fafc', font: { size: 13, weight: '500' }, padding: 16 }
+                        }
+                    }
+                }
+            });
+
+            updateDynamicComponents(minX, maxX);
+        }
+
+        function switchView(mode) {
+            if (mode === 'discharge') {
+                const longestSeg = findLongestDischarge(allDataset);
+                if (!longestSeg || longestSeg.length < 2) return;
+                dischargeStartIso = longestSeg[0].x;
+                dischargeEndIso = longestSeg[longestSeg.length - 1].x;
+            }
+            currentView = mode;
+            document.getElementById('viewDischargeBtn').classList.toggle('active', mode === 'discharge');
+            document.getElementById('viewAllBtn').classList.toggle('active', mode === 'all');
+            if (mode === 'discharge') {
+                initChart(dischargeStartIso, dischargeEndIso);
+            } else {
+                initChart(undefined, undefined);
+            }
+        }
+
+        // Client-side Web Serial Ingestion & Clear Pipeline
+        async function triggerWebSerialPipeline(action) {
+            if (!navigator.serial) {
+                alert('Web Serial API is not supported in this browser. Please use Chrome/Edge or run "just battery-pipeline" in terminal.');
+                return;
+            }
+
+            const btnIngest = document.getElementById('btnIngest');
+            const btnClear = document.getElementById('btnClear');
+            const statusEl = document.getElementById('pipelineStatus');
+            btnIngest.disabled = true;
+            btnClear.disabled = true;
+            statusEl.style.display = 'inline-flex';
+
+            let port = null;
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 });
+
+                const writer = port.writable.getWriter();
+                const encoder = new TextEncoder();
+
+                if (action === 'CLEAR') {
+                    statusEl.innerHTML = '<span class="spinner"></span> Clearing battery logs on device...';
+                    await writer.write(encoder.encode("CLEAR_BATTERY_LOG\n"));
+                    writer.releaseLock();
+                    await new Promise(r => setTimeout(r, 600));
+                    await port.close();
+                    localStorage.setItem('sugarota_battery_dataset', JSON.stringify([]));
+                    allDataset = [];
+                    refreshDashboardData();
+                    statusEl.innerText = 'Logs cleared on device! Dashboard reset.';
+                    setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+                    return;
+                }
+
+                // Ingestion action
+                statusEl.innerHTML = '<span class="spinner"></span> Extracting battery logs over USB...';
+                await writer.write(encoder.encode("GET_BATTERY_LOG\n"));
+                writer.releaseLock();
+
+                const reader = port.readable.getReader();
+                const decoder = new TextDecoder();
+                let accumulated = "";
+                const startTime = Date.now();
+
+                while (Date.now() - startTime < 15000) {
+                    const { value, done } = await Promise.race([
+                        reader.read(),
+                        new Promise(r => setTimeout(() => r({ value: null, done: false }), 2500))
+                    ]);
+                    if (done) break;
+                    if (value) {
+                        accumulated += decoder.decode(value);
+                        if (accumulated.includes("--- END BATTERY LOG ---")) break;
+                    }
+                }
+                reader.releaseLock();
+                await port.close();
+
+                statusEl.innerHTML = '<span class="spinner"></span> Processing and refreshing dashboard...';
+                const parsedRecords = parseAndNormalizeRawTelemetry(accumulated);
+
+                alert(`Successfully extracted ${accumulated.length} bytes of telemetry (${parsedRecords.length} data points).`);
+
+                if (parsedRecords.length > 0) {
+                    // Set allDataset to the extracted records from device
+                    allDataset = parsedRecords.sort((a, b) => new Date(a.x) - new Date(b.x));
+                    localStorage.setItem('sugarota_battery_dataset', JSON.stringify(allDataset));
+
+                    // Re-calculate biggest discharge window
+                    const longestSeg = findLongestDischarge(allDataset);
+                    if (longestSeg && longestSeg.length > 0) {
+                        dischargeStartIso = longestSeg[0].x;
+                        dischargeEndIso = longestSeg[longestSeg.length - 1].x;
+                    }
+
+                    // Refresh chart and panels smoothly in background
+                    refreshDashboardData();
+                    statusEl.innerText = `Extracted ${accumulated.length} bytes (${parsedRecords.length} points)`;
+                    setTimeout(() => { statusEl.style.display = 'none'; }, 3500);
+                } else {
+                    statusEl.innerText = `Extracted ${accumulated.length} bytes (0 records)`;
+                    setTimeout(() => { statusEl.style.display = 'none'; }, 3500);
+                }
+            } catch (err) {
+                alert(`Serial connection error: ${err.message}`);
+            } finally {
+                if (port && port.readable) {
+                    try { await port.close(); } catch (e) { }
+                }
+                btnIngest.disabled = false;
+                btnClear.disabled = false;
+            }
+        }
+
+        function parseAndNormalizeRawTelemetry(text) {
+            const p8 = /(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}|up_\w+),(\d+\.\d{2,3}),(\d{1,3}),([01]),(\d{1,3}),([0-2]),([0-2]),(\d+)/g;
+            const p6 = /(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}|up_\w+),(\d+\.\d{2,3}),(\d{1,3}),([01]),([01]),([01])/g;
+            const map = new Map();
+
+            let match;
+            while ((match = p8.exec(text)) !== null) {
+                const [, t_str, v_str, pct_str, chg_str, b_str, w_str, ble_str, heap_str] = match;
+                const v = parseFloat(v_str);
+                const pct = parseInt(pct_str, 10);
+                if (v >= 2.8 && v <= 4.4 && pct >= 0 && pct <= 100 && !t_str.startsWith('up_')) {
+                    const b = parseInt(b_str, 10);
+                    map.set(t_str, {
+                        t: t_str,
+                        x: t_str.replace(' ', 'T'),
+                        v: parseFloat(v.toFixed(3)),
+                        p: pct,
+                        chg: parseInt(chg_str, 10),
+                        scr: b > 0 ? 1 : 0,
+                        b: b,
+                        w: parseInt(w_str, 10),
+                        ble: parseInt(ble_str, 10),
+                        heap: parseInt(heap_str, 10)
+                    });
+                }
+            }
+
+            while ((match = p6.exec(text)) !== null) {
+                const [, t_str, v_str, pct_str, chg_str, scr_str, w_str] = match;
+                if (!map.has(t_str) && !t_str.startsWith('up_')) {
+                    const v = parseFloat(v_str);
+                    const pct = parseInt(pct_str, 10);
+                    if (v >= 2.8 && v <= 4.4 && pct >= 0 && pct <= 100) {
+                        const scr = parseInt(scr_str, 10);
+                        map.set(t_str, {
+                            t: t_str,
+                            x: t_str.replace(' ', 'T'),
+                            v: parseFloat(v.toFixed(3)),
+                            p: pct,
+                            chg: parseInt(chg_str, 10),
+                            scr: scr,
+                            b: scr ? 255 : 0,
+                            w: parseInt(w_str, 10) ? 2 : 0,
+                            ble: 1,
+                            heap: 0
+                        });
+                    }
+                }
+            }
+            return Array.from(map.values());
+        }
+
+        function refreshDashboardData() {
+            const longestSeg = findLongestDischarge(allDataset);
+            const hasDischarge = longestSeg && longestSeg.length >= 2;
+            if (currentView === 'discharge' && hasDischarge) {
+                dischargeStartIso = longestSeg[0].x;
+                dischargeEndIso = longestSeg[longestSeg.length - 1].x;
+                initChart(dischargeStartIso, dischargeEndIso);
+            } else {
+                currentView = 'all';
+                document.getElementById('viewDischargeBtn').classList.remove('active');
+                document.getElementById('viewAllBtn').classList.add('active');
+                initChart(undefined, undefined);
+            }
+        }
+
+        // Initialize default view to Full History (All Datapoints)
+        initChart(undefined, undefined);
+    </script>
+</body>
+
+</html>

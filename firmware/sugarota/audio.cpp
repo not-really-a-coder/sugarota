@@ -281,19 +281,40 @@ static int nmAlertBeepInRep = 0;  // 0 to 3 (total 4 beeps per set)
 static bool nmAlertIsBeeping = false;
 static unsigned long nmAlertNextActionTime = 0;
 
+void sleepAudio() {
+  if (playback) {
+    esp_codec_dev_close(playback);
+    DBG_PRINTLN("AUDIO: Codec powered down (sleep)");
+  }
+}
+
+void wakeAudio() {
+  if (playback) {
+    // Codec is opened on-demand during playback, ensure volume preset is configured
+    setVolume(volumeLevel);
+    DBG_PRINTLN("AUDIO: Codec active");
+  }
+}
+
 void startNightModeDataAlert() {
   if (findDeviceRunning) return; // Don't interrupt Find Phone alert
+  wakeAudio();
+  if (playback) {
+    // Requirement: minimum 70% volume for Night Mode No Data Alert
+    esp_codec_dev_set_out_vol(playback, 70.0);
+  }
   nmAlertRunning = true;
   nmAlertRepetition = 0;
   nmAlertBeepInRep = 0;
   nmAlertIsBeeping = false;
   nmAlertNextActionTime = millis();
-  DBG_PRINTLN("NIGHT MODE ALERT: Started (4 beeps x 3 reps, 1s pause)");
+  DBG_PRINTLN("NIGHT MODE ALERT: Started (4 beeps x 3 reps, 1s pause, 70% volume)");
 }
 
 void stopNightModeDataAlert() {
   if (nmAlertRunning) {
     nmAlertRunning = false;
+    setVolume(volumeLevel); // restore user configured volume level
     DBG_PRINTLN("NIGHT MODE ALERT: Stopped");
   }
 }

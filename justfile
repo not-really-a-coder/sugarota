@@ -71,6 +71,15 @@ battery-log port="COM6":
 clear-battery-log port="COM6":
     ./utils/read_battery.ps1 -PortName {{port}} -Clear
 
+# Run automated battery ingestion, normalization, and analytics pipeline
+battery-pipeline port="COM6":
+    python ./utils/analysis/pipeline.py {{port}}
+
+# Open battery analytics dashboard in default browser
+battery-dashboard:
+    Start-Process ./battery.html
+
+
 # Check connected Android devices and serial/COM ports
 devices:
     @Write-Host "=== Connected Android Devices ===" -ForegroundColor Cyan

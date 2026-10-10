@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#define SUGAROTA_VERSION "v0.10.09.2"
+#define SUGAROTA_VERSION "v0.10.11.0"
 
 // --- Design System Colors (RGB565 matching Shadcn Zinc Dark & Telemetry Palette) ---
 #define BLACK   0x0841  // #09090B (OLED Zinc Dark Canvas)
@@ -177,6 +177,7 @@ extern int volumeLevel;
 extern bool nightModeEnabled;
 extern unsigned long nightModeScreenWakeUntil;
 extern bool nightModeAlertSnoozed;
+extern unsigned long nightModeCountdownUntil;
 void triggerNightModeWake();
 extern bool isVerticalMode;
 extern int verticalSubscreen;

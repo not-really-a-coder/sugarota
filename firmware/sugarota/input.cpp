@@ -172,10 +172,16 @@ void checkButtons() {
     if (brightnessLevel <= 0) {
       // Waking screen from off via single press
       screenManuallyOff = false;
+      if (isNightModeActive()) {
+        triggerNightModeWake();
+      }
       brightnessLevel = (lastActiveBrightness > 0) ? lastActiveBrightness : 76;
       setBrightness(brightnessLevel);
       updateUI();
     } else {
+      if (isNightModeActive()) {
+        triggerNightModeWake();
+      }
       cycleBrightness();
       lastActiveBrightness = brightnessLevel;
     }
@@ -505,10 +511,31 @@ void checkTouch() {
   }
 }
 
+static bool imuSleeping = false;
+
+void sleepIMU() {
+  if (imuReady && !imuSleeping) {
+    qmi.disableAccelerometer();
+    imuSleeping = true;
+    DBG_PRINTLN("IMU: Accelerometer sleeping");
+  }
+}
+
+void wakeIMU() {
+  if (imuReady && imuSleeping) {
+    qmi.enableAccelerometer();
+    imuSleeping = false;
+    DBG_PRINTLN("IMU: Accelerometer awake");
+  }
+}
+
 void pollIMU() {
+  if (isNightModeActive() && (brightnessLevel == 0 || nightModeScreenWakeUntil == 0)) {
+    return; // Do not poll IMU during Night Mode sleep
+  }
   static unsigned long lastImuPoll = 0;
   int imuPollInterval = (isTimerMode && !isTimerStopped) ? 50 : 300;
-  if (imuReady && !isBooting && deviceOn && !screenManuallyOff && (millis() - lastImuPoll > imuPollInterval)) {
+  if (imuReady && !imuSleeping && !isBooting && deviceOn && !screenManuallyOff && (millis() - lastImuPoll > imuPollInterval)) {
     lastImuPoll = millis();
     float x, y, z;
     if (qmi.getAccelerometer(x, y, z)) {

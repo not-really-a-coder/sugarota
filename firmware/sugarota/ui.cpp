@@ -101,6 +101,34 @@ void updateUI() {
     gfx->print("NO");
   }
 
+  // Night Mode 5s Entering Sleep Countdown Dialog (Requirement 6)
+  if (nightModeCountdownUntil > millis() && !isShowingPairingDialog) {
+    int w = 360;
+    int h = 90;
+    int dx = (640 - w) / 2;
+    int dy = (172 - h) / 2;
+
+    int secondsLeft = (int)((nightModeCountdownUntil - millis() + 999) / 1000);
+    if (secondsLeft < 1) secondsLeft = 1;
+
+    uint16_t accentBlue = isDarkTheme ? CYAN : 0x0277;
+
+    gfx->fillRoundRect(dx, dy, w, h, 8, isDarkTheme ? 0x18C3 : 0x2124);
+    gfx->drawRoundRect(dx, dy, w, h, 8, accentBlue);
+
+    drawMoonIcon(dx + 20, dy + 22, accentBlue);
+
+    gfx->setTextColor(accentBlue);
+    gfx->setTextSize(2);
+    gfx->setCursor(dx + 42, dy + 20);
+    gfx->print("ENTERING NIGHT MODE");
+
+    gfx->setTextColor(WHITE);
+    gfx->setTextSize(2);
+    gfx->setCursor(dx + 42, dy + 50);
+    gfx->printf("Sleeping in %ds...", secondsLeft);
+  }
+
   // Night Mode No Data Alert Dialog (relative message on screen)
   if (isNightModeActive() && !nightModeAlertSnoozed && (millis() - lastDataFetch > 15 * 60 * 1000) && !isShowingPairingDialog) {
     int w = 340;
@@ -928,6 +956,11 @@ void drawStatusBar() {
 void drawOTAProgress(int percent, const char* statusMsg) {
   if (percent < 0) percent = 0;
   if (percent > 100) percent = 100;
+
+  // Requirement 5: Ensure screen is ON when OTA flashing is active
+  if (brightnessLevel == 0) {
+    setBrightness(150);
+  }
 
   gfx->fillScreen(BLACK);
 

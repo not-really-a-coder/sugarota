@@ -293,7 +293,7 @@ void clearCrashLog() {
   }
 }
 
-void appendBatteryLog(float voltage, int pct, bool isCharging, bool screenOn, bool wifiActive) {
+void appendBatteryLog(float voltage, int pct, bool isCharging, int brightness, int wifiState, int bleState, uint32_t freeHeap) {
   // Keep battery log bounded to 64KB (~1800 entries, ~6 days)
   if (LittleFS.exists("/battery.log")) {
     File check = LittleFS.open("/battery.log", "r");
@@ -338,9 +338,10 @@ void appendBatteryLog(float voltage, int pct, bool isCharging, bool screenOn, bo
     snprintf(timeBuf, sizeof(timeBuf), "up_%lum%lus", upSec / 60, upSec % 60);
   }
 
-  char entry[128];
-  snprintf(entry, sizeof(entry), "%s,%.3f,%d,%d,%d,%d\n",
-           timeBuf, voltage, pct, isCharging ? 1 : 0, screenOn ? 1 : 0, wifiActive ? 1 : 0);
+  // Columns: timestamp, voltage, pct, charging, brightness, wifiState, bleState, freeHeap
+  char entry[144];
+  snprintf(entry, sizeof(entry), "%s,%.3f,%d,%d,%d,%d,%d,%lu\n",
+           timeBuf, voltage, pct, isCharging ? 1 : 0, brightness, wifiState, bleState, (unsigned long)freeHeap);
   f.print(entry);
   f.flush();
   f.close();
@@ -356,12 +357,12 @@ void streamBatteryLog(Stream& out) {
     out.println("Failed to open battery log.");
     return;
   }
-  uint8_t buf[256];
+  // Stream line-by-line with flush and pacing to prevent ESP32-S3 USB-CDC FIFO overflows
   while (f.available()) {
-    int bytesRead = f.read(buf, sizeof(buf));
-    if (bytesRead > 0) {
-      out.write(buf, bytesRead);
-    }
+    String line = f.readStringUntil('\n');
+    out.println(line);
+    out.flush();
+    delay(2);
   }
   f.close();
 }

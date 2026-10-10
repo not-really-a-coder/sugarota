@@ -1,5 +1,6 @@
 #include "battery.h"
 #include "storage.h"
+#include "ble.h"
 #include <WiFi.h>
 
 // Forward declarations
@@ -68,17 +69,25 @@ void fillVoltageHistory(float voltage) {
 }
 
 int getBatteryPercentage(float voltage) {
-  // Adjusted for standard 3.7V Li-ion/LiPo discharge curve under light load:
-  // - Full charge rests around 4.12V-4.20V
-  // - Initial voltage drop 4.20V -> 3.90V represents ~25-30% of capacity
-  // - Main discharge plateau is between 3.65V and 3.80V (~30% to ~70%)
-  // - Knee begins below 3.55V (~20%), steep discharge below 3.45V
-  // - Cutoff protection is at 3.00V
-  const float vMap[] = {3.10f, 3.35f, 3.45f, 3.55f, 3.62f, 3.68f, 3.74f, 3.80f, 3.88f, 3.98f, 4.12f};
-  const int   pMap[] = {    1,     5,    10,    20,    30,    40,    50,    60,    70,    85,   100};
+  // Remapped using empirical 20.7h telemetry discharge data (Sugarota V1):
+  // - 100%: >= 4.15V (full charge float / saturation)
+  // - 90%:  4.03V
+  // - 80%:  3.99V
+  // - 70%:  3.92V
+  // - 60%:  3.82V
+  // - 50%:  3.72V
+  // - 40%:  3.59V
+  // - 30%:  3.45V
+  // - 20%:  3.33V
+  // - 10%:  3.14V
+  // -  5%:  3.10V
+  // -  2%:  3.05V
+  // -  0%:  3.02V (device shutdown guard threshold: < 3.00V)
+  const float vMap[] = {3.02f, 3.05f, 3.10f, 3.14f, 3.33f, 3.45f, 3.59f, 3.72f, 3.82f, 3.92f, 3.99f, 4.03f, 4.15f};
+  const int   pMap[] = {    0,     2,     5,    10,    20,    30,    40,    50,    60,    70,    80,    90,   100};
   const int   numPoints = sizeof(vMap) / sizeof(vMap[0]);
 
-  if (voltage <= vMap[0]) return 1;
+  if (voltage <= vMap[0]) return 0;
   if (voltage >= vMap[numPoints - 1]) return 100;
 
   for (int i = 0; i < numPoints - 1; i++) {
@@ -87,7 +96,7 @@ int getBatteryPercentage(float voltage) {
       float offset = voltage - vMap[i];
       float pRange = pMap[i + 1] - pMap[i];
       int pct = pMap[i] + (int)((offset / range) * pRange);
-      return (pct < 1) ? 1 : pct;
+      return (pct < 0) ? 0 : ((pct > 100) ? 100 : pct);
     }
   }
   return 100;
@@ -97,24 +106,74 @@ void updateBattery() {
   float currentV = readBatteryVoltageSingle(); 
   if (currentV <= 0.0f) return;
 
-  // Charging detection logic:
-  // Note: We do NOT use (Serial) because on ESP32-S3 HWCDC once a host connects,
-  // `Serial` stays true indefinitely even after unplugging unless TX fails.
-  // We rely on battery rail voltage:
-  // - V1: charging float voltage is around 4.14V-4.20V. High threshold 4.14V, low threshold 4.08V.
-  // - V2: charging float voltage reaches >= 4.20V. High threshold 4.18V, low threshold 4.12V.
+  // Hybrid charging detection:
+  // 1. Instant Step Jump: Plugging in jumps battery rail up abruptly (+60mV..+300mV).
+  //    Unplugging drops battery rail immediately (-60mV..-300mV).
+  // 2. Continuous Slope: Over recent cycles (60-90s), charging voltage slopes upward (> +0.02V).
+  //    Discharging slopes downward (< -0.02V).
+  // 3. Float Anchor: High saturation voltage (>= 4.15V on V1, >= 4.18V on V2) stays charging
+  //    until a distinct step drop or sustained negative slope occurs.
+  static float lastRawV = 0.0f;
+  static float prevFilteredV = 0.0f;
+  static int positiveSlopeCount = 0;
+  static int negativeSlopeCount = 0;
+
   float chargeHighThreshold = (hwVersion == 1) ? 4.14f : 4.18f;
   float chargeLowThreshold  = (hwVersion == 1) ? 4.08f : 4.12f;
 
-  bool isCharging = (currentV >= chargeHighThreshold);
-
   bool previousPluggedState = wasUSBPlugged;
-  if (isCharging && !wasUSBPlugged) {
+
+  if (lastRawV > 0.0f) {
+    float rawDelta = currentV - lastRawV;
+
+    // Instant step changes (connect / disconnect)
+    if (rawDelta >= 0.07f && !wasUSBPlugged) {
+      wasUSBPlugged = true;
+      positiveSlopeCount = 3;
+      negativeSlopeCount = 0;
+      DBG_PRINTF("Charging detected via step jump (+%.2fV -> %.2fV)\n", rawDelta, currentV);
+    } else if (rawDelta <= -0.07f && wasUSBPlugged) {
+      wasUSBPlugged = false;
+      negativeSlopeCount = 3;
+      positiveSlopeCount = 0;
+      DBG_PRINTF("Unplugged detected via step drop (%.2fV -> %.2fV)\n", rawDelta, currentV);
+    }
+  }
+  lastRawV = currentV;
+
+  // Track slope across moving average once available
+  if (currentBatteryVoltage > 0.0f) {
+    if (prevFilteredV > 0.0f) {
+      float slopeDelta = currentBatteryVoltage - prevFilteredV;
+      if (slopeDelta >= 0.015f) {
+        positiveSlopeCount++;
+        if (negativeSlopeCount > 0) negativeSlopeCount--;
+      } else if (slopeDelta <= -0.015f) {
+        negativeSlopeCount++;
+        if (positiveSlopeCount > 0) positiveSlopeCount--;
+      }
+    }
+    prevFilteredV = currentBatteryVoltage;
+
+    // If slope consistently positive for >= 2 cycles, mark charging
+    if (!wasUSBPlugged && positiveSlopeCount >= 2 && currentV >= 3.40f) {
+      wasUSBPlugged = true;
+      DBG_PRINTF("Charging confirmed via positive slope (V=%.2fV)\n", currentV);
+    }
+    // If slope consistently negative for >= 3 cycles and not near float voltage, mark unplugged
+    else if (wasUSBPlugged && negativeSlopeCount >= 3 && currentV < chargeHighThreshold) {
+      wasUSBPlugged = false;
+      DBG_PRINTF("Discharging confirmed via negative slope (V=%.2fV)\n", currentV);
+    }
+  }
+
+  // Fallback / anchor: high float threshold catches continuous charge on boot or after full saturation
+  if (!wasUSBPlugged && currentV >= chargeHighThreshold) {
     wasUSBPlugged = true;
-    DBG_PRINTF("Charging detected (HW: V%d, Voltage: %.2fV)\n", hwVersion, currentV);
-  } else if (!isCharging && wasUSBPlugged && (currentV < chargeLowThreshold)) {
+    DBG_PRINTF("Charging detected via float threshold (V=%.2fV)\n", currentV);
+  } else if (wasUSBPlugged && currentV < chargeLowThreshold && negativeSlopeCount >= 1) {
     wasUSBPlugged = false;
-    DBG_PRINTF("Charging ended / Unplugged (HW: V%d, Voltage: %.2fV)\n", hwVersion, currentV);
+    DBG_PRINTF("Unplugged detected via low threshold (V=%.2fV)\n", currentV);
   }
 
   // Update UI immediately if charging state changed
@@ -177,9 +236,13 @@ void updateBattery() {
   static unsigned long lastBatteryLogTime = 0;
   if (pctChanged || (millis() - lastBatteryLogTime >= 300000) || (lastBatteryLogTime == 0)) {
     lastBatteryLogTime = millis();
-    bool screenOn = (brightnessLevel > 0);
-    bool wifiActive = (WiFi.status() == WL_CONNECTED || isConfigMode);
-    appendBatteryLog(avgV, currentBatteryPct, wasUSBPlugged, screenOn, wifiActive);
+    int brightness = brightnessLevel;
+    // wifiState: 0 = off/sleeping, 1 = connecting, 2 = connected / portal
+    int wifiState = (WiFi.status() == WL_CONNECTED || isConfigMode) ? 2 : (WiFi.getMode() != WIFI_OFF ? 1 : 0);
+    // bleState: 0 = uninit, 1 = advertising, 2 = connected
+    int bleState = SugarotaBLE::getInstance().isConnected() ? 2 : (SugarotaBLE::getInstance().isInitialized() ? 1 : 0);
+    uint32_t freeHeap = ESP.getFreeHeap();
+    appendBatteryLog(avgV, currentBatteryPct, wasUSBPlugged, brightness, wifiState, bleState, freeHeap);
   }
   
   // Only shut down for low battery if USB is definitely not plugged in AND an actual depleted battery is connected.

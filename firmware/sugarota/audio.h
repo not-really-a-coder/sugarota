@@ -26,4 +26,7 @@ void stopNightModeDataAlert();
 void updateNightModeAlert();
 bool isNightModeAlertActive();
 
+void sleepAudio();
+void wakeAudio();
+
 #endif // SUGAROTA_AUDIO_H

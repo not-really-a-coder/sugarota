@@ -20,7 +20,7 @@ void recordBootResetReason();
 String readCrashLog();
 void clearCrashLog();
 
-void appendBatteryLog(float voltage, int pct, bool isCharging, int brightness, int wifiState, int bleState, uint32_t freeHeap);
+void appendBatteryLog(float voltage, int pct, bool isCharging, int brightness, int wifiState, int bleState, uint32_t cpuFreqMhz);
 String readBatteryLog();
 void streamBatteryLog(Stream& out);
 void clearBatteryLog();

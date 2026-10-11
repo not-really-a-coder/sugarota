@@ -15,7 +15,7 @@
 - `ui.cpp` / `.h`: UI layouts, glucose dial/needle, stats, and alert overlays.
 - `input.cpp` / `.h`: CST816T touch controller driver and gesture handling.
 - `audio.cpp` / `.h`: ES8311 codec driver wrapper and audio playback.
-- `battery.cpp` / `.h`: ADC voltage sampling, hybrid step/slope charging detection, and calibrated discharge mapping.
+- `battery.cpp` / `.h`: ADC voltage sampling, threshold charging detection, and calibrated discharge mapping.
 - `net_client.cpp` / `.h`: HTTP client for Dexcom Share and Nightscout APIs.
 - `web_portal.cpp` / `.h`: Captive AP portal for standalone WiFi onboarding.
 - `partitions.csv`: Custom 16MB flash partition layout.

@@ -69,16 +69,18 @@ def run_ps1_extract(port_name="COM6"):
 
 def normalize_and_parse_logs(raw_text):
     """
-    Normalizes log chunks, supports both legacy 6-column and new 8-column entries:
-    Legacy:   timestamp,voltage,pct,charging,screenOn,wifiActive
-    Expanded: timestamp,voltage,pct,charging,brightness,wifiState,bleState,freeHeap
+    Normalizes log chunks, supports legacy 6-column, legacy 8-column (with heap),
+    and current 8-column entries:
+    Legacy 6:    timestamp,voltage,pct,charging,screenOn,wifiActive
+    Legacy Heap: timestamp,voltage,pct,charging,brightness,wifiState,bleState,freeHeap (>1000)
+    Current:     timestamp,voltage,pct,charging,brightness,wifiState,bleState,cpuFreqMhz (<=1000)
     """
     p8 = re.compile(r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}|up_\w+),(\d+\.\d{2,3}),(\d{1,3}),([01]),(\d{1,3}),([0-2]),([0-2]),(\d+)')
     p6 = re.compile(r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}|up_\w+),(\d+\.\d{2,3}),(\d{1,3}),([01]),([01]),([01])')
 
     entries = {}
     for m in p8.finditer(raw_text):
-        t_str, v_str, pct_str, chg_str, b_str, w_str, ble_str, heap_str = m.groups()
+        t_str, v_str, pct_str, chg_str, b_str, w_str, ble_str, val8_str = m.groups()
         try:
             v = float(v_str)
             pct = int(pct_str)
@@ -86,7 +88,10 @@ def normalize_and_parse_logs(raw_text):
             brightness = int(b_str)
             wifi_state = int(w_str)
             ble_state = int(ble_str)
-            free_heap = int(heap_str)
+            val8 = int(val8_str)
+            # ESP32 CPU freq is typically 80, 160, 240 MHz; freeHeap is >10000 bytes
+            cpu_freq = val8 if val8 <= 1000 else 0
+            free_heap = val8 if val8 > 1000 else 0
             if 2.8 <= v <= 4.4 and 0 <= pct <= 100:
                 entries[t_str] = {
                     "timestamp": t_str,
@@ -97,6 +102,7 @@ def normalize_and_parse_logs(raw_text):
                     "screen_on": 1 if brightness > 0 else 0,
                     "wifi_state": wifi_state,
                     "ble_state": ble_state,
+                    "cpu_freq": cpu_freq,
                     "free_heap": free_heap
                 }
         except ValueError:
@@ -122,6 +128,7 @@ def normalize_and_parse_logs(raw_text):
                     "screen_on": screen_on,
                     "wifi_state": 2 if wifi_active else 0,
                     "ble_state": 1,
+                    "cpu_freq": 240,
                     "free_heap": 0
                 }
         except ValueError:
@@ -168,6 +175,7 @@ def analyze_telemetry(records):
                 "brightness": found.get("brightness", 255 if found.get("screen_on") else 0),
                 "wifi_state": found.get("wifi_state", 0),
                 "ble_state": found.get("ble_state", 1),
+                "cpu_freq": found.get("cpu_freq", 0),
                 "free_heap": found.get("free_heap", 0)
             })
 
@@ -284,6 +292,7 @@ def generate_dashboard(records, analysis):
             "b": d.get("brightness", 255 if d.get("screen_on") else 0),
             "w": d.get("wifi_state", 0),
             "ble": d.get("ble_state", 1),
+            "freq": d.get("cpu_freq", 0),
             "heap": d.get("free_heap", 0)
         })
 
@@ -546,6 +555,10 @@ def generate_dashboard(records, analysis):
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 Clear battery logs on the device
             </button>
+            <a href="installer.html" class="btn" style="text-decoration: none;" title="Return to Sugarota Web Installer">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                Web Installer
+            </a>
         </div>
     </div>
 
@@ -585,8 +598,8 @@ def generate_dashboard(records, analysis):
         </div>
     </div>
 
-    <div class="grid-2">
-        <div class="panel">
+    <div class="grid-2" id="bottomGrid">
+        <div class="panel" id="milestonesPanel">
             <h3 id="milestonesHeading">Discharge Milestones (Biggest Discharge Window)</h3>
             <table class="milestones-table">
                 <thead>
@@ -600,7 +613,7 @@ def generate_dashboard(records, analysis):
                         <th>Brightness</th>
                         <th>Wi-Fi</th>
                         <th>BLE</th>
-                        <th>Free Heap</th>
+                        <th>CPU / Heap</th>
                     </tr>
                 </thead>
                 <tbody id="milestonesBody">
@@ -751,13 +764,24 @@ def generate_dashboard(records, analysis):
             document.getElementById('cardPoints').innerText = visible.length;
             document.getElementById('cardPointsDesc').innerText = `Out of ${{allDataset.length}} total logged samples`;
 
-            // Milestone Table calculation: always show the biggest discharge window
-            const milestonesSource = isFullHistory ? longestDischarge : visible;
+            // Milestones panel appears when Full History tab is active
+            const milestonesPanel = document.getElementById('milestonesPanel');
+            const bottomGrid = document.getElementById('bottomGrid');
+            if (milestonesPanel && bottomGrid) {{
+                if (isFullHistory) {{
+                    milestonesPanel.style.display = 'block';
+                    bottomGrid.style.gridTemplateColumns = '2fr 1fr';
+                }} else {{
+                    milestonesPanel.style.display = 'none';
+                    bottomGrid.style.gridTemplateColumns = '1fr';
+                }}
+            }}
+
+            // Milestone Table calculation: biggest discharge window
+            const milestonesSource = longestDischarge;
             const headingEl = document.getElementById('milestonesHeading');
             if (headingEl) {{
-                headingEl.innerText = isFullHistory
-                    ? 'Discharge Milestones (Biggest Discharge Window)'
-                    : 'Discharge Milestones (Visible Window)';
+                headingEl.innerText = 'Discharge Milestones (Biggest Discharge Window)';
             }}
 
             const tbody = document.getElementById('milestonesBody');
@@ -783,7 +807,12 @@ def generate_dashboard(records, analysis):
                     const scrBadge = found.scr ? '<span class="badge badge-on">ON</span>' : '<span class="badge badge-off">OFF</span>';
                     const wifiBadge = found.w === 2 ? '<span class="badge badge-active">Active</span>' : (found.w === 1 ? '<span class="badge badge-warn">Connecting</span>' : '<span class="badge badge-off">Off</span>');
                     const bleBadge = found.ble === 2 ? '<span class="badge badge-active">Connected</span>' : (found.ble === 1 ? '<span class="badge badge-warn">Adv</span>' : '<span class="badge badge-off">Off</span>');
-                    const heapStr = found.heap ? `${{Math.round(found.heap / 1024)}} KB` : '-';
+                    let extraStr = '-';
+                    if (found.freq) {{
+                        extraStr = `${{found.freq}} MHz`;
+                    }} else if (found.heap) {{
+                        extraStr = `${{Math.round(found.heap / 1024)}} KB`;
+                    }}
 
                     const row = document.createElement('tr');
                     row.innerHTML = `
@@ -796,7 +825,7 @@ def generate_dashboard(records, analysis):
                         <td>${{found.b}}/255</td>
                         <td>${{wifiBadge}}</td>
                         <td>${{bleBadge}}</td>
-                        <td>${{heapStr}}</td>
+                        <td>${{extraStr}}</td>
                     `;
                     tbody.appendChild(row);
                 }}
@@ -915,7 +944,7 @@ def generate_dashboard(records, analysis):
                                         ` Screen: ${{pt.scr ? 'ON' : 'OFF'}} (Brightness: ${{pt.b}}/255)`,
                                         ` Wi-Fi: ${{wifiLabels[pt.w] || 'Off'}}`,
                                         ` BLE: ${{bleLabels[pt.ble] || 'Off'}}`,
-                                        pt.heap ? ` Free Heap: ${{Math.round(pt.heap / 1024)}} KB` : ''
+                                        pt.freq ? ` CPU: ${{pt.freq}} MHz` : (pt.heap ? ` Free Heap: ${{Math.round(pt.heap / 1024)}} KB` : '')
                                     ].filter(Boolean);
                                 }}
                             }}
@@ -1050,11 +1079,14 @@ def generate_dashboard(records, analysis):
 
             let match;
             while ((match = p8.exec(text)) !== null) {{
-                const [, t_str, v_str, pct_str, chg_str, b_str, w_str, ble_str, heap_str] = match;
+                const [, t_str, v_str, pct_str, chg_str, b_str, w_str, ble_str, val8_str] = match;
                 const v = parseFloat(v_str);
                 const pct = parseInt(pct_str, 10);
                 if (v >= 2.8 && v <= 4.4 && pct >= 0 && pct <= 100 && !t_str.startsWith('up_')) {{
                     const b = parseInt(b_str, 10);
+                    const val8 = parseInt(val8_str, 10);
+                    const cpuFreq = val8 <= 1000 ? val8 : 0;
+                    const freeHeap = val8 > 1000 ? val8 : 0;
                     map.set(t_str, {{
                         t: t_str,
                         x: t_str.replace(' ', 'T'),
@@ -1065,7 +1097,8 @@ def generate_dashboard(records, analysis):
                         b: b,
                         w: parseInt(w_str, 10),
                         ble: parseInt(ble_str, 10),
-                        heap: parseInt(heap_str, 10)
+                        freq: cpuFreq,
+                        heap: freeHeap
                     }});
                 }}
             }}
@@ -1087,6 +1120,7 @@ def generate_dashboard(records, analysis):
                             b: scr ? 255 : 0,
                             w: parseInt(w_str, 10) ? 2 : 0,
                             ble: 1,
+                            freq: 240,
                             heap: 0
                         }});
                     }}

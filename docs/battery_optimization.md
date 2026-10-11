@@ -24,8 +24,8 @@ This document defines the architectural principles and operational guardrails re
 
 ### Telemetry Logging
 * **Diagnostic Battery Log (`/battery.log`)**:
-  - Firmware records timestamp, battery voltage, percentage, charging status, screen status, and Wi-Fi status on LittleFS.
-  - Entries are captured on boot, on every 1% battery change, or at least every 5 minutes (bounded to 16 KB).
+  - Firmware records timestamp, battery voltage, percentage, charging status, brightness, Wi-Fi status, BLE status, and live CPU frequency on LittleFS.
+  - Entries are captured on boot, on every 1% battery change, or at least every 5 minutes (bounded to 64 KB with FIFO chunk rotation).
   - Accessible via serial command `GET_BATTERY_LOG` (`just battery-log`) and cleared with `CLEAR_BATTERY_LOG` (`just clear-battery-log`).
 
 ---

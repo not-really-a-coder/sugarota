@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.10.11.0"
+#define SUGAROTA_VERSION "v0.10.11.6"
 
 #include "config.h"
 #include "storage.h"
@@ -69,7 +69,16 @@ unsigned long nightModeScreenWakeUntil = 0;
 bool nightModeAlertSnoozed = false;
 unsigned long nightModeCountdownUntil = 0;
 
+void setNightModeCpuClock(bool highSpeed) {
+  uint32_t targetFreq = highSpeed ? 240 : 80;
+  if (ESP.getCpuFreqMHz() != targetFreq) {
+    setCpuFrequencyMhz(targetFreq);
+    DBG_PRINTF("CPU: Frequency switched to %u MHz\n", targetFreq);
+  }
+}
+
 void triggerNightModeWake() {
+  setNightModeCpuClock(true); // Restore 240 MHz on wake immediately
   nightModeScreenWakeUntil = millis() + 20000; // Requirement 1 & User feedback: 20s wake timeout
   if (isNightModeAlertActive()) {
     nightModeAlertSnoozed = true; // Only snooze if alert is actively ringing
@@ -800,6 +809,7 @@ void loop() {
     nightModeCountdownUntil = 0;
     nightModeAlertSnoozed = false;
     stopNightModeDataAlert();
+    setNightModeCpuClock(true); // Restore full 240 MHz clock on exit
     wakeIMU();
     wakeAudio();
     // Restore brightness
@@ -817,7 +827,8 @@ void loop() {
         setBrightness(0);
         sleepIMU();
         sleepAudio();
-        DBG_PRINTLN("NIGHT MODE: 5s countdown complete -> Screen, IMU & Audio Sleep");
+        setNightModeCpuClock(false); // Downclock to 80 MHz during sleep
+        DBG_PRINTLN("NIGHT MODE: 5s countdown complete -> Screen, IMU & Audio Sleep (CPU 80MHz)");
       } else if (millis() - lastCountdownTick >= 1000) {
         lastCountdownTick = millis();
         updateUI(); // Refresh 1s tick on countdown dialog
@@ -831,7 +842,8 @@ void loop() {
         setBrightness(0); // turn screen back off
         sleepIMU();
         sleepAudio();
-        DBG_PRINTLN("NIGHT MODE: 20s wake expired -> Screen, IMU & Audio Sleep");
+        setNightModeCpuClock(false); // Downclock to 80 MHz during sleep
+        DBG_PRINTLN("NIGHT MODE: 20s wake expired -> Screen, IMU & Audio Sleep (CPU 80MHz)");
       }
     }
 
@@ -843,6 +855,7 @@ void loop() {
         if (lastNmAlertTrigger == 0 || (millis() - lastNmAlertTrigger >= 5 * 60 * 1000)) {
           lastNmAlertTrigger = millis();
           // Turn screen on at lowest brightness BEFORE alert so user sees warning
+          setNightModeCpuClock(true); // Full speed for alert and UI
           nightModeScreenWakeUntil = millis() + 20000;
           if (brightnessLevel == 0) {
             setBrightness(76);

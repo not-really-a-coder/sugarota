@@ -293,7 +293,7 @@ void clearCrashLog() {
   }
 }
 
-void appendBatteryLog(float voltage, int pct, bool isCharging, int brightness, int wifiState, int bleState, uint32_t freeHeap) {
+void appendBatteryLog(float voltage, int pct, bool isCharging, int brightness, int wifiState, int bleState, uint32_t cpuFreqMhz) {
   // Keep battery log bounded to 64KB (~1800 entries, ~6 days)
   if (LittleFS.exists("/battery.log")) {
     File check = LittleFS.open("/battery.log", "r");
@@ -338,10 +338,10 @@ void appendBatteryLog(float voltage, int pct, bool isCharging, int brightness, i
     snprintf(timeBuf, sizeof(timeBuf), "up_%lum%lus", upSec / 60, upSec % 60);
   }
 
-  // Columns: timestamp, voltage, pct, charging, brightness, wifiState, bleState, freeHeap
+  // Columns: timestamp, voltage, pct, charging, brightness, wifiState, bleState, cpuFreqMhz
   char entry[144];
   snprintf(entry, sizeof(entry), "%s,%.3f,%d,%d,%d,%d,%d,%lu\n",
-           timeBuf, voltage, pct, isCharging ? 1 : 0, brightness, wifiState, bleState, (unsigned long)freeHeap);
+           timeBuf, voltage, pct, isCharging ? 1 : 0, brightness, wifiState, bleState, (unsigned long)cpuFreqMhz);
   f.print(entry);
   f.flush();
   f.close();

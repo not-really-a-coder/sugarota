@@ -4,7 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -42,6 +45,13 @@ fun PipGlucoseChartContent(
     units: String,
     service: SugarotaBleService? = null
 ) {
+    val currentTimeMillis by produceState(initialValue = System.currentTimeMillis()) {
+        while (true) {
+            delay(15_000L)
+            value = System.currentTimeMillis()
+        }
+    }
+
     val historyData = remember(reading) {
         if (reading != null) {
             if (reading.history.isNotEmpty()) {
@@ -175,7 +185,7 @@ fun PipGlucoseChartContent(
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
                     if (reading != null) {
-                        val minsAgo = ((System.currentTimeMillis() / 1000 - reading.timestamp) / 60).coerceAtLeast(0)
+                        val minsAgo = ((currentTimeMillis / 1000 - reading.timestamp) / 60).coerceAtLeast(0)
                         val agoText = if (minsAgo == 0L) "now" else "$minsAgo min ago"
 
                         Row(
@@ -245,7 +255,7 @@ fun PipGlucoseChartContent(
                     if (reading != null) {
                         val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault())
                             .format(Date(reading.timestamp * 1000))
-                        val minsAgo = ((System.currentTimeMillis() / 1000 - reading.timestamp) / 60).coerceAtLeast(0)
+                        val minsAgo = ((currentTimeMillis / 1000 - reading.timestamp) / 60).coerceAtLeast(0)
                         val agoText = if (minsAgo == 0L) "now" else "$minsAgo min ago"
 
                         Row(

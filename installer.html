@@ -995,8 +995,13 @@
                 <img src="pix/sugarota_icon.png" alt="Sugarota Logo"
                     style="width: 58px; height: 58px; image-rendering: pixelated; filter: drop-shadow(0 4px 16px rgba(0, 240, 255, 0.4));">
                 <h1 class="logo-title" style="margin: 0;">SUGAROTA CONTROL CENTER</h1>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 8px;">
+                <span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.10.11.0</span>
+                <a href="battery.html" class="version-badge" style="text-decoration: none; color: #38bdf8; border-color: rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.08); display: inline-flex; align-items: center; gap: 6px;" title="Open Battery Analysis Dashboard">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="1" y="6" width="18" height="12" rx="2"/><line x1="23" y1="11" x2="23" y2="13"/></svg>
+                    Battery Analyzer &rarr;
+                </a>
             </div>
-            <div><span class="version-badge" id="installer-version-badge" title="Web Installer Version">Installer v0.10.09.1</span></div>
         </header>
 
         <!-- Global Connection Status Banner -->
@@ -1438,7 +1443,7 @@
     </div>
 
     <script>
-        const INSTALLER_VERSION = "v0.10.09.1";
+        const INSTALLER_VERSION = "v0.10.11.0";
 
         // Toggle Password Visibility Reveal Icon Logic
         function togglePasswordVisibility(inputId, btn) {

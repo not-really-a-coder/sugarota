@@ -8,8 +8,17 @@ void updateUI() {
   if (isBooting || screenManuallyOff || brightnessLevel == 0)
     return;
 
+  // Scale CPU to 240 MHz for maximum QSPI DMA throughput and minimal render latency
+  uint32_t prevCpuFreq = ESP.getCpuFreqMHz();
+  if (prevCpuFreq != 240) {
+    setCpuFrequencyMhz(240);
+  }
+
   if (isVerticalMode) {
     drawVerticalScreen();
+    if (prevCpuFreq != 240) {
+      setCpuFrequencyMhz(prevCpuFreq);
+    }
     return;
   }
 
@@ -21,14 +30,15 @@ void updateUI() {
   if (isConfigMode && configScreenState != CONFIG_SCREEN_NONE) {
     if (configScreenState == CONFIG_SCREEN_PROMPT) {
       drawConfigPromptScreen();
-      return;
     } else if (configScreenState == CONFIG_SCREEN_CONNECTING) {
       drawConfigConnectingScreen();
-      return;
     } else if (configScreenState == CONFIG_SCREEN_INFO) {
       drawConfigInfoScreen();
-      return;
     }
+    if (prevCpuFreq != 240) {
+      setCpuFrequencyMhz(prevCpuFreq);
+    }
+    return;
   }
 
   if (isTimerMode) {
@@ -130,7 +140,8 @@ void updateUI() {
   }
 
   // Night Mode No Data Alert Dialog (relative message on screen)
-  if (isNightModeActive() && !nightModeAlertSnoozed && (millis() - lastDataFetch > 15 * 60 * 1000) && !isShowingPairingDialog) {
+  int dataAgeMin = getGlucoseDataAgeMinutes();
+  if (isNightModeActive() && !nightModeAlertSnoozed && (dataAgeMin >= 15) && !isShowingPairingDialog) {
     int w = 340;
     int h = 90;
     int dx = (640 - w) / 2;
@@ -147,8 +158,7 @@ void updateUI() {
     gfx->setTextColor(WHITE);
     gfx->setTextSize(2);
     gfx->setCursor(dx + 20, dy + 42);
-    unsigned long mins = (millis() - lastDataFetch) / 60000;
-    gfx->printf("Last update: %lum ago", mins);
+    gfx->printf("Last reading: %dm ago", dataAgeMin);
 
     gfx->setTextSize(1);
     gfx->setTextColor(GRAY);
@@ -157,6 +167,10 @@ void updateUI() {
   }
 
   gfx->flush();
+
+  if (prevCpuFreq != 240) {
+    setCpuFrequencyMhz(prevCpuFreq);
+  }
 }
 
 void drawHarveyBall(int x, int y, int radius, long long timestamp) {
@@ -725,6 +739,19 @@ bool isNightModeActive() {
   }
   // Schedule: 22:00 to 07:00 (active when hour >= 22 or hour < 7)
   return (timeinfo.tm_hour >= 22 || timeinfo.tm_hour < 7);
+}
+
+int getGlucoseDataAgeMinutes() {
+  if (historyCount == 0 || bgHistory[0].timestamp <= 1700000000LL) {
+    // If no valid timestamp yet, fall back to lastDataFetch or 999
+    return (lastDataFetch > 0) ? (int)((millis() - lastDataFetch) / 60000) : 999;
+  }
+  time_t now = time(NULL);
+  if (now <= 1700000000LL) {
+    return (lastDataFetch > 0) ? (int)((millis() - lastDataFetch) / 60000) : 999;
+  }
+  int diffMin = (int)((now - bgHistory[0].timestamp) / 60);
+  return (diffMin < 0) ? 0 : diffMin;
 }
 
 void drawMoonIcon(int x, int y, uint16_t color) {

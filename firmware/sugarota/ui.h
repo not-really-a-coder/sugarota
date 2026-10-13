@@ -15,6 +15,7 @@ void drawHistoryChart();
 void drawOTAProgress(int percent, const char* statusMsg);
 void drawVerticalScreen();
 bool isNightModeActive();
+int getGlucoseDataAgeMinutes();
 void drawMoonIcon(int x, int y, uint16_t color);
 void drawConfigPromptScreen();
 void drawConfigConnectingScreen();

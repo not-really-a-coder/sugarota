@@ -71,6 +71,7 @@ The Wi-Fi and Bluetooth radios are by far the largest consumers of power on the 
 * **Display Canvas Flush Frequency**:
   - Full display canvas (`gfx->flush()`) pushes 172×640 pixels across the QSPI bus to the AXS15231B controller. Each flush requires significant CPU time and bus activity.
   - Do NOT trigger `updateUI()` on every loop iteration or on small battery voltage jitter.
+  - Throttle routine clock updates in standard mode to minute rollovers (`ti.tm_min != lastRenderedMinute`), running 1-second ticks strictly for BLE pairing pulses or critical battery warnings (<= 3%).
   - Only call `updateUI()` when battery percentage (`currentBatteryPct`) or charging status (`wasUSBPlugged`) actually changes state.
   - During display-off states (`screenManuallyOff || brightnessLevel == 0`), completely guard `updateUI()` from running periodically.
 * **Backlight Polarity and Deep Sleep Pin Holds**:
@@ -95,3 +96,13 @@ The Wi-Fi and Bluetooth radios are by far the largest consumers of power on the 
 * **Single-Packet Updates**:
   - Routine polls only send current/differential readings.
   - Multi-chunk 48-reading historical backfills are restricted to initial pairing, user button force-refreshes, or genuine data gaps (>6 minutes).
+
+---
+
+## 6. Dynamic CPU Clock Scaling
+
+* **Baseline 80 MHz Core Clock**:
+  - After setup completes, the ESP32-S3 downclocks to 80 MHz baseline frequency (`setCpuFrequencyMhz(80)`).
+  - Power consumption in baseline active idle is substantially lower than running permanently at 240 MHz.
+* **On-Demand 240 MHz Rendering Bursts**:
+  - `updateUI()` dynamically boosts the CPU clock to 240 MHz before redrawing and pushing across QSPI DMA, restoring baseline 80 MHz upon completion.

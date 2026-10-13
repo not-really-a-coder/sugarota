@@ -78,8 +78,12 @@ def normalize_and_parse_logs(raw_text):
     p8 = re.compile(r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}|up_\w+),(\d+\.\d{2,3}),(\d{1,3}),([01]),(\d{1,3}),([0-2]),([0-2]),(\d+)')
     p6 = re.compile(r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}|up_\w+),(\d+\.\d{2,3}),(\d{1,3}),([01]),([01]),([01])')
 
+    # Pre-split entries that lost newlines due to buffer rotation or USB-CDC streaming
+    # e.g., '...2,2402026-10-13...' -> '...2,240\n2026-10-13...'
+    clean_text = re.sub(r'(?:202)?(202\d-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})', r'\n\1', raw_text)
+
     entries = {}
-    for m in p8.finditer(raw_text):
+    for m in p8.finditer(clean_text):
         t_str, v_str, pct_str, chg_str, b_str, w_str, ble_str, val8_str = m.groups()
         try:
             v = float(v_str)
@@ -90,8 +94,21 @@ def normalize_and_parse_logs(raw_text):
             ble_state = int(ble_str)
             val8 = int(val8_str)
             # ESP32 CPU freq is typically 80, 160, 240 MHz; freeHeap is >10000 bytes
-            cpu_freq = val8 if val8 <= 1000 else 0
-            free_heap = val8 if val8 > 1000 else 0
+            # Guard against glued digits if any remained
+            if val8 in (80, 160, 240) or val8 <= 1000:
+                cpu_freq = val8
+                free_heap = 0
+            elif str(val8).endswith('2026'):
+                prefix = str(val8)[:-4]
+                if prefix in ('80', '160', '240'):
+                    cpu_freq = int(prefix)
+                    free_heap = 0
+                else:
+                    cpu_freq = 0
+                    free_heap = int(prefix)
+            else:
+                cpu_freq = 0
+                free_heap = val8
             if 2.8 <= v <= 4.4 and 0 <= pct <= 100:
                 entries[t_str] = {
                     "timestamp": t_str,
@@ -589,6 +606,7 @@ def generate_dashboard(records, analysis):
         <div class="chart-controls">
             <div class="segmented">
                 <button id="viewAllBtn" class="active" onclick="switchView('all')">Full History (All Datapoints)</button>
+                <button id="viewOct12Btn" onclick="switchView('oct12')">Oct 12-13 Discharge (100% &rarr; 0%)</button>
                 <button id="viewDischargeBtn" onclick="switchView('discharge')">Biggest Discharge Window</button>
             </div>
             <span style="font-size: 0.85rem; color: var(--text-muted);" id="rangeLabel">Points: Real Log Seconds &bull; Fixed Grid: 30m</span>
@@ -600,7 +618,7 @@ def generate_dashboard(records, analysis):
 
     <div class="grid-2" id="bottomGrid">
         <div class="panel" id="milestonesPanel">
-            <h3 id="milestonesHeading">Discharge Milestones (Biggest Discharge Window)</h3>
+            <h3 id="milestonesHeading">Discharge Milestones</h3>
             <table class="milestones-table">
                 <thead>
                     <tr>
@@ -613,7 +631,7 @@ def generate_dashboard(records, analysis):
                         <th>Brightness</th>
                         <th>Wi-Fi</th>
                         <th>BLE</th>
-                        <th>CPU / Heap</th>
+                        <th>CPU Clock</th>
                     </tr>
                 </thead>
                 <tbody id="milestonesBody">
@@ -764,24 +782,28 @@ def generate_dashboard(records, analysis):
             document.getElementById('cardPoints').innerText = visible.length;
             document.getElementById('cardPointsDesc').innerText = `Out of ${{allDataset.length}} total logged samples`;
 
-            // Milestones panel appears when Full History tab is active
+            // Milestones panel appears for Full History, Biggest Discharge, or Oct 12-13 preset
             const milestonesPanel = document.getElementById('milestonesPanel');
             const bottomGrid = document.getElementById('bottomGrid');
             if (milestonesPanel && bottomGrid) {{
-                if (isFullHistory) {{
-                    milestonesPanel.style.display = 'block';
-                    bottomGrid.style.gridTemplateColumns = '2fr 1fr';
-                }} else {{
-                    milestonesPanel.style.display = 'none';
-                    bottomGrid.style.gridTemplateColumns = '1fr';
-                }}
+                milestonesPanel.style.display = 'block';
+                bottomGrid.style.gridTemplateColumns = '2fr 1fr';
             }}
 
-            // Milestone Table calculation: biggest discharge window
-            const milestonesSource = longestDischarge;
+            // Milestone Table calculation: active window if segmented, else longest discharge
+            let milestonesSource = longestDischarge;
             const headingEl = document.getElementById('milestonesHeading');
-            if (headingEl) {{
-                headingEl.innerText = 'Discharge Milestones (Biggest Discharge Window)';
+            if (currentView === 'oct12') {{
+                const oct12Seg = getContiguousDischargeSegments(allDataset).find(seg => seg.some(d => d.t.startsWith('2026-10-12') || d.t.startsWith('2026-10-13')));
+                if (oct12Seg) milestonesSource = oct12Seg;
+                if (headingEl) headingEl.innerText = 'Discharge Milestones (Oct 12-13 Session: 98% -> 0%)';
+            }} else if (currentView === 'discharge') {{
+                if (headingEl) headingEl.innerText = 'Discharge Milestones (Biggest Discharge Window)';
+            }} else {{
+                if (headingEl) headingEl.innerText = 'Discharge Milestones (Latest Full Discharge Session)';
+                // Default to Oct 12 session if present, otherwise biggest
+                const oct12Seg = getContiguousDischargeSegments(allDataset).find(seg => seg.some(d => d.t.startsWith('2026-10-12') || d.t.startsWith('2026-10-13')));
+                if (oct12Seg) milestonesSource = oct12Seg;
             }}
 
             const tbody = document.getElementById('milestonesBody');
@@ -792,7 +814,7 @@ def generate_dashboard(records, analysis):
                 return;
             }}
 
-            const milestones = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 5, 2, 0];
+            const milestones = [100, 95, 90, 80, 70, 60, 50, 40, 30, 20, 10, 5, 2, 0];
             const seen = new Set();
             const mStartT = new Date(milestonesSource[0].x).getTime();
 
@@ -810,7 +832,7 @@ def generate_dashboard(records, analysis):
                     let extraStr = '-';
                     if (found.freq) {{
                         extraStr = `${{found.freq}} MHz`;
-                    }} else if (found.heap) {{
+                    }} else if (found.heap && found.heap < 10000000) {{
                         extraStr = `${{Math.round(found.heap / 1024)}} KB`;
                     }}
 
@@ -944,7 +966,7 @@ def generate_dashboard(records, analysis):
                                         ` Screen: ${{pt.scr ? 'ON' : 'OFF'}} (Brightness: ${{pt.b}}/255)`,
                                         ` Wi-Fi: ${{wifiLabels[pt.w] || 'Off'}}`,
                                         ` BLE: ${{bleLabels[pt.ble] || 'Off'}}`,
-                                        pt.freq ? ` CPU: ${{pt.freq}} MHz` : (pt.heap ? ` Free Heap: ${{Math.round(pt.heap / 1024)}} KB` : '')
+                                        pt.freq ? ` CPU: ${{pt.freq}} MHz` : (pt.heap && pt.heap < 10000000 ? ` Free Heap: ${{Math.round(pt.heap / 1024)}} KB` : '')
                                     ].filter(Boolean);
                                 }}
                             }}
@@ -960,16 +982,27 @@ def generate_dashboard(records, analysis):
         }}
 
         function switchView(mode) {{
-            if (mode === 'discharge') {{
+            if (mode === 'oct12') {{
+                const oct12Seg = getContiguousDischargeSegments(allDataset).find(seg => seg.some(d => d.t.startsWith('2026-10-12') || d.t.startsWith('2026-10-13')));
+                if (oct12Seg && oct12Seg.length >= 2) {{
+                    dischargeStartIso = oct12Seg[0].x;
+                    dischargeEndIso = oct12Seg[oct12Seg.length - 1].x;
+                }}
+            }} else if (mode === 'discharge') {{
                 const longestSeg = findLongestDischarge(allDataset);
                 if (!longestSeg || longestSeg.length < 2) return;
                 dischargeStartIso = longestSeg[0].x;
                 dischargeEndIso = longestSeg[longestSeg.length - 1].x;
             }}
             currentView = mode;
-            document.getElementById('viewDischargeBtn').classList.toggle('active', mode === 'discharge');
-            document.getElementById('viewAllBtn').classList.toggle('active', mode === 'all');
-            if (mode === 'discharge') {{
+            const btnOct12 = document.getElementById('viewOct12Btn');
+            const btnDischarge = document.getElementById('viewDischargeBtn');
+            const btnAll = document.getElementById('viewAllBtn');
+            if (btnOct12) btnOct12.classList.toggle('active', mode === 'oct12');
+            if (btnDischarge) btnDischarge.classList.toggle('active', mode === 'discharge');
+            if (btnAll) btnAll.classList.toggle('active', mode === 'all');
+
+            if (mode === 'oct12' || mode === 'discharge') {{
                 initChart(dischargeStartIso, dischargeEndIso);
             }} else {{
                 initChart(undefined, undefined);
@@ -1073,20 +1106,34 @@ def generate_dashboard(records, analysis):
         }}
 
         function parseAndNormalizeRawTelemetry(text) {{
+            // Pre-split entries where newlines were lost
+            const cleanText = text.replace(/(?:202)?(202\d-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/g, '\\n$1');
             const p8 = /(\\d{{4}}-\\d{{2}}-\\d{{2}}\\s+\\d{{2}}:\\d{{2}}:\\d{{2}}|up_\\w+),(\\d+\\.\\d{{2,3}}),(\\d{{1,3}}),([01]),(\\d{{1,3}}),([0-2]),([0-2]),(\\d+)/g;
             const p6 = /(\\d{{4}}-\\d{{2}}-\\d{{2}}\\s+\\d{{2}}:\\d{{2}}:\\d{{2}}|up_\\w+),(\\d+\\.\\d{{2,3}}),(\\d{{1,3}}),([01]),([01]),([01])/g;
             const map = new Map();
 
             let match;
-            while ((match = p8.exec(text)) !== null) {{
+            while ((match = p8.exec(cleanText)) !== null) {{
                 const [, t_str, v_str, pct_str, chg_str, b_str, w_str, ble_str, val8_str] = match;
                 const v = parseFloat(v_str);
                 const pct = parseInt(pct_str, 10);
                 if (v >= 2.8 && v <= 4.4 && pct >= 0 && pct <= 100 && !t_str.startsWith('up_')) {{
                     const b = parseInt(b_str, 10);
                     const val8 = parseInt(val8_str, 10);
-                    const cpuFreq = val8 <= 1000 ? val8 : 0;
-                    const freeHeap = val8 > 1000 ? val8 : 0;
+                    let cpuFreq = 0;
+                    let freeHeap = 0;
+                    if (val8 === 80 || val8 === 160 || val8 === 240 || val8 <= 1000) {{
+                        cpuFreq = val8;
+                    }} else if (String(val8).endsWith('2026')) {{
+                        const prefix = String(val8).slice(0, -4);
+                        if (prefix === '80' || prefix === '160' || prefix === '240') {{
+                            cpuFreq = parseInt(prefix, 10);
+                        }} else {{
+                            freeHeap = parseInt(prefix, 10);
+                        }}
+                    }} else {{
+                        freeHeap = val8;
+                    }}
                     map.set(t_str, {{
                         t: t_str,
                         x: t_str.replace(' ', 'T'),

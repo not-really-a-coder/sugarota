@@ -2,6 +2,28 @@
 
 All notable changes to the Sugarota project will be documented in this file. This project utilizes the Calendar Versioning (CalVer) format: v{YearOffset}.{Month:02d}.{Day:02d}.{Build}.
 
+## 2026-10-13 — Dynamic CPU Clock Scaling, Minute Refresh Cadence & Telemetry Dashboard Enhancements
+Firmware v0.10.13.4
+
+This release lowers baseline idle power with 80 MHz CPU frequency scaling and minute-cadence display redraws, aligns Night Mode alerts with true glucose reading age, and updates the battery telemetry dashboard with discharge session views and robust parsing.
+
+### Firmware & Display Interface
+
+- Lowered baseline ESP32-S3 CPU operating frequency to 80 MHz following boot initialization, dynamically boosting clock to 240 MHz during display flushes (`updateUI`) to maximize QSPI throughput and minimize power draw
+- Throttled routine clock UI redraws to once per minute during idle periods, maintaining 1-second cadence only when active pairing animation or critical low battery alerts are active
+- Aligned Night Mode missing data alert and dialog with true glucose reading age (`getGlucoseDataAgeMinutes`) matching Harvey Ball status
+
+### Tooling & Analytics
+
+- Enhanced standalone battery dashboard (`battery.html`) with dedicated discharge session presets and milestone breakdown panels for full discharge analysis
+- Improved telemetry regex parser and normalizer in `utils/analysis/pipeline.py` to handle concatenated lines and disambiguate CPU frequency from heap memory records
+
+### Documentation
+
+- Updated battery performance guide with dynamic CPU clock scaling rules and minute-cadence display flush hygiene
+
+---
+
 ## 2026-10-11 — Night Mode Clock Scaling, Battery Analytics Dashboard & Picture-in-Picture Refresh
 Firmware v0.10.11.6 | Android App v0.10.11.2 | Web installer v0.10.11.0
 

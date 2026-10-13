@@ -1,5 +1,5 @@
 // --- Version Control ---
-#define SUGAROTA_VERSION "v0.10.11.6"
+#define SUGAROTA_VERSION "v0.10.13.4"
 
 #include "config.h"
 #include "storage.h"
@@ -670,6 +670,10 @@ void setup() {
 
   isBooting = false;
   updateUI();
+
+  // Baseline power optimization: idle at 80 MHz during normal operation (scaled to 240 MHz for render/OTA/Wi-Fi)
+  setCpuFrequencyMhz(80);
+  DBG_PRINTLN("SYSTEM: Setup complete. CPU running at baseline 80 MHz.");
 }
 
 void loop() {
@@ -847,10 +851,10 @@ void loop() {
       }
     }
 
-    // 2. No-data alarm (no update for > 15 minutes)
+    // 2. No-data alarm (no update for >= 15 minutes, matches Harvey Ball red status)
     // Plays 4 beeps, 1s pause, 4 beeps, 1s pause, 4 beeps every 5 minutes until data arrives
-    unsigned long effectiveLastFetch = (lastDataFetch > 0) ? lastDataFetch : 1; // Guard if booted with no initial data
-    if (!isBooting && (millis() - effectiveLastFetch > 15 * 60 * 1000)) {
+    int dataAgeMin = getGlucoseDataAgeMinutes();
+    if (!isBooting && (dataAgeMin >= 15)) {
       if (!nightModeAlertSnoozed && !isNightModeAlertActive()) {
         if (lastNmAlertTrigger == 0 || (millis() - lastNmAlertTrigger >= 5 * 60 * 1000)) {
           lastNmAlertTrigger = millis();
@@ -865,7 +869,7 @@ void loop() {
         }
       }
     } else {
-      // Data is fresh
+      // Data is fresh (< 15m)
       nightModeAlertSnoozed = false;
       lastNmAlertTrigger = 0;
       stopNightModeDataAlert();
@@ -960,10 +964,22 @@ void loop() {
   }
 
   static unsigned long lastClockTick = 0;
+  static int lastRenderedMinute = -1;
   if (millis() - lastClockTick >= 1000) {
     lastClockTick = millis();
     if (!isTimerMode && !isVerticalMode && !isFetching) {
-      updateUI();
+      // Determine if a 1-second cadence is strictly required (active pairing animation or critical low battery alert)
+      bool isBtPairing = SugarotaBLE::getInstance().isPairingModeEnabled();
+      bool needsFastTick = isBtPairing || (currentBatteryPct >= 0 && currentBatteryPct <= 3);
+
+      time_t now = time(NULL);
+      struct tm ti;
+      localtime_r(&now, &ti);
+
+      if (needsFastTick || (ti.tm_min != lastRenderedMinute)) {
+        lastRenderedMinute = ti.tm_min;
+        updateUI();
+      }
     }
   }
 
